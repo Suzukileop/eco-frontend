@@ -1,5 +1,8 @@
-import type { Composition, Format } from '@/types/composition';
+import type { Clip, Composition, Format, TrackType } from '@/types/composition';
 import { getAspectRatio } from '@/lib/formatPresets';
+import { getClipBackgroundLane } from '@/lib/backgroundLanes';
+import { getClipTextLane } from '@/lib/textLanes';
+import { getClipOverlayLane } from '@/lib/overlayLanes';
 
 export const STUDIO_COMPOSITION_ID = 'StudioComposition';
 
@@ -33,10 +36,41 @@ export function getCompositionDurationFrames(composition: Composition): number {
 
 export interface StudioCompositionInputProps {
   composition: Composition;
+  laneMuted?: Record<string, boolean>;
+  laneHidden?: Record<string, boolean>;
+  trackHidden?: Partial<Record<TrackType, boolean>>;
+  /** Preview navigateur : l’overlay WebGL gère les transitions, pas le fallback CSS. */
+  skipCssTransitions?: boolean;
+  /** Preview : masquer les clips V1 seulement quand l’overlay GL a rendu au moins une frame. */
+  v1GlCoverReady?: boolean;
+}
+
+export function getClipLaneIndex(clip: Clip, trackType: TrackType): number {
+  if (trackType === 'background') return getClipBackgroundLane(clip);
+  if (trackType === 'text') return getClipTextLane(clip);
+  if (trackType === 'overlay') return getClipOverlayLane(clip);
+  return 0;
+}
+
+/** Vérifie si un clip est visible selon les toggles timeline (œil piste / lane). */
+export function isClipLaneVisible(
+  clip: Clip,
+  trackType: TrackType,
+  laneHidden: Record<string, boolean> = {},
+  trackHidden: Partial<Record<TrackType, boolean>> = {}
+): boolean {
+  if (trackHidden[trackType]) return false;
+  const laneIdx = getClipLaneIndex(clip, trackType);
+  return !(laneHidden[`${trackType}-${laneIdx}`] ?? false);
 }
 
 export function compositionToRemotionInput(
-  composition: Composition
+  composition: Composition,
+  laneMuted?: Record<string, boolean>,
+  laneHidden?: Record<string, boolean>,
+  trackHidden?: Partial<Record<TrackType, boolean>>,
+  skipCssTransitions?: boolean,
+  v1GlCoverReady?: boolean
 ): StudioCompositionInputProps {
-  return { composition };
+  return { composition, laneMuted, laneHidden, trackHidden, skipCssTransitions, v1GlCoverReady };
 }

@@ -12,11 +12,12 @@ const EFFECT_PAD_PX = 4;
 export function measureKonvaEditorTextFrame(
   clip: Clip,
   canvasWidth: number,
+  canvasHeight?: number,
   contentOverride?: string
 ): { widthPx: number; heightPx: number } {
   const measuredClip =
     contentOverride !== undefined ? { ...clip, content: contentOverride } : clip;
-  const frame = measureTextContentFrame(measuredClip, canvasWidth);
+  const frame = measureTextContentFrame(measuredClip, canvasWidth, canvasHeight);
   return {
     widthPx: frame.widthPx,
     heightPx: Math.max(MIN_FRAME_PX, frame.heightPx + EFFECT_PAD_PX),
@@ -48,7 +49,7 @@ export function resolveEditorTextFrameHeight(
   domEl?: HTMLTextAreaElement | null,
   widthPx?: number
 ): number {
-  const fromCss = measureKonvaEditorTextFrame(clip, canvasWidth, content).heightPx;
+  const fromCss = measureKonvaEditorTextFrame(clip, canvasWidth, undefined, content).heightPx;
   if (!domEl) return fromCss;
   const fromDom = measureTextareaScrollHeight(domEl, widthPx);
   // Pendant l’édition, le DOM fait foi (permet de rétrécir après suppression de \\n vides).

@@ -12,12 +12,24 @@ import type { NicheRequestResponse } from '@/types/ecosystem';
 import {
   ANALYSIS_BASE_CREDITS,
   CREDITS_PER_IMAGE,
+  DEFAULT_IMAGES_PER_SEGMENT,
   DEFAULT_SEGMENT_ESTIMATE,
   estimateAnalysisCredits,
-  estimateAnalysisCreditsMax,
-  IMAGES_PER_SEGMENT_ESTIMATE,
+  MAX_IMAGES_PER_SEGMENT,
+  MIN_IMAGES_PER_SEGMENT,
 } from '@/types/templates';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import {
+  templatesEyebrowClass,
+  templatesInputClass,
+  templatesLabelClass,
+  templatesLinkClass,
+  templatesPrimaryBtnClass,
+  templatesSectionAccentClass,
+  templatesSectionClass,
+  templatesTabActiveClass,
+  templatesTabInactiveClass,
+} from '@/components/templates/templates-section-ui';
 
 const MAX_BYTES = 500 * 1024 * 1024;
 
@@ -30,6 +42,10 @@ const schema = z
     segmentEstimate: z.preprocess(
       (v) => (typeof v === 'string' ? Number(v) : v),
       z.number().int().min(1).max(50)
+    ),
+    imagesPerSegment: z.preprocess(
+      (v) => (typeof v === 'string' ? Number(v) : v),
+      z.number().int().min(MIN_IMAGES_PER_SEGMENT).max(MAX_IMAGES_PER_SEGMENT)
     ),
   })
   .superRefine((data, ctx) => {
@@ -93,13 +109,14 @@ export function VideoSourceForm() {
       sourceMode: 'R2',
       videoUrl: '',
       segmentEstimate: DEFAULT_SEGMENT_ESTIMATE,
+      imagesPerSegment: DEFAULT_IMAGES_PER_SEGMENT,
     },
   });
 
   const sourceMode = watch('sourceMode');
   const segmentEstimate = watch('segmentEstimate');
-  const lowEstimate = estimateAnalysisCredits(segmentEstimate);
-  const highEstimate = estimateAnalysisCreditsMax(segmentEstimate);
+  const imagesPerSegment = watch('imagesPerSegment');
+  const creditEstimate = estimateAnalysisCredits(segmentEstimate, imagesPerSegment);
 
   useEffect(() => {
     void getMyRequests(undefined, 0, 50)
@@ -150,9 +167,16 @@ export function VideoSourceForm() {
           setSubmitError(fileErr);
           return;
         }
-        result = await analyzeVideoByUpload(mp4File, setUploadPercent);
+        result = await analyzeVideoByUpload(
+          mp4File,
+          setUploadPercent,
+          values.imagesPerSegment
+        );
       } else {
-        result = await analyzeVideoByUrl(values.videoUrl?.trim() ?? '');
+        result = await analyzeVideoByUrl(
+          values.videoUrl?.trim() ?? '',
+          values.imagesPerSegment
+        );
       }
       router.push(`/dashboard/templates/${result.id}`);
     } catch (e) {
@@ -164,9 +188,9 @@ export function VideoSourceForm() {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
       {submitError && <ErrorAlert message={submitError} onDismiss={() => setSubmitError(null)} />}
 
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Source de la vidéo</h2>
-        <div className="mt-4 flex flex-wrap gap-3" role="radiogroup" aria-label="Source vidéo">
+      <section className={templatesSectionClass}>
+        <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Source de la vidéo</h2>
+        <div className="mt-4 flex flex-wrap gap-2" role="radiogroup" aria-label="Source vidéo">
           {(
             [
               { id: 'R2' as const, label: 'URL R2 modèle agent' },
@@ -180,10 +204,8 @@ export function VideoSourceForm() {
               role="radio"
               aria-checked={sourceMode === opt.id}
               onClick={() => setValue('sourceMode', opt.id)}
-              className={`rounded-xl border-2 px-4 py-2 text-sm font-semibold ${
-                sourceMode === opt.id
-                  ? 'border-teal-600 bg-teal-50 text-teal-900'
-                  : 'border-gray-200 text-gray-700 hover:border-gray-300'
+              className={`rounded-xl border-2 px-4 py-2 text-sm font-semibold transition ${
+                sourceMode === opt.id ? templatesTabActiveClass : templatesTabInactiveClass
               }`}
             >
               {opt.label}
@@ -193,22 +215,22 @@ export function VideoSourceForm() {
 
         {sourceMode === 'R2' && (
           <div className="mt-6 space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">
               Entrez l&apos;URL de la vidéo modèle fournie par votre agent (hébergement Cloudflare R2).
               Vous pouvez la copier depuis votre demande niche (
-              <code className="rounded bg-gray-100 px-1 text-xs">demoContentUrl</code>
+              <code className="rounded bg-neutral-100 px-1 text-xs dark:bg-neutral-800">demoContentUrl</code>
               ).
             </p>
             {nicheDemos.length > 0 && (
-              <div className="rounded-xl border border-teal-100 bg-teal-50/50 p-3">
-                <p className="text-xs font-semibold text-teal-900">Démos disponibles</p>
+              <div className="rounded-xl border border-orange-200/60 bg-orange-50/50 p-3 dark:border-orange-500/25 dark:bg-orange-500/10">
+                <p className={`${templatesEyebrowClass} text-orange-800 dark:text-orange-300`}>Démos disponibles</p>
                 <ul className="mt-2 space-y-2">
                   {nicheDemos.map((req) => (
                     <li key={req.id} className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-medium text-gray-800">{req.nicheTheme}</span>
+                      <span className="font-medium text-neutral-800 dark:text-neutral-200">{req.nicheTheme}</span>
                       <button
                         type="button"
-                        className="text-teal-700 underline hover:text-teal-900"
+                        className={templatesLinkClass}
                         onClick={() =>
                           setValue('videoUrl', req.demoContentUrl ?? '', { shouldValidate: true })
                         }
@@ -220,13 +242,13 @@ export function VideoSourceForm() {
                 </ul>
               </div>
             )}
-            <label htmlFor="videoUrlR2" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="videoUrlR2" className={templatesLabelClass}>
               URL vidéo (*.r2.dev)
             </label>
             <input
               id="videoUrlR2"
               type="url"
-              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              className={templatesInputClass}
               placeholder="https://….r2.dev/models/…/video.mp4"
               {...register('videoUrl')}
             />
@@ -235,16 +257,16 @@ export function VideoSourceForm() {
 
         {sourceMode === 'EXTERNAL' && (
           <div className="mt-6 space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">
               YouTube, TikTok ou autre lien direct. Assurez-vous que la vidéo est publiquement accessible.
             </p>
-            <label htmlFor="videoUrlExt" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="videoUrlExt" className={templatesLabelClass}>
               URL externe
             </label>
             <input
               id="videoUrlExt"
               type="url"
-              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              className={templatesInputClass}
               placeholder="https://www.youtube.com/watch?v=…"
               {...register('videoUrl')}
             />
@@ -255,7 +277,7 @@ export function VideoSourceForm() {
           <div className="mt-6">
             <label
               htmlFor="mp4-upload"
-              className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center hover:bg-gray-100"
+              className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-neutral-300 bg-neutral-50/80 px-6 py-12 text-center transition hover:border-orange-300 hover:bg-orange-50/30 dark:border-neutral-700 dark:bg-neutral-950/50 dark:hover:border-orange-500/40"
               onDragOver={(e) => {
                 e.preventDefault();
               }}
@@ -272,12 +294,12 @@ export function VideoSourceForm() {
                 className="hidden"
                 onChange={(e) => onDrop(e.target.files?.[0] ?? null)}
               />
-              <span className="text-sm font-medium text-gray-800">
+              <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                 Glissez votre MP4 ici ou cliquez pour sélectionner
               </span>
-              <span className="mt-1 text-xs text-gray-500">Maximum 500 Mo</span>
+              <span className="mt-1 text-xs text-neutral-500">Maximum 500 Mo</span>
               {mp4File && (
-                <span className="mt-2 text-xs text-gray-600">
+                <span className="mt-2 text-xs text-neutral-600 dark:text-neutral-400">
                   {mp4File.name} — {(mp4File.size / (1024 * 1024)).toFixed(2)} Mo
                 </span>
               )}
@@ -291,13 +313,13 @@ export function VideoSourceForm() {
                 aria-valuemax={100}
                 aria-label="Progression de l’upload"
               >
-                <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                <div className="h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
                   <div
-                    className="h-full bg-teal-600 transition-all duration-300"
+                    className="h-full bg-orange-500 transition-all duration-300"
                     style={{ width: `${uploadPercent}%` }}
                   />
                 </div>
-                <p className="mt-1 text-xs text-gray-600">{uploadPercent} %</p>
+                <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{uploadPercent} %</p>
               </div>
             )}
           </div>
@@ -308,27 +330,46 @@ export function VideoSourceForm() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-teal-100 bg-teal-50/60 p-6">
-        <h2 className="text-lg font-semibold text-teal-900">Coût en crédits</h2>
-        <p className="mt-2 text-sm text-teal-800">
+      <section className={templatesSectionAccentClass}>
+        <h2 className="text-lg font-bold text-orange-950 dark:text-orange-100">Coût en crédits</h2>
+        <p className="mt-2 text-sm text-orange-900/90 dark:text-orange-200/90">
           Cette analyse coûte {ANALYSIS_BASE_CREDITS} crédits (+ {CREDITS_PER_IMAGE} crédits par image
           générée).
         </p>
-        <div className="mt-4">
-          <label htmlFor="segmentEstimate" className="block text-sm font-medium text-teal-900">
-            Estimation — nombre de séquences attendues : {segmentEstimate}
-          </label>
-          <input
-            id="segmentEstimate"
-            type="range"
-            min={1}
-            max={30}
-            className="mt-2 w-full accent-teal-600"
-            {...register('segmentEstimate', { valueAsNumber: true })}
-          />
-          <p className="mt-2 text-sm font-semibold text-teal-900">
-            Estimation totale : ~{lowEstimate} crédits (jusqu&apos;à ~{highEstimate} si{' '}
-            {IMAGES_PER_SEGMENT_ESTIMATE} images par séquence)
+        <div className="mt-4 space-y-4">
+          <div>
+            <label htmlFor="segmentEstimate" className={`${templatesLabelClass} text-orange-950 dark:text-orange-100`}>
+              Estimation — nombre de séquences attendues : {segmentEstimate}
+            </label>
+            <input
+              id="segmentEstimate"
+              type="range"
+              min={1}
+              max={30}
+              className="mt-2 w-full accent-orange-500"
+              {...register('segmentEstimate', { valueAsNumber: true })}
+            />
+          </div>
+          <div>
+            <label htmlFor="imagesPerSegment" className={`${templatesLabelClass} text-orange-950 dark:text-orange-100`}>
+              Images générées par séquence : {imagesPerSegment}
+            </label>
+            <input
+              id="imagesPerSegment"
+              type="range"
+              min={MIN_IMAGES_PER_SEGMENT}
+              max={MAX_IMAGES_PER_SEGMENT}
+              className="mt-2 w-full accent-orange-500"
+              {...register('imagesPerSegment', { valueAsNumber: true })}
+            />
+            <p className="mt-1 text-xs text-orange-900/80 dark:text-orange-200/80">
+              Choisissez entre {MIN_IMAGES_PER_SEGMENT} et {MAX_IMAGES_PER_SEGMENT} variantes visuelles
+              par séquence détectée par Grok.
+            </p>
+          </div>
+          <p className="text-sm font-semibold text-orange-950 dark:text-orange-100">
+            Estimation totale : ~{creditEstimate} crédits ({ANALYSIS_BASE_CREDITS} de base +{' '}
+            {segmentEstimate} séquences × {imagesPerSegment} images × {CREDITS_PER_IMAGE} crédits)
           </p>
         </div>
       </section>
@@ -337,7 +378,7 @@ export function VideoSourceForm() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-8 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-60"
+          className={`${templatesPrimaryBtnClass} px-8 py-3`}
         >
           {isSubmitting ? (
             <>
@@ -345,7 +386,7 @@ export function VideoSourceForm() {
               {sourceMode === 'UPLOAD' ? 'Envoi et analyse…' : 'Lancement…'}
             </>
           ) : (
-            '🔍 Lancer l’analyse Grok'
+            'Lancer l’analyse Grok'
           )}
         </button>
       </div>

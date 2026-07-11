@@ -4,6 +4,7 @@
  */
 
 import {
+  fontSizeBoundsForTextScale,
   formatContentClipPath,
   TEXT_ZONE_PADDING_X,
   TEXT_ZONE_PADDING_Y,
@@ -339,6 +340,7 @@ export function pointerMove(
   canvasWidth: number,
   canvasHeight: number,
   currentFontSizePx: number,
+  scaleBaseFontSize: number,
   moveSnap?: TextZoneMoveSnapContext,
   onSnapGuides?: (guides: SnapGuides) => void,
   clip?: Pick<Clip, 'backgroundColor' | 'backgroundOpacity'>
@@ -403,14 +405,23 @@ export function pointerMove(
     }
 
     const uniformScale = drag.startWidthPx > 0 ? newW / drag.startWidthPx : 1;
-    const newFs = drag.startFontSizePx * uniformScale;
+    const { min: minFs, max: maxFs } = fontSizeBoundsForTextScale(
+      scaleBaseFontSize,
+      canvasHeight
+    );
+    const rawFs = drag.startFontSizePx * uniformScale;
+    const newFs = Math.max(minFs, Math.min(maxFs, rawFs));
+    const effectiveScale =
+      drag.startFontSizePx > 0 ? newFs / drag.startFontSizePx : uniformScale;
+    newW = Math.max(SIM_MIN_WIDTH_PX, drag.startWidthPx * effectiveScale);
     drag.fontSizePx = newFs;
 
+    if (newLeft !== undefined) newLeft = drag.anchorXPx - newW;
     if (newLeft !== undefined) zone.style.left = `${newLeft}px`;
     zone.style.width = `${newW}px`;
     syncZoneTypography(refs, newFs);
     // Comme le simulateur : largeur + fontSize proportionnels, hauteur = contenu wrapé.
-    runAutoHeight(refs, content, { paddingScale: uniformScale, clip });
+    runAutoHeight(refs, content, { paddingScale: effectiveScale, clip });
 
     if (topAnchor) {
       zone.style.top = `${drag.anchorYPx - zone.offsetHeight}px`;

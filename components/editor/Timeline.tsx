@@ -8,7 +8,32 @@ import {
   getClipBackgroundLane,
   getLane0Clips,
   type BackgroundTimelineLane,
+  PRIMARY_BACKGROUND_LANE,
 } from '@/lib/backgroundLanes';
+import {
+  buildTextLanesForTimeline,
+  getClipTextLane,
+  type TextTimelineLane,
+  PRIMARY_TEXT_LANE,
+} from '@/lib/textLanes';
+import {
+  buildOverlayLanesForTimeline,
+  getClipOverlayLane,
+  type OverlayTimelineLane,
+  PRIMARY_OVERLAY_LANE,
+} from '@/lib/overlayLanes';
+import {
+  buildAudioLanesForTimeline,
+  getClipAudioLane,
+  type AudioTimelineLane,
+  PRIMARY_AUDIO_LANE,
+} from '@/lib/audioLanes';
+import {
+  buildVoiceoverLanesForTimeline,
+  getClipVoiceoverLane,
+  type VoiceoverTimelineLane,
+  PRIMARY_VOICEOVER_LANE,
+} from '@/lib/voiceoverLanes';
 import {
   buildBackgroundDragPreview,
   clampBackgroundDragPointer,
@@ -16,9 +41,37 @@ import {
   type BackgroundDragGhost,
   type BackgroundDragPreview,
 } from '@/lib/timelineBackgroundDrag';
-import { PRIMARY_BACKGROUND_LANE } from '@/lib/backgroundLanes';
+import {
+  buildTextDragPreview,
+  clampTextDragPointer,
+  resolveTextLaneForDrag,
+  type TextDragGhost,
+  type TextDragPreview,
+} from '@/lib/timelineTextDrag';
+import {
+  buildOverlayDragPreview,
+  clampOverlayDragPointer,
+  resolveOverlayLaneForDrag,
+  type OverlayDragGhost,
+  type OverlayDragPreview,
+} from '@/lib/timelineOverlayDrag';
+import {
+  buildAudioDragPreview,
+  clampAudioDragPointer,
+  resolveAudioLaneForDrag,
+  type AudioDragGhost,
+  type AudioDragPreview,
+} from '@/lib/timelineAudioDrag';
+import {
+  buildVoiceoverDragPreview,
+  clampVoiceoverDragPointer,
+  resolveVoiceoverLaneForDrag,
+  type VoiceoverDragGhost,
+  type VoiceoverDragPreview,
+} from '@/lib/timelineVoiceoverDrag';
 import { useCompositionStore } from '@/stores/compositionStore';
 import { TransitionMarker } from '@/components/editor/TransitionMarker';
+import { findLane0Junctions } from '@/lib/transitionApply';
 import { AudioWaveform } from '@/components/editor/AudioWaveform';
 import {
   IconLock,
@@ -27,31 +80,35 @@ import {
   IconEyeOff,
   IconVolume,
   IconVolumeMute,
-  IconSplit,
-  IconCopy,
-  IconDuplicate,
-  IconTrash,
   IconClipDiamond,
   IconClipText,
   IconClipFilm,
   IconClipMusic,
   IconClipMic,
 } from '@/components/editor/TimelineIcons';
+import { CapCutContextMenu } from '@/components/editor/CapCutContextMenu';
+import { buildTimelineClipMenuItems } from '@/lib/timelineClipMenu';
+import { buildTimelinePasteOnlyMenu } from '@/lib/timelinePasteMenu';
 import { TimelineTrimHandle } from '@/components/editor/TimelineTrimHandle';
 import {
   TIMELINE_LIGHT,
   CLIP_DROP_TRACE,
   CLIP_SELECTION,
-  CLIP_ICON_WIDTH,
-  LANE_HEIGHT,
   LANE_GAP,
   LABEL_COL_WIDTH,
-  LANE_CLIP_INSET_Y,
-  TRANSITION_RAIL_HEIGHT,
   TRIM_JUNCTION_INSET_PX,
   RULER_HEIGHT,
   PLAYHEAD,
   getClipStyleForTrack,
+  getClipIconWidth,
+  getLaneHeight,
+  getLaneClipInsetY,
+  getLaneDragStep,
+  getBackgroundLaneDragStep,
+  isCompactLane,
+  LANE_HEADER_LABEL_WIDTH,
+  LANE_HEADER_BTN_PX,
+  trackSupportsLaneMute,
   laneStripBackground,
   type ClipTrackStyle,
 } from '@/lib/timelineTheme';
@@ -82,24 +139,6 @@ interface Lane {
   isPreview?: boolean;
 }
 
-function assignLanes(clips: Clip[]): Lane[] {
-  const sorted = [...clips].sort((a, b) => a.startTime - b.startTime);
-  const lanes: Clip[][] = [];
-  for (const clip of sorted) {
-    let placed = false;
-    for (const lane of lanes) {
-      const last = lane[lane.length - 1];
-      if (last.endTime <= clip.startTime + 0.001) {
-        lane.push(clip);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) lanes.push([clip]);
-  }
-  return lanes.map((c, i) => ({ index: i, clips: c }));
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
 // Time formatting (MM:SS or HH:MM:SS, with frame ticks at high zoom)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -118,97 +157,59 @@ function formatRulerTime(t: number): string {
 // Context menu
 // ──────────────────────────────────────────────────────────────────────────────
 
-interface CtxMenu { clipId: string; x: number; y: number; }
+type LaneManagedTrack = 'background' | 'text' | 'overlay' | 'audio' | 'voiceover';
+type LaneDragPreview =
+  | BackgroundDragPreview
+  | TextDragPreview
+  | OverlayDragPreview
+  | AudioDragPreview
+  | VoiceoverDragPreview;
+type LaneDragGhost =
+  | BackgroundDragGhost
+  | TextDragGhost
+  | OverlayDragGhost
+  | AudioDragGhost
+  | VoiceoverDragGhost;
+
+interface CtxMenu {
+  x: number;
+  y: number;
+  clipId?: string;
+  backgroundLane?: number;
+  textLane?: number;
+  overlayLane?: number;
+  audioLane?: number;
+  voiceoverLane?: number;
+  laneTrackType?: LaneManagedTrack;
+  /** Temps sur le clip au clic droit (pour Diviser). */
+  splitTimeAtPointer?: number;
+}
 
 function ClipContextMenu({ menu, onClose }: { menu: CtxMenu; onClose: () => void }) {
-  const { removeClip, addClip, splitClip, setClipboard, composition, currentTime } =
-    useCompositionStore();
-
-  const findClip = (): Clip | undefined => {
-    if (!composition) return;
-    return [
-      ...composition.tracks.background,
-      ...composition.tracks.text,
-      ...composition.tracks.audio,
-      ...composition.tracks.overlay,
-      ...composition.tracks.voiceover,
-    ].find((c) => c.id === menu.clipId);
-  };
-
-  useEffect(() => {
-    const close = () => onClose();
-    window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
-  }, [onClose]);
-
-  const items: {
-    label: string;
-    icon: React.ReactNode;
-    action: () => void;
-    danger?: boolean;
-  }[] = [
-    {
-      label: 'Couper au playhead',
-      icon: <IconSplit />,
-      action: () => {
-        splitClip(menu.clipId, currentTime);
-        onClose();
-      },
-    },
-    {
-      label: 'Copier',
-      icon: <IconCopy />,
-      action: () => {
-        const c = findClip();
-        if (c) setClipboard(c);
-        onClose();
-      },
-    },
-    {
-      label: 'Dupliquer',
-      icon: <IconDuplicate />,
-      action: () => {
-        const c = findClip();
-        if (!c) return;
-        const d = c.endTime - c.startTime;
-        addClip({
-          ...c,
-          id: `${c.id}-dup-${Date.now()}`,
-          startTime: c.endTime,
-          endTime: c.endTime + d,
-        });
-        onClose();
-      },
-    },
-    {
-      label: 'Supprimer',
-      icon: <IconTrash />,
-      action: () => {
-        removeClip(menu.clipId);
-        onClose();
-      },
-      danger: true,
-    },
-  ];
-
+  const items =
+    menu.clipId != null
+      ? buildTimelineClipMenuItems(
+          menu.clipId,
+          menu.splitTimeAtPointer,
+          onClose
+        )
+      : buildTimelinePasteOnlyMenu(
+          menu.laneTrackType ?? 'background',
+          menu.backgroundLane ??
+            menu.textLane ??
+            menu.overlayLane ??
+            menu.audioLane ??
+            menu.voiceoverLane ??
+            0,
+          onClose
+        );
   return (
-    <div
-      className="fixed z-[200] rounded-lg border border-neutral-200 bg-white shadow-lg py-1 min-w-[180px]"
-      style={{ left: menu.x, top: menu.y }}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {items.map((item) => (
-        <button
-          key={item.label}
-          type="button"
-          onClick={item.action}
-          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-800 transition-colors hover:bg-neutral-100"
-        >
-          <span className="shrink-0 text-neutral-500">{item.icon}</span>
-          {item.label}
-        </button>
-      ))}
-    </div>
+    <CapCutContextMenu
+      anchorX={menu.x}
+      anchorY={menu.y}
+      items={items}
+      onClose={onClose}
+    />
   );
 }
 
@@ -219,14 +220,16 @@ function ClipContextMenu({ menu, onClose }: { menu: CtxMenu; onClose: () => void
 export type { BackgroundDragPreview };
 
 /** Miniature qui suit le curseur partout (preview / canvas / timeline). */
-function TimelineBackgroundDragGhost({
+function TimelineLaneDragGhost({
   clip,
   ghost,
+  trackType,
 }: {
   clip: Clip;
-  ghost: BackgroundDragGhost;
+  ghost: LaneDragGhost;
+  trackType: LaneManagedTrack;
 }) {
-  const style = getClipStyleForTrack('background');
+  const style = getClipStyleForTrack(trackType);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -268,23 +271,34 @@ function TimelineBackgroundDragGhost({
 }
 
 /** Ombre CapCut : cadre en pointillés à la position de dépôt. */
-function TimelineMediaTrace({
+function TimelineLaneDropTrace({
   clip,
   traceStart,
   traceEnd,
   pps,
+  trackType,
 }: {
   clip: Clip;
   traceStart: number;
   traceEnd: number;
   pps: number;
+  trackType: LaneManagedTrack;
 }) {
   const left = traceStart * pps;
   const width = Math.max(12, (traceEnd - traceStart) * pps);
-  const style = getClipStyleForTrack('background');
+  const style = getClipStyleForTrack(trackType);
   const label =
-    clip.sequenceLabel ??
-    (clip.url ? clip.url.split('/').pop()?.slice(0, 24) : 'Média');
+    trackType === 'text'
+      ? (clip.content ?? 'Texte').slice(0, 48)
+      : trackType === 'overlay'
+        ? (clip.content ?? clip.sequenceLabel ?? 'Overlay').slice(0, 48)
+        : trackType === 'audio'
+          ? (clip.sequenceLabel ??
+              (clip.url ? clip.url.split('/').pop()?.slice(0, 24) : 'Audio'))
+          : trackType === 'voiceover'
+            ? (clip.content ?? clip.sequenceLabel ?? 'Voix off').slice(0, 48)
+            : clip.sequenceLabel ??
+              (clip.url ? clip.url.split('/').pop()?.slice(0, 24) : 'Média');
 
   return (
     <div
@@ -326,9 +340,9 @@ interface TimelineClipProps {
   pps: number;
   trackType: TrackType;
   laneKey: string;
-  clipBackgroundLane?: number;
-  bgDragPreview?: BackgroundDragPreview | null;
-  onBackgroundDragStart?: (
+  clipLane?: number;
+  laneDragPreview?: LaneDragPreview | null;
+  onLaneDragStart?: (
     clip: Clip,
     e: React.MouseEvent,
     sourceLane: number,
@@ -336,7 +350,12 @@ interface TimelineClipProps {
   ) => void;
   trimLeftInset?: number;
   trimRightInset?: number;
-  onContextMenu: (clipId: string, x: number, y: number) => void;
+  onContextMenu: (
+    clipId: string,
+    x: number,
+    y: number,
+    splitTimeAtPointer: number
+  ) => void;
 }
 
 function ClipTypeIcon({ trackType, className }: { trackType: TrackType; className: string }) {
@@ -357,12 +376,20 @@ function ClipTypeIcon({ trackType, className }: { trackType: TrackType; classNam
   }
 }
 
-function ClipIconBadge({ trackType, style }: { trackType: TrackType; style: ClipTrackStyle }) {
+function ClipIconBadge({
+  trackType,
+  style,
+  iconWidth,
+}: {
+  trackType: TrackType;
+  style: ClipTrackStyle;
+  iconWidth: number;
+}) {
   return (
     <div
       className="relative z-20 flex shrink-0 items-center justify-center"
       style={{
-        width: CLIP_ICON_WIDTH,
+        width: iconWidth,
         backgroundColor: style.iconBadgeColor,
         color: style.iconColor,
       }}
@@ -378,28 +405,55 @@ function TimelineClip({
   pps,
   trackType,
   laneKey,
-  clipBackgroundLane = 0,
-  bgDragPreview = null,
-  onBackgroundDragStart,
+  clipLane = 0,
+  laneDragPreview = null,
+  onLaneDragStart,
   trimLeftInset = 0,
   trimRightInset = 0,
   onContextMenu,
 }: TimelineClipProps) {
   const {
-    selectedClipId, snapEnabled, laneLocked,
-    setSelectedClip, moveClip, resizeClip, saveToHistory, updateClip,
+    selectedClipId,
+    selectedClipIds,
+    selectedClipTrackType,
+    snapEnabled,
+    laneLocked,
+    setSelectedClip,
+    toggleBackgroundClipSelection,
+    toggleTextClipSelection,
+    toggleOverlayClipSelection,
+    toggleAudioClipSelection,
+    toggleVoiceoverClipSelection,
+    clearBackgroundClipSelection,
+    clearTextClipSelection,
+    clearOverlayClipSelection,
+    clearAudioClipSelection,
+    clearVoiceoverClipSelection,
+    moveClip,
+    resizeClip,
+    saveToHistory,
+    updateClip,
   } = useCompositionStore();
 
-  const isSelected = selectedClipId === clip.id;
+  const isLaneManagedTrack =
+    trackType === 'background' ||
+    trackType === 'text' ||
+    trackType === 'overlay' ||
+    trackType === 'audio' ||
+    trackType === 'voiceover';
+  const isInMultiSelect =
+    isLaneManagedTrack &&
+    selectedClipTrackType === trackType &&
+    selectedClipIds.includes(clip.id);
+  const isSelected = selectedClipId === clip.id || isInMultiSelect;
   const isLocked = laneLocked[laneKey] ?? false;
 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartX = useRef<number | null>(null);
   const dragStartTime = useRef<number>(0);
 
-  const isBackgroundTrack = trackType === 'background';
-  const isDraggedClip = bgDragPreview?.clipId === clip.id;
-  const hideWhileDragging = isBackgroundTrack && isDraggedClip;
+  const isDraggedClip = laneDragPreview?.clipId === clip.id;
+  const hideWhileDragging = isLaneManagedTrack && isDraggedClip;
 
   const left = clip.startTime * pps;
   const width = Math.max(12, (clip.endTime - clip.startTime) * pps);
@@ -410,11 +464,61 @@ function TimelineClip({
     e.preventDefault();
     if (isLocked) { setSelectedClip(clip.id); return; }
     if ((e.target as HTMLElement).dataset.resizeHandle) return;
+
+    // Shift+click → multi-select toggle
+    if (e.shiftKey && isLaneManagedTrack) {
+      const store = useCompositionStore.getState();
+      const sameTrack =
+        store.selectedClipTrackType === trackType ||
+        store.selectedClipIds.length === 0;
+      if (
+        sameTrack &&
+        store.selectedClipId &&
+        store.selectedClipTrackType === trackType &&
+        !store.selectedClipIds.includes(store.selectedClipId)
+      ) {
+        if (trackType === 'background') {
+          store.toggleBackgroundClipSelection(store.selectedClipId);
+        } else if (trackType === 'text') {
+          store.toggleTextClipSelection(store.selectedClipId);
+        } else if (trackType === 'overlay') {
+          store.toggleOverlayClipSelection(store.selectedClipId);
+        } else if (trackType === 'audio') {
+          store.toggleAudioClipSelection(store.selectedClipId);
+        } else {
+          store.toggleVoiceoverClipSelection(store.selectedClipId);
+        }
+      }
+      if (trackType !== 'background') store.clearBackgroundClipSelection();
+      if (trackType !== 'text') store.clearTextClipSelection();
+      if (trackType !== 'overlay') store.clearOverlayClipSelection();
+      if (trackType !== 'audio') store.clearAudioClipSelection();
+      if (trackType !== 'voiceover') store.clearVoiceoverClipSelection();
+      if (trackType === 'background') {
+        toggleBackgroundClipSelection(clip.id);
+      } else if (trackType === 'text') {
+        toggleTextClipSelection(clip.id);
+      } else if (trackType === 'overlay') {
+        toggleOverlayClipSelection(clip.id);
+      } else if (trackType === 'audio') {
+        toggleAudioClipSelection(clip.id);
+      } else {
+        toggleVoiceoverClipSelection(clip.id);
+      }
+      return;
+    }
+
+    // Normal click → clear multi-select and select this clip
+    clearBackgroundClipSelection();
+    clearTextClipSelection();
+    clearOverlayClipSelection();
+    clearAudioClipSelection();
+    clearVoiceoverClipSelection();
     setSelectedClip(clip.id);
 
-    if (isBackgroundTrack && onBackgroundDragStart) {
+    if (isLaneManagedTrack && onLaneDragStart) {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      onBackgroundDragStart(clip, e, clipBackgroundLane, rect);
+      onLaneDragStart(clip, e, clipLane, rect);
       return;
     }
 
@@ -443,12 +547,23 @@ function TimelineClip({
     pps,
     snapEnabled,
     setSelectedClip,
+    toggleBackgroundClipSelection,
+    toggleTextClipSelection,
+    toggleOverlayClipSelection,
+    toggleAudioClipSelection,
+    toggleVoiceoverClipSelection,
+    clearBackgroundClipSelection,
+    clearTextClipSelection,
+    clearOverlayClipSelection,
+    clearAudioClipSelection,
+    clearVoiceoverClipSelection,
     saveToHistory,
     moveClip,
     isLocked,
-    isBackgroundTrack,
-    onBackgroundDragStart,
-    clipBackgroundLane,
+    isLaneManagedTrack,
+    onLaneDragStart,
+    clipLane,
+    trackType,
   ]);
 
   const resizeRightStartX = useRef<number | null>(null);
@@ -512,6 +627,8 @@ function TimelineClip({
   const styleTrack = (clip.trackType ?? trackType) as TrackType;
   const style = getClipStyleForTrack(styleTrack);
   const isAudioTrack = styleTrack === 'audio' || styleTrack === 'voiceover';
+  const clipIconWidth = getClipIconWidth(styleTrack, clipLane);
+  const compactClip = isCompactLane(styleTrack, clipLane);
 
   const label = clip.type === 'text'
     ? (clip.content ?? '').slice(0, 60)
@@ -528,6 +645,7 @@ function TimelineClip({
 
   return (
     <div
+      data-timeline-clip
       className={`absolute top-0 bottom-0 select-none border-solid
         ${isLocked ? 'cursor-not-allowed' : isDragging ? 'cursor-grabbing' : 'cursor-grab'}
         ${isLocked ? 'grayscale' : ''}
@@ -547,10 +665,20 @@ function TimelineClip({
       }}
       onMouseDown={handleDragMouseDown}
       onDragStart={(e) => e.preventDefault()}
-      onClick={() => setSelectedClip(clip.id)}
+      onClick={(e) => {
+        if (e.shiftKey && isLaneManagedTrack) return;
+        setSelectedClip(clip.id);
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
-        if (!isLocked) onContextMenu(clip.id, e.clientX, e.clientY);
+        if (!isLocked) {
+          const timeAtPointer = clip.startTime + (e.clientX - e.currentTarget.getBoundingClientRect().left) / pps;
+          const splitTime = Math.max(
+            clip.startTime + 0.05,
+            Math.min(clip.endTime - 0.05, timeAtPointer)
+          );
+          onContextMenu(clip.id, e.clientX, e.clientY, splitTime);
+        }
       }}
     >
       {/* Video/image thumbnail — draggable=false blocks the browser's native
@@ -561,7 +689,7 @@ function TimelineClip({
         }`}
         style={isSelected ? { borderRadius: CLIP_SELECTION.borderRadiusPx - 2 } : undefined}
       >
-        <ClipIconBadge trackType={trackType} style={style} />
+        <ClipIconBadge trackType={trackType} style={style} iconWidth={clipIconWidth} />
 
         <div className="relative min-w-0 flex-1 overflow-hidden">
           {clip.thumbnail && trackType === 'background' && (
@@ -586,7 +714,7 @@ function TimelineClip({
             <AudioWaveform
               clipId={clip.id}
               url={clip.url}
-              widthPx={Math.max(12, width - CLIP_ICON_WIDTH)}
+              widthPx={Math.max(12, width - clipIconWidth)}
               trimStart={clip.trimStart ?? 0}
               visibleDuration={clipDuration}
               baseColor={style.waveColor ?? '#2d6b4f'}
@@ -596,12 +724,15 @@ function TimelineClip({
           <div
             className={`relative flex items-center gap-1 truncate leading-tight ${
               isAudioTrack
-                ? 'h-[14px] pl-1 pr-1.5 text-[9px] font-medium'
-                : 'px-1.5 py-0.5 text-[10px] font-semibold'
+                ? 'pl-1 pr-1.5 text-[9px] font-medium'
+                : compactClip
+                  ? 'px-1 py-0 text-[9px] font-semibold'
+                  : 'px-1.5 py-0.5 text-[10px] font-semibold'
             }`}
             style={{
               color: style.labelColor,
               backgroundColor: style.labelBgColor,
+              ...(isAudioTrack ? { height: compactClip ? 12 : 14 } : {}),
             }}
           >
             {clip.muted && (
@@ -675,14 +806,24 @@ interface LaneRowProps {
   pps: number;
   totalWidth: number;
   isPreviewLane?: boolean;
-  bgDragPreview?: BackgroundDragPreview | null;
-  onBackgroundDragStart?: (
+  laneDragPreview?: LaneDragPreview | null;
+  onLaneDragStart?: (
     clip: Clip,
     e: React.MouseEvent,
     sourceLane: number,
     sourceRect: DOMRect
   ) => void;
-  onContextMenu: (clipId: string, x: number, y: number) => void;
+  onContextMenu: (
+    clipId: string,
+    x: number,
+    y: number,
+    splitTimeAtPointer: number
+  ) => void;
+  onLaneContextMenu?: (
+    e: React.MouseEvent,
+    laneIndex: number,
+    laneTrackType: LaneManagedTrack
+  ) => void;
 }
 
 function LaneRow({
@@ -692,149 +833,259 @@ function LaneRow({
   pps,
   totalWidth,
   isPreviewLane = false,
-  bgDragPreview = null,
-  onBackgroundDragStart,
+  laneDragPreview = null,
+  onLaneDragStart,
   onContextMenu,
+  onLaneContextMenu,
 }: LaneRowProps) {
   const info = TRACK_INFO[trackType];
-  const showHeader = trackType === 'background' ? laneIndex === 0 : laneIndex === 0;
+  /** Seule la piste principale (index 0) affiche le préfixe T1, OV1, V1… */
+  const showLaneLabel = laneIndex === 0;
   const selectedClipId = useCompositionStore((s) => s.selectedClipId);
-  const { laneHidden, laneLocked, toggleLaneHidden, toggleLaneLocked } = useCompositionStore();
+  const selectedClipIds = useCompositionStore((s) => s.selectedClipIds);
+  const selectedClipTrackType = useCompositionStore((s) => s.selectedClipTrackType);
+  const { laneHidden, laneLocked, laneMuted, toggleLaneHidden, toggleLaneLocked, toggleLaneMuted } =
+    useCompositionStore();
   const composition = useCompositionStore((s) => s.composition);
-  const bgClips = composition?.tracks.background ?? [];
+  const bgClips = useMemo(
+    () => composition?.tracks.background ?? [],
+    [composition?.tracks.background]
+  );
+  const textClips = useMemo(
+    () => composition?.tracks.text ?? [],
+    [composition?.tracks.text]
+  );
+  const overlayClips = useMemo(
+    () => composition?.tracks.overlay ?? [],
+    [composition?.tracks.overlay]
+  );
+  const audioClips = useMemo(
+    () => composition?.tracks.audio ?? [],
+    [composition?.tracks.audio]
+  );
+  const voiceoverClips = useMemo(
+    () => composition?.tracks.voiceover ?? [],
+    [composition?.tracks.voiceover]
+  );
   const bgFirstLane = trackType === 'background' && laneIndex === 0;
+  const isLaneManaged =
+    trackType === 'background' ||
+    trackType === 'text' ||
+    trackType === 'overlay' ||
+    trackType === 'audio' ||
+    trackType === 'voiceover';
 
   const displayClips = useMemo(() => {
-    if (!bgDragPreview || trackType !== 'background') return clips;
+    if (!laneDragPreview || !isLaneManaged) return clips;
+
+    const primaryLane =
+      trackType === 'background'
+        ? PRIMARY_BACKGROUND_LANE
+        : trackType === 'text'
+          ? PRIMARY_TEXT_LANE
+          : trackType === 'overlay'
+            ? PRIMARY_OVERLAY_LANE
+            : trackType === 'audio'
+              ? PRIMARY_AUDIO_LANE
+              : PRIMARY_VOICEOVER_LANE;
 
     if (
-      laneIndex === bgDragPreview.targetLane &&
-      bgDragPreview.laneRippleLayout
+      laneIndex === primaryLane &&
+      laneDragPreview.sourceLaneRippleLayout
     ) {
-      return bgDragPreview.laneRippleLayout;
+      return laneDragPreview.sourceLaneRippleLayout;
     }
 
-    return clips.filter((c) => c.id !== bgDragPreview.clipId);
-  }, [clips, bgDragPreview, trackType, laneIndex]);
+    if (
+      laneIndex === laneDragPreview.targetLane &&
+      laneDragPreview.laneRippleLayout
+    ) {
+      return laneDragPreview.laneRippleLayout;
+    }
+
+    return clips.filter((c) => c.id !== laneDragPreview.clipId);
+  }, [clips, laneDragPreview, trackType, laneIndex, isLaneManaged]);
 
   const traceDraggedClip = useMemo(() => {
-    if (!bgDragPreview) return null;
-    return bgClips.find((c) => c.id === bgDragPreview.clipId) ?? null;
-  }, [bgDragPreview, bgClips]);
+    if (!laneDragPreview) return null;
+    const pool =
+      trackType === 'background'
+        ? bgClips
+        : trackType === 'text'
+          ? textClips
+          : trackType === 'overlay'
+            ? overlayClips
+            : trackType === 'audio'
+              ? audioClips
+              : voiceoverClips;
+    return pool.find((c) => c.id === laneDragPreview.clipId) ?? null;
+  }, [laneDragPreview, bgClips, textClips, overlayClips, audioClips, voiceoverClips, trackType]);
 
   const showDropTrace =
     traceDraggedClip != null &&
-    bgDragPreview != null &&
-    laneIndex === bgDragPreview.targetLane;
+    laneDragPreview != null &&
+    isLaneManaged &&
+    laneIndex === laneDragPreview.targetLane;
 
   // Per-lane key, e.g. "background-1"
   // Each lane has its own key and its own independent state — no coupling to track-level state
   const laneKey    = `${trackType}-${laneIndex}`;
   const isHidden   = laneHidden[laneKey] ?? false;
   const isLocked   = laneLocked[laneKey] ?? false;
+  const isMuted    = laneMuted[laneKey] ?? false;
+  const showMuteControl = trackSupportsLaneMute(trackType);
   const laneHasSelection =
-    !!selectedClipId && displayClips.some((c) => c.id === selectedClipId);
-  const stripBg = isPreviewLane
-    ? 'repeating-linear-gradient(-45deg, #e8eaef 0, #e8eaef 6px, #f4f5f7 6px, #f4f5f7 12px)'
-    : laneStripBackground(laneHasSelection, isLocked);
+    (!!selectedClipId && displayClips.some((c) => c.id === selectedClipId)) ||
+    (selectedClipTrackType === trackType &&
+      selectedClipIds.length > 0 &&
+      displayClips.some((c) => selectedClipIds.includes(c.id)));
+  const hasLaneContent =
+    isPreviewLane || showDropTrace || displayClips.length > 0;
+  const stripBg = !hasLaneContent
+    ? 'transparent'
+    : isPreviewLane
+      ? `repeating-linear-gradient(-45deg, ${TIMELINE_LIGHT.laneLockedBg} 0, ${TIMELINE_LIGHT.laneLockedBg} 6px, ${TIMELINE_LIGHT.previewWorkspaceBg} 6px, ${TIMELINE_LIGHT.previewWorkspaceBg} 12px)`
+      : laneStripBackground(laneHasSelection, isLocked);
+
+  const laneHeight = getLaneHeight(trackType, laneIndex);
+  const laneClipInsetY = getLaneClipInsetY(trackType, laneIndex);
 
   return (
     <div
       className="flex relative shrink-0"
-      style={{ height: LANE_HEIGHT }}
+      style={{ height: laneHeight }}
       data-background-lane-index={
         trackType === 'background' ? laneIndex : undefined
       }
+      data-text-lane-index={trackType === 'text' ? laneIndex : undefined}
+      data-overlay-lane-index={trackType === 'overlay' ? laneIndex : undefined}
+      data-audio-lane-index={trackType === 'audio' ? laneIndex : undefined}
+      data-voiceover-lane-index={trackType === 'voiceover' ? laneIndex : undefined}
     >
-      {/* En-tête piste — toujours blanc (début sans couleur, ref. CapCut) */}
+      {/* En-tête piste — colonnes fixes (libellé / cadenas / œil alignés sur toutes les lignes). */}
       <div
-        className={`shrink-0 flex items-center justify-between gap-1.5 px-2 border-r border-neutral-200/50 bg-white ${
+        className={`shrink-0 flex items-center gap-1 border-r border-neutral-200/50 bg-white px-1.5 ${
           isLocked ? 'opacity-60' : ''
         }`}
-        style={{ width: LABEL_COL_WIDTH }}
+        style={{ width: LABEL_COL_WIDTH, height: laneHeight }}
       >
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="w-px shrink-0 self-stretch bg-neutral-300" aria-hidden />
-          <span
-            className={`text-[11px] font-semibold truncate ${
-              showHeader ? 'text-neutral-800' : 'text-neutral-500'
-            }`}
-          >
-            {info.short}
-            {laneIndex + 1}
-          </span>
-        </div>
+        <span className="w-px shrink-0 self-stretch bg-neutral-300" aria-hidden />
+        <span
+          className="shrink-0 font-semibold tabular-nums text-[10px] text-neutral-800"
+          style={{ width: LANE_HEADER_LABEL_WIDTH }}
+        >
+          {showLaneLabel ? `${info.short}${laneIndex + 1}` : ''}
+        </span>
+        <span className="min-w-0 flex-1" aria-hidden />
 
-        <div className="flex items-center gap-0.5 shrink-0">
+        {showMuteControl ? (
           <button
             type="button"
-            onClick={() => toggleLaneLocked(laneKey)}
-            title={isLocked ? 'Déverrouiller' : 'Verrouiller'}
-            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-              isLocked
-                ? 'bg-white/70 text-neutral-900 shadow-sm'
+            onClick={() => toggleLaneMuted(laneKey)}
+            title={isMuted ? 'Réactiver le son de la piste' : 'Couper le son de la piste'}
+            className={`flex shrink-0 items-center justify-center rounded-md transition-colors ${
+              isMuted
+                ? 'bg-cyan-100 text-cyan-700'
                 : 'text-neutral-600 hover:bg-white/50 hover:text-neutral-900'
             }`}
+            style={{ width: LANE_HEADER_BTN_PX, height: LANE_HEADER_BTN_PX }}
           >
-            {isLocked ? <IconLock /> : <IconUnlock />}
+            {isMuted ? (
+              <IconVolumeMute width={14} height={14} />
+            ) : (
+              <IconVolume width={14} height={14} />
+            )}
           </button>
-          <button
-            type="button"
-            onClick={() => toggleLaneHidden(laneKey)}
-            title={isHidden ? 'Afficher' : 'Masquer'}
-            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-              isHidden
-                ? 'text-neutral-400'
-                : 'text-neutral-600 hover:bg-white/50'
-            }`}
-          >
-            {isHidden ? <IconEyeOff /> : <IconEye />}
-          </button>
-        </div>
+        ) : (
+          <span
+            className="shrink-0"
+            style={{ width: LANE_HEADER_BTN_PX, height: LANE_HEADER_BTN_PX }}
+            aria-hidden
+          />
+        )}
+
+        <button
+          type="button"
+          onClick={() => toggleLaneLocked(laneKey)}
+          title={isLocked ? 'Déverrouiller' : 'Verrouiller'}
+          className={`flex shrink-0 items-center justify-center rounded-md transition-colors ${
+            isLocked
+              ? 'bg-white/70 text-neutral-900 shadow-sm'
+              : 'text-neutral-600 hover:bg-white/50 hover:text-neutral-900'
+          }`}
+          style={{ width: LANE_HEADER_BTN_PX, height: LANE_HEADER_BTN_PX }}
+        >
+          {isLocked ? (
+            <IconLock width={12} height={12} />
+          ) : (
+            <IconUnlock width={12} height={12} />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleLaneHidden(laneKey)}
+          title={isHidden ? 'Afficher' : 'Masquer'}
+          className={`flex shrink-0 items-center justify-center rounded-md transition-colors ${
+            isHidden ? 'text-neutral-400' : 'text-neutral-600 hover:bg-white/50'
+          }`}
+          style={{ width: LANE_HEADER_BTN_PX, height: LANE_HEADER_BTN_PX }}
+        >
+          {isHidden ? (
+            <IconEyeOff width={12} height={12} />
+          ) : (
+            <IconEye width={12} height={12} />
+          )}
+        </button>
       </div>
 
       {/* Zone clips — fond gris dès 0 s (sans bande blanche) */}
       <div
         className={`relative flex-1 ${isHidden ? 'opacity-25 pointer-events-none' : ''}`}
         style={{ minWidth: totalWidth }}
+        onContextMenu={(e) => {
+          if (!isLaneManaged || isLocked || isHidden) return;
+          if ((e.target as HTMLElement).closest('[data-timeline-clip]')) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onLaneContextMenu?.(e, laneIndex, trackType as LaneManagedTrack);
+        }}
       >
         <div
           className="absolute inset-0 transition-[background] duration-150"
           style={{ background: stripBg }}
         />
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${pps - 1}px, ${TIMELINE_LIGHT.gridLine} ${pps - 1}px, ${TIMELINE_LIGHT.gridLine} ${pps}px)`,
-          }}
-        />
-
-        {/* Rail transitions — au-dessus des clips (z-60, pas de conflit trim) */}
-        {bgFirstLane && (
+        {hasLaneContent ? (
           <div
-            className="absolute left-0 right-0 z-[60] pointer-events-none"
+            className="absolute inset-0 pointer-events-none"
             style={{
-              top: Math.max(0, LANE_CLIP_INSET_Y - TRANSITION_RAIL_HEIGHT),
-              height: TRANSITION_RAIL_HEIGHT,
+              backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${pps - 1}px, ${TIMELINE_LIGHT.gridLine} ${pps - 1}px, ${TIMELINE_LIGHT.gridLine} ${pps}px)`,
             }}
-          >
-            {getLane0Clips(bgClips).slice(0, -1).map((clip, i, lane0) => {
-              const next = lane0[i + 1];
-              if (!next) return null;
-              if (!clips.includes(clip) || !clips.includes(next)) return null;
-              const gap = next.startTime - clip.endTime;
-              if (gap > 0.05) return null;
-              return (
-                <TransitionMarker key={`tr-${clip.id}`} fromClip={clip} toClip={next} pps={pps} />
-              );
-            })}
-          </div>
-        )}
+          />
+        ) : null}
 
         <div
           className="absolute inset-0"
-          style={{ top: LANE_CLIP_INSET_Y, bottom: LANE_CLIP_INSET_Y }}
+          style={{ top: laneClipInsetY, bottom: laneClipInsetY }}
         >
+          {/* Marqueurs ◆ de transition V1 — zone de survol à la jonction entre clips */}
+          {bgFirstLane && (
+            <div className="pointer-events-none absolute inset-0 z-[65]">
+              {findLane0Junctions(getLane0Clips(bgClips))
+                .filter(({ from, to }) => {
+                  const clipIds = new Set(clips.map((c) => c.id));
+                  return clipIds.has(from.id) && clipIds.has(to.id);
+                })
+                .map(({ from, to }) => (
+                  <TransitionMarker
+                    key={`tr-${from.id}-${to.id}`}
+                    fromClip={from}
+                    toClip={to}
+                    pps={pps}
+                  />
+                ))}
+            </div>
+          )}
+
           {displayClips.map((clip, clipIdx) => {
             const prev = clipIdx > 0 ? displayClips[clipIdx - 1] : null;
             const next =
@@ -850,21 +1101,22 @@ function LaneRow({
                 pps={pps}
                 trackType={trackType}
                 laneKey={laneKey}
-                clipBackgroundLane={laneIndex}
-                bgDragPreview={bgDragPreview}
-                onBackgroundDragStart={onBackgroundDragStart}
+                clipLane={laneIndex}
+                laneDragPreview={laneDragPreview}
+                onLaneDragStart={onLaneDragStart}
                 trimLeftInset={touchesPrev ? TRIM_JUNCTION_INSET_PX : 0}
                 trimRightInset={touchesNext ? TRIM_JUNCTION_INSET_PX : 0}
                 onContextMenu={onContextMenu}
               />
             );
           })}
-          {showDropTrace && traceDraggedClip && (
-            <TimelineMediaTrace
+          {showDropTrace && traceDraggedClip && laneDragPreview && (
+            <TimelineLaneDropTrace
               clip={traceDraggedClip}
-              traceStart={bgDragPreview.displayTraceStart}
-              traceEnd={bgDragPreview.displayTraceEnd}
+              traceStart={laneDragPreview.displayTraceStart}
+              traceEnd={laneDragPreview.displayTraceEnd}
               pps={pps}
+              trackType={trackType as LaneManagedTrack}
             />
           )}
         </div>
@@ -932,33 +1184,64 @@ function TimelineRuler({
 // Playhead CapCut — tête sur la règle + trait épais au-dessus de tout
 // ──────────────────────────────────────────────────────────────────────────────
 
+function PlayheadHeadSvg({ filled }: { filled: boolean }) {
+  const stroke = TIMELINE_LIGHT.playheadLine;
+  const fill = filled ? stroke : '#ffffff';
+  const w = PLAYHEAD.headWidthPx;
+  const h = PLAYHEAD.headHeightPx;
+  const r = PLAYHEAD.headRadiusPx;
+  const inset = PLAYHEAD.headBorderPx / 2;
+
+  return (
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      className="block shrink-0"
+      aria-hidden
+    >
+      <rect
+        x={inset}
+        y={inset}
+        width={w - PLAYHEAD.headBorderPx}
+        height={h - PLAYHEAD.headBorderPx}
+        rx={r}
+        ry={r}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={PLAYHEAD.headBorderPx}
+      />
+    </svg>
+  );
+}
+
 function TimelinePlayhead({
   currentTime,
   pps,
   scrollLeft,
   rulerHeight,
-  tracksHeight,
   onDrag,
 }: {
   currentTime: number;
   pps: number;
   scrollLeft: number;
   rulerHeight: number;
-  tracksHeight: number;
   onDrag: (t: number) => void;
 }) {
+  const [dragging, setDragging] = useState(false);
   const centerX = LABEL_COL_WIDTH + currentTime * pps - scrollLeft;
-  const totalHeight = rulerHeight + tracksHeight;
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      setDragging(true);
       const startX = e.clientX;
       const startTime = currentTime;
       const onMove = (me: MouseEvent) =>
         onDrag(Math.max(0, startTime + (me.clientX - startX) / pps));
       const onUp = () => {
+        setDragging(false);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
       };
@@ -968,39 +1251,40 @@ function TimelinePlayhead({
     [currentTime, pps, onDrag]
   );
 
+  const headTop = Math.max(0, (rulerHeight - PLAYHEAD.headHeightPx) / 2);
+  const lineTop = headTop + PLAYHEAD.headHeightPx;
+
   return (
     <div
-      className="absolute top-0 flex flex-col items-center pointer-events-none"
+      className="absolute top-0 bottom-0 pointer-events-none"
       style={{
         left: centerX,
         transform: 'translateX(-50%)',
-        height: totalHeight,
-        width: Math.max(PLAYHEAD.headWidthPx + 8, 20),
+        width: Math.max(PLAYHEAD.headWidthPx + 12, 24),
         zIndex: PLAYHEAD.zIndex,
       }}
       role="slider"
       aria-label="Tête de lecture"
       aria-valuenow={currentTime}
     >
-      {/* Poignée — seule zone cliquable (le trait ne bloque plus les clips) */}
+      {/* Trait vertical sous la tête — réf. CapCut */}
       <div
-        className="pointer-events-auto shrink-0 cursor-ew-resize rounded-[3px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.18)]"
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 pointer-events-none"
         style={{
-          width: PLAYHEAD.headWidthPx,
-          height: PLAYHEAD.headHeightPx,
-          marginTop: Math.max(0, (rulerHeight - PLAYHEAD.headHeightPx) / 2),
-          border: `${PLAYHEAD.headBorderPx}px solid ${TIMELINE_LIGHT.playheadLine}`,
-        }}
-        onMouseDown={handleMouseDown}
-      />
-      <div
-        className="flex-1 min-h-0 pointer-events-none"
-        style={{
+          top: lineTop,
           width: PLAYHEAD.lineWidthPx,
           backgroundColor: TIMELINE_LIGHT.playheadLine,
-          boxShadow: '0 0 0 1px rgba(255,255,255,0.35)',
         }}
       />
+      <button
+        type="button"
+        className="pointer-events-auto absolute left-1/2 -translate-x-1/2 cursor-ew-resize border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/80"
+        style={{ top: headTop, width: PLAYHEAD.headWidthPx, height: PLAYHEAD.headHeightPx }}
+        onMouseDown={handleMouseDown}
+        aria-label="Déplacer la tête de lecture"
+      >
+        <PlayheadHeadSvg filled={dragging} />
+      </button>
     </div>
   );
 }
@@ -1026,28 +1310,46 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
     setSelectedClip,
     saveToHistory,
     commitBackgroundDragPreview,
+    commitTextDragPreview,
+    commitOverlayDragPreview,
+    commitAudioDragPreview,
+    commitVoiceoverDragPreview,
     undo,
   } = useCompositionStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<CtxMenu | null>(null);
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
-  const [bgDragPreview, setBgDragPreview] = useState<BackgroundDragPreview | null>(
-    null
-  );
+  const [bgDragPreview, setBgDragPreview] = useState<BackgroundDragPreview | null>(null);
   const [bgDragGhost, setBgDragGhost] = useState<BackgroundDragGhost | null>(null);
-  const bgDragPreviewRef = useRef<BackgroundDragPreview | null>(null);
-  const bgDragRafRef = useRef<number | null>(null);
-  const bgDragClipIdRef = useRef<string | null>(null);
-  const bgDragGrabRef = useRef({
+  const [textDragPreview, setTextDragPreview] = useState<TextDragPreview | null>(null);
+  const [textDragGhost, setTextDragGhost] = useState<TextDragGhost | null>(null);
+  const [overlayDragPreview, setOverlayDragPreview] = useState<OverlayDragPreview | null>(null);
+  const [overlayDragGhost, setOverlayDragGhost] = useState<OverlayDragGhost | null>(null);
+  const [audioDragPreview, setAudioDragPreview] = useState<AudioDragPreview | null>(null);
+  const [audioDragGhost, setAudioDragGhost] = useState<AudioDragGhost | null>(null);
+  const [voiceoverDragPreview, setVoiceoverDragPreview] =
+    useState<VoiceoverDragPreview | null>(null);
+  const [voiceoverDragGhost, setVoiceoverDragGhost] =
+    useState<VoiceoverDragGhost | null>(null);
+
+  // Global marquee (rubber-band) selection — viewport coordinates for fixed overlay
+  const [marquee, setMarquee] = useState<{
+    startCX: number; startCY: number;
+    curCX: number; curCY: number;
+  } | null>(null);
+  const laneDragPreviewRef = useRef<LaneDragPreview | null>(null);
+  const laneDragRafRef = useRef<number | null>(null);
+  const laneDragClipIdRef = useRef<string | null>(null);
+  const laneDragTrackRef = useRef<LaneManagedTrack>('background');
+  const laneDragGrabRef = useRef({
     grabDx: 0,
     grabDy: 0,
     width: 80,
-    height: LANE_HEIGHT - LANE_CLIP_INSET_Y * 2,
+    height: getLaneHeight('background', 0) - getLaneClipInsetY('background', 0) * 2,
   });
-  const bgDragSourceLaneRef = useRef(0);
-  const bgDragStartClientYRef = useRef(0);
-  const rowStepPx = LANE_HEIGHT + LANE_GAP;
+  const laneDragSourceLaneRef = useRef(0);
+  const laneDragStartClientYRef = useRef(0);
 
   const pps = 80 * zoom;
 
@@ -1057,16 +1359,56 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
     return bg.find((c) => c.id === bgDragPreview.clipId) ?? null;
   }, [bgDragPreview, composition]);
 
-  const beginBackgroundDrag = useCallback(
-    (clip: Clip, e: React.MouseEvent, sourceLane: number, sourceRect: DOMRect) => {
+  const draggedTextClip = useMemo(() => {
+    if (!textDragPreview) return null;
+    const text = composition?.tracks.text ?? [];
+    return text.find((c) => c.id === textDragPreview.clipId) ?? null;
+  }, [textDragPreview, composition]);
+
+  const draggedOverlayClip = useMemo(() => {
+    if (!overlayDragPreview) return null;
+    const overlay = composition?.tracks.overlay ?? [];
+    return overlay.find((c) => c.id === overlayDragPreview.clipId) ?? null;
+  }, [overlayDragPreview, composition]);
+
+  const draggedAudioClip = useMemo(() => {
+    if (!audioDragPreview) return null;
+    const audio = composition?.tracks.audio ?? [];
+    return audio.find((c) => c.id === audioDragPreview.clipId) ?? null;
+  }, [audioDragPreview, composition]);
+
+  const draggedVoiceoverClip = useMemo(() => {
+    if (!voiceoverDragPreview) return null;
+    const voiceover = composition?.tracks.voiceover ?? [];
+    return voiceover.find((c) => c.id === voiceoverDragPreview.clipId) ?? null;
+  }, [voiceoverDragPreview, composition]);
+
+  const beginLaneDrag = useCallback(
+    (
+      laneTrack: LaneManagedTrack,
+      clip: Clip,
+      e: React.MouseEvent,
+      sourceLane: number,
+      sourceRect: DOMRect
+    ) => {
       saveToHistory();
       setSelectedClip(clip.id);
-      bgDragClipIdRef.current = clip.id;
-      bgDragSourceLaneRef.current = sourceLane;
-      bgDragStartClientYRef.current = e.clientY;
-      bgDragPreviewRef.current = null;
+      laneDragClipIdRef.current = clip.id;
+      laneDragTrackRef.current = laneTrack;
+      laneDragSourceLaneRef.current = sourceLane;
+      laneDragStartClientYRef.current = e.clientY;
+      laneDragPreviewRef.current = null;
       setBgDragPreview(null);
-      bgDragGrabRef.current = {
+      setBgDragGhost(null);
+      setTextDragPreview(null);
+      setTextDragGhost(null);
+      setOverlayDragPreview(null);
+      setOverlayDragGhost(null);
+      setAudioDragPreview(null);
+      setAudioDragGhost(null);
+      setVoiceoverDragPreview(null);
+      setVoiceoverDragGhost(null);
+      laneDragGrabRef.current = {
         grabDx: e.clientX - sourceRect.left,
         grabDy: e.clientY - sourceRect.top,
         width: sourceRect.width,
@@ -1089,81 +1431,226 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
           }
         }
 
-        const allBg =
-          useCompositionStore.getState().composition?.tracks.background ?? [];
-        const current = allBg.find((c) => c.id === clip.id);
+        const comp = useCompositionStore.getState().composition;
+        const pool =
+          laneTrack === 'background'
+            ? comp?.tracks.background ?? []
+            : laneTrack === 'text'
+              ? comp?.tracks.text ?? []
+              : laneTrack === 'overlay'
+                ? comp?.tracks.overlay ?? []
+                : laneTrack === 'audio'
+                  ? comp?.tracks.audio ?? []
+                  : comp?.tracks.voiceover ?? [];
+        const current = pool.find((c) => c.id === clip.id);
         if (!current) return;
 
-        const snap = useCompositionStore.getState().snapEnabled;
-        const comp = useCompositionStore.getState().composition;
-        const duration = Math.max(0.1, current.endTime - current.startTime);
-        const totalDur = Math.max(comp?.duration ?? 0, 10);
-        const maxGhostStart = Math.max(0, totalDur - duration);
+        const dragStep =
+          laneTrack === 'background'
+            ? getBackgroundLaneDragStep()
+            : getLaneDragStep(laneTrack, laneDragSourceLaneRef.current);
 
-        const clamped = clampBackgroundDragPointer(
-          clientX,
-          clientY,
-          bgDragGrabRef.current.grabDx,
-          bgDragGrabRef.current.grabDy,
-          bgDragGrabRef.current.height,
-          scrollEl,
-          pps,
-          maxGhostStart
-        );
+        const targetLane =
+          laneTrack === 'background'
+            ? resolveBackgroundLaneForDrag(
+                clientY,
+                laneDragSourceLaneRef.current,
+                laneDragStartClientYRef.current,
+                dragStep
+              )
+            : laneTrack === 'text'
+              ? resolveTextLaneForDrag(
+                  clientY,
+                  laneDragSourceLaneRef.current,
+                  laneDragStartClientYRef.current,
+                  dragStep
+                )
+              : laneTrack === 'overlay'
+                ? resolveOverlayLaneForDrag(
+                    clientY,
+                    laneDragSourceLaneRef.current,
+                    laneDragStartClientYRef.current,
+                    dragStep
+                  )
+                : laneTrack === 'audio'
+                  ? resolveAudioLaneForDrag(
+                      clientY,
+                      laneDragSourceLaneRef.current,
+                      laneDragStartClientYRef.current,
+                      dragStep
+                    )
+                  : resolveVoiceoverLaneForDrag(
+                      clientY,
+                      laneDragSourceLaneRef.current,
+                      laneDragStartClientYRef.current,
+                      dragStep
+                    );
+
+        const clamped =
+          laneTrack === 'background'
+            ? clampBackgroundDragPointer(
+                clientX,
+                clientY,
+                laneDragGrabRef.current.grabDx,
+                laneDragGrabRef.current.grabDy,
+                laneDragGrabRef.current.height,
+                scrollEl,
+                pps,
+                null
+              )
+            : laneTrack === 'text'
+              ? clampTextDragPointer(
+                  clientX,
+                  clientY,
+                  laneDragGrabRef.current.grabDx,
+                  laneDragGrabRef.current.grabDy,
+                  laneDragGrabRef.current.height,
+                  scrollEl,
+                  pps,
+                  null
+                )
+              : laneTrack === 'overlay'
+                ? clampOverlayDragPointer(
+                    clientX,
+                    clientY,
+                    laneDragGrabRef.current.grabDx,
+                    laneDragGrabRef.current.grabDy,
+                    laneDragGrabRef.current.height,
+                    scrollEl,
+                    pps,
+                    null
+                  )
+                : laneTrack === 'audio'
+                  ? clampAudioDragPointer(
+                      clientX,
+                      clientY,
+                      laneDragGrabRef.current.grabDx,
+                      laneDragGrabRef.current.grabDy,
+                      laneDragGrabRef.current.height,
+                      scrollEl,
+                      pps,
+                      null
+                    )
+                  : clampVoiceoverDragPointer(
+                      clientX,
+                      clientY,
+                      laneDragGrabRef.current.grabDx,
+                      laneDragGrabRef.current.grabDy,
+                      laneDragGrabRef.current.height,
+                      scrollEl,
+                      pps,
+                      null
+                    );
 
         let ghostTime = clamped.ghostStartTime;
+        const snap = useCompositionStore.getState().snapEnabled;
         if (snap) ghostTime = Math.round(ghostTime * 10) / 10;
 
-        const targetLane = resolveBackgroundLaneForDrag(
-          clamped.clientY,
-          bgDragSourceLaneRef.current,
-          bgDragStartClientYRef.current,
-          rowStepPx
-        );
-        const preview = buildBackgroundDragPreview(
-          current,
-          allBg,
-          targetLane,
-          ghostTime,
-          { pinnedToTimelineStart: clamped.pinnedToTimelineStart }
-        );
-        bgDragPreviewRef.current = preview;
-        setBgDragPreview(preview);
-        setBgDragGhost({
+        const preview =
+          laneTrack === 'background'
+            ? buildBackgroundDragPreview(
+                current,
+                pool,
+                targetLane,
+                ghostTime,
+                { pinnedToTimelineStart: clamped.pinnedToTimelineStart }
+              )
+            : laneTrack === 'text'
+              ? buildTextDragPreview(
+                  current,
+                  pool,
+                  targetLane,
+                  ghostTime,
+                  { pinnedToTimelineStart: clamped.pinnedToTimelineStart }
+                )
+              : laneTrack === 'overlay'
+                ? buildOverlayDragPreview(
+                    current,
+                    pool,
+                    targetLane,
+                    ghostTime,
+                    { pinnedToTimelineStart: clamped.pinnedToTimelineStart }
+                  )
+                : laneTrack === 'audio'
+                  ? buildAudioDragPreview(
+                      current,
+                      pool,
+                      targetLane,
+                      ghostTime,
+                      { pinnedToTimelineStart: clamped.pinnedToTimelineStart }
+                    )
+                  : buildVoiceoverDragPreview(
+                      current,
+                      pool,
+                      targetLane,
+                      ghostTime,
+                      { pinnedToTimelineStart: clamped.pinnedToTimelineStart }
+                    );
+
+        laneDragPreviewRef.current = preview;
+        const ghost = {
           clipId: clip.id,
           clientX: clamped.clientX,
           clientY: clamped.clientY,
-          ...bgDragGrabRef.current,
-        });
+          ...laneDragGrabRef.current,
+        };
+        setBgDragPreview(laneTrack === 'background' ? preview : null);
+        setBgDragGhost(laneTrack === 'background' ? ghost : null);
+        setTextDragPreview(laneTrack === 'text' ? preview : null);
+        setTextDragGhost(laneTrack === 'text' ? ghost : null);
+        setOverlayDragPreview(laneTrack === 'overlay' ? preview : null);
+        setOverlayDragGhost(laneTrack === 'overlay' ? ghost : null);
+        setAudioDragPreview(laneTrack === 'audio' ? preview : null);
+        setAudioDragGhost(laneTrack === 'audio' ? ghost : null);
+        setVoiceoverDragPreview(laneTrack === 'voiceover' ? preview : null);
+        setVoiceoverDragGhost(laneTrack === 'voiceover' ? ghost : null);
       };
 
       const onMove = (me: MouseEvent) => {
-        if (bgDragRafRef.current != null) return;
-        bgDragRafRef.current = requestAnimationFrame(() => {
-          bgDragRafRef.current = null;
+        if (laneDragRafRef.current != null) return;
+        laneDragRafRef.current = requestAnimationFrame(() => {
+          laneDragRafRef.current = null;
           tick(me.clientX, me.clientY);
         });
       };
 
       const onUp = (me: MouseEvent) => {
-        if (bgDragRafRef.current != null) {
-          cancelAnimationFrame(bgDragRafRef.current);
-          bgDragRafRef.current = null;
+        if (laneDragRafRef.current != null) {
+          cancelAnimationFrame(laneDragRafRef.current);
+          laneDragRafRef.current = null;
         }
         tick(me.clientX, me.clientY);
 
-        const preview = bgDragPreviewRef.current;
-        const clipId = bgDragClipIdRef.current;
+        const preview = laneDragPreviewRef.current;
+        const clipId = laneDragClipIdRef.current;
         if (clipId && preview?.clipId === clipId) {
-          commitBackgroundDragPreview(preview);
+          if (laneDragTrackRef.current === 'background') {
+            commitBackgroundDragPreview(preview);
+          } else if (laneDragTrackRef.current === 'text') {
+            commitTextDragPreview(preview);
+          } else if (laneDragTrackRef.current === 'overlay') {
+            commitOverlayDragPreview(preview);
+          } else if (laneDragTrackRef.current === 'audio') {
+            commitAudioDragPreview(preview);
+          } else {
+            commitVoiceoverDragPreview(preview);
+          }
         } else {
           undo();
         }
 
-        bgDragPreviewRef.current = null;
-        bgDragClipIdRef.current = null;
+        laneDragPreviewRef.current = null;
+        laneDragClipIdRef.current = null;
         setBgDragPreview(null);
         setBgDragGhost(null);
+        setTextDragPreview(null);
+        setTextDragGhost(null);
+        setOverlayDragPreview(null);
+        setOverlayDragGhost(null);
+        setAudioDragPreview(null);
+        setAudioDragGhost(null);
+        setVoiceoverDragPreview(null);
+        setVoiceoverDragGhost(null);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         document.removeEventListener('mousemove', onMove);
@@ -1174,13 +1661,83 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
       document.addEventListener('mouseup', onUp);
       tick(e.clientX, e.clientY);
     },
-    [pps, rowStepPx, saveToHistory, setSelectedClip, commitBackgroundDragPreview, undo]
+    [
+      pps,
+      saveToHistory,
+      setSelectedClip,
+      commitBackgroundDragPreview,
+      commitTextDragPreview,
+      commitOverlayDragPreview,
+      commitAudioDragPreview,
+      commitVoiceoverDragPreview,
+      undo,
+    ]
   );
 
-  const totalDuration = Math.max(composition?.duration ?? 0, 10);
+  const beginBackgroundDrag = useCallback(
+    (clip: Clip, e: React.MouseEvent, sourceLane: number, sourceRect: DOMRect) => {
+      beginLaneDrag('background', clip, e, sourceLane, sourceRect);
+    },
+    [beginLaneDrag]
+  );
+
+  const beginTextDrag = useCallback(
+    (clip: Clip, e: React.MouseEvent, sourceLane: number, sourceRect: DOMRect) => {
+      beginLaneDrag('text', clip, e, sourceLane, sourceRect);
+    },
+    [beginLaneDrag]
+  );
+
+  const beginOverlayDrag = useCallback(
+    (clip: Clip, e: React.MouseEvent, sourceLane: number, sourceRect: DOMRect) => {
+      beginLaneDrag('overlay', clip, e, sourceLane, sourceRect);
+    },
+    [beginLaneDrag]
+  );
+
+  const beginAudioDrag = useCallback(
+    (clip: Clip, e: React.MouseEvent, sourceLane: number, sourceRect: DOMRect) => {
+      beginLaneDrag('audio', clip, e, sourceLane, sourceRect);
+    },
+    [beginLaneDrag]
+  );
+
+  const beginVoiceoverDrag = useCallback(
+    (clip: Clip, e: React.MouseEvent, sourceLane: number, sourceRect: DOMRect) => {
+      beginLaneDrag('voiceover', clip, e, sourceLane, sourceRect);
+    },
+    [beginLaneDrag]
+  );
+
+  const totalDuration = useMemo(() => {
+    let d = Math.max(composition?.duration ?? 0, 10);
+    if (bgDragPreview) {
+      d = Math.max(d, bgDragPreview.displayTraceEnd + 2);
+    }
+    if (textDragPreview) {
+      d = Math.max(d, textDragPreview.displayTraceEnd + 2);
+    }
+    if (overlayDragPreview) {
+      d = Math.max(d, overlayDragPreview.displayTraceEnd + 2);
+    }
+    if (audioDragPreview) {
+      d = Math.max(d, audioDragPreview.displayTraceEnd + 2);
+    }
+    if (voiceoverDragPreview) {
+      d = Math.max(d, voiceoverDragPreview.displayTraceEnd + 2);
+    }
+    return d;
+  }, [
+    composition?.duration,
+    bgDragPreview,
+    textDragPreview,
+    overlayDragPreview,
+    audioDragPreview,
+    voiceoverDragPreview,
+  ]);
   const totalWidth = totalDuration * pps;
 
-  const previewLaneForRows = useMemo(() => {
+  const previewBgLaneForRows = useMemo(() => {
     if (!bgDragPreview) return null;
     const target = bgDragPreview.targetLane;
     if (target <= PRIMARY_BACKGROUND_LANE) return null;
@@ -1196,6 +1753,70 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
     return target;
   }, [bgDragPreview, composition]);
 
+  const previewTextLaneForRows = useMemo(() => {
+    if (!textDragPreview) return null;
+    const target = textDragPreview.targetLane;
+    if (target <= PRIMARY_TEXT_LANE) return null;
+
+    const text = composition?.tracks.text ?? [];
+    const others = text.filter((c) => c.id !== textDragPreview.clipId);
+    const maxUsedLane = others.reduce(
+      (max, c) => Math.max(max, getClipTextLane(c)),
+      PRIMARY_TEXT_LANE
+    );
+    if (target <= maxUsedLane) return null;
+
+    return target;
+  }, [textDragPreview, composition]);
+
+  const previewOverlayLaneForRows = useMemo(() => {
+    if (!overlayDragPreview) return null;
+    const target = overlayDragPreview.targetLane;
+    if (target <= PRIMARY_OVERLAY_LANE) return null;
+
+    const overlay = composition?.tracks.overlay ?? [];
+    const others = overlay.filter((c) => c.id !== overlayDragPreview.clipId);
+    const maxUsedLane = others.reduce(
+      (max, c) => Math.max(max, getClipOverlayLane(c)),
+      PRIMARY_OVERLAY_LANE
+    );
+    if (target <= maxUsedLane) return null;
+
+    return target;
+  }, [overlayDragPreview, composition]);
+
+  const previewAudioLaneForRows = useMemo(() => {
+    if (!audioDragPreview) return null;
+    const target = audioDragPreview.targetLane;
+    if (target <= PRIMARY_AUDIO_LANE) return null;
+
+    const audio = composition?.tracks.audio ?? [];
+    const others = audio.filter((c) => c.id !== audioDragPreview.clipId);
+    const maxUsedLane = others.reduce(
+      (max, c) => Math.max(max, getClipAudioLane(c)),
+      PRIMARY_AUDIO_LANE
+    );
+    if (target <= maxUsedLane) return null;
+
+    return target;
+  }, [audioDragPreview, composition]);
+
+  const previewVoiceoverLaneForRows = useMemo(() => {
+    if (!voiceoverDragPreview) return null;
+    const target = voiceoverDragPreview.targetLane;
+    if (target <= PRIMARY_VOICEOVER_LANE) return null;
+
+    const voiceover = composition?.tracks.voiceover ?? [];
+    const others = voiceover.filter((c) => c.id !== voiceoverDragPreview.clipId);
+    const maxUsedLane = others.reduce(
+      (max, c) => Math.max(max, getClipVoiceoverLane(c)),
+      PRIMARY_VOICEOVER_LANE
+    );
+    if (target <= maxUsedLane) return null;
+
+    return target;
+  }, [voiceoverDragPreview, composition]);
+
   const lanesByTrack = useMemo(() => {
     const result: Partial<Record<TrackType, Lane[]>> = {};
     for (const tt of TRACK_ORDER) {
@@ -1203,34 +1824,222 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
       if (tt === 'background') {
         const laneGroups = buildBackgroundLanesForTimeline(
           clips,
-          previewLaneForRows
+          previewBgLaneForRows
         );
         result[tt] = laneGroups.map((l: BackgroundTimelineLane) => ({
           index: l.index,
           clips: l.clips,
           isPreview: l.isPreview,
         }));
-      } else {
-        result[tt] = assignLanes(clips);
+      } else if (tt === 'text') {
+        const laneGroups = buildTextLanesForTimeline(clips, previewTextLaneForRows);
+        result[tt] = laneGroups.map((l: TextTimelineLane) => ({
+          index: l.index,
+          clips: l.clips,
+          isPreview: l.isPreview,
+        }));
+      } else if (tt === 'overlay') {
+        const laneGroups = buildOverlayLanesForTimeline(clips, previewOverlayLaneForRows);
+        result[tt] = laneGroups.map((l: OverlayTimelineLane) => ({
+          index: l.index,
+          clips: l.clips,
+          isPreview: l.isPreview,
+        }));
+      } else if (tt === 'audio') {
+        const laneGroups = buildAudioLanesForTimeline(clips, previewAudioLaneForRows);
+        result[tt] = laneGroups.map((l: AudioTimelineLane) => ({
+          index: l.index,
+          clips: l.clips,
+          isPreview: l.isPreview,
+        }));
+      } else if (tt === 'voiceover') {
+        const laneGroups = buildVoiceoverLanesForTimeline(
+          clips,
+          previewVoiceoverLaneForRows
+        );
+        result[tt] = laneGroups.map((l: VoiceoverTimelineLane) => ({
+          index: l.index,
+          clips: l.clips,
+          isPreview: l.isPreview,
+        }));
       }
     }
     return result as Record<TrackType, Lane[]>;
-  }, [composition, previewLaneForRows]);
+  }, [
+    composition,
+    previewBgLaneForRows,
+    previewTextLaneForRows,
+    previewOverlayLaneForRows,
+    previewAudioLaneForRows,
+    previewVoiceoverLaneForRows,
+  ]);
 
-  const totalLaneCount = useMemo(() => {
-    let n = 0;
-    for (const tt of TRACK_ORDER) {
-      n += Math.max(1, lanesByTrack[tt].length);
-    }
-    return n;
-  }, [lanesByTrack]);
+  const handleContextMenu = useCallback(
+    (clipId: string, x: number, y: number, splitTimeAtPointer: number) => {
+      setContextMenu({ clipId, x, y, splitTimeAtPointer });
+    },
+    []
+  );
 
-  const totalHeight =
-    totalLaneCount * LANE_HEIGHT + Math.max(0, totalLaneCount - 1) * LANE_GAP;
-
-  const handleContextMenu = useCallback((clipId: string, x: number, y: number) => {
-    setContextMenu({ clipId, x, y });
+  const clearTimelineSelection = useCallback(() => {
+    const { clearLaneClipSelection, setSelectedClip } = useCompositionStore.getState();
+    clearLaneClipSelection();
+    setSelectedClip(null);
   }, []);
+
+  const handleLaneContextMenu = useCallback(
+    (e: React.MouseEvent, laneIndex: number, laneTrackType: LaneManagedTrack) => {
+      clearTimelineSelection();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        laneTrackType,
+        ...(laneTrackType === 'background'
+          ? { backgroundLane: laneIndex }
+          : laneTrackType === 'text'
+            ? { textLane: laneIndex }
+            : laneTrackType === 'overlay'
+              ? { overlayLane: laneIndex }
+              : laneTrackType === 'audio'
+                ? { audioLane: laneIndex }
+                : { voiceoverLane: laneIndex }),
+      });
+    },
+    [clearTimelineSelection]
+  );
+
+  const handleEmptyAreaContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-timeline-clip]')) return;
+      if (target.closest('button')) return;
+      e.preventDefault();
+      clearTimelineSelection();
+    },
+    [clearTimelineSelection]
+  );
+
+  // Global marquee selection — fires from any empty area in the scroll content
+  const handleScrollContentMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      // Ignore clicks on clips, ruler, labels, or lock/eye buttons
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-timeline-clip]')) return;
+      if (target.closest('button')) return;
+
+      const startCX = e.clientX;
+      const startCY = e.clientY;
+
+      // Clear selection immediately on plain click (no shift)
+      if (!e.shiftKey) {
+        clearTimelineSelection();
+      }
+
+      setMarquee({ startCX, startCY, curCX: startCX, curCY: startCY });
+
+      const onMove = (me: MouseEvent) => {
+        setMarquee((prev) =>
+          prev ? { ...prev, curCX: me.clientX, curCY: me.clientY } : null
+        );
+      };
+
+      const onUp = (me: MouseEvent) => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+
+        const dragDist = Math.abs(me.clientX - startCX);
+        if (dragDist > 4) {
+          const scrollEl = scrollRef.current;
+          if (scrollEl) {
+            const scrollRect = scrollEl.getBoundingClientRect();
+            const sl = scrollEl.scrollLeft;
+            // Convert viewport X → content time, accounting for label column
+            const toTime = (cx: number) =>
+              (cx - scrollRect.left - LABEL_COL_WIDTH + sl) / pps;
+
+            const selStartTime = Math.min(toTime(startCX), toTime(me.clientX));
+            const selEndTime   = Math.max(toTime(startCX), toTime(me.clientX));
+
+            const store = useCompositionStore.getState();
+            const comp = store.composition;
+            if (!comp) return;
+
+            const marqueeTop = Math.min(startCY, me.clientY);
+            const marqueeBottom = Math.max(startCY, me.clientY);
+            const trackRows = Array.from(
+              document.querySelectorAll<HTMLElement>(
+                '[data-background-lane-index], [data-text-lane-index], [data-overlay-lane-index], [data-audio-lane-index], [data-voiceover-lane-index]'
+              )
+            );
+
+            let laneTrackType: LaneManagedTrack | null = null;
+            for (const row of trackRows) {
+              const rect = row.getBoundingClientRect();
+              const mid = (rect.top + rect.bottom) / 2;
+              if (mid >= marqueeTop && mid <= marqueeBottom) {
+                if (row.dataset.backgroundLaneIndex != null) {
+                  laneTrackType = 'background';
+                } else if (row.dataset.textLaneIndex != null) {
+                  laneTrackType = 'text';
+                } else if (row.dataset.overlayLaneIndex != null) {
+                  laneTrackType = 'overlay';
+                } else if (row.dataset.audioLaneIndex != null) {
+                  laneTrackType = 'audio';
+                } else {
+                  laneTrackType = 'voiceover';
+                }
+                break;
+              }
+            }
+
+            if (!laneTrackType) return;
+
+            const pool =
+              laneTrackType === 'background'
+                ? comp.tracks.background
+                : laneTrackType === 'text'
+                  ? comp.tracks.text
+                  : laneTrackType === 'overlay'
+                    ? comp.tracks.overlay
+                    : laneTrackType === 'audio'
+                      ? comp.tracks.audio
+                      : comp.tracks.voiceover;
+            const hit = pool
+              .filter((c) => c.startTime < selEndTime && c.endTime > selStartTime)
+              .map((c) => c.id);
+
+            if (hit.length > 0) {
+              const prev =
+                store.selectedClipTrackType === laneTrackType
+                  ? store.selectedClipIds
+                  : [];
+              const merged = me.shiftKey
+                ? Array.from(new Set([...prev, ...hit]))
+                : hit;
+              if (laneTrackType === 'background') {
+                store.setBackgroundClipSelection(merged);
+              } else if (laneTrackType === 'text') {
+                store.setTextClipSelection(merged);
+              } else if (laneTrackType === 'overlay') {
+                store.setOverlayClipSelection(merged);
+              } else if (laneTrackType === 'audio') {
+                store.setAudioClipSelection(merged);
+              } else {
+                store.setVoiceoverClipSelection(merged);
+              }
+            }
+          }
+        }
+
+        setMarquee(null);
+      };
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    },
+    [pps, clearTimelineSelection]
+  );
 
   // Ctrl/Cmd + molette : zoom timeline (voir useEditorShortcuts, zone data-editor-timeline-zone)
 
@@ -1283,6 +2092,8 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
           <div
             className="flex flex-col"
             style={{ minWidth: totalWidth + LABEL_COL_WIDTH, gap: LANE_GAP }}
+            onMouseDown={handleScrollContentMouseDown}
+            onContextMenu={handleEmptyAreaContextMenu}
           >
             {TRACK_ORDER.map((trackType) => {
               const lanes = lanesByTrack[trackType];
@@ -1297,13 +2108,42 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
                   pps={pps}
                   totalWidth={totalWidth}
                   isPreviewLane={lane.isPreview}
-                  bgDragPreview={
-                    trackType === 'background' ? bgDragPreview : null
+                  laneDragPreview={
+                    trackType === 'background'
+                      ? bgDragPreview
+                      : trackType === 'text'
+                        ? textDragPreview
+                        : trackType === 'overlay'
+                          ? overlayDragPreview
+                          : trackType === 'audio'
+                            ? audioDragPreview
+                            : trackType === 'voiceover'
+                              ? voiceoverDragPreview
+                              : null
                   }
-                  onBackgroundDragStart={
-                    trackType === 'background' ? beginBackgroundDrag : undefined
+                  onLaneDragStart={
+                    trackType === 'background'
+                      ? beginBackgroundDrag
+                      : trackType === 'text'
+                        ? beginTextDrag
+                        : trackType === 'overlay'
+                          ? beginOverlayDrag
+                          : trackType === 'audio'
+                            ? beginAudioDrag
+                            : trackType === 'voiceover'
+                              ? beginVoiceoverDrag
+                              : undefined
                   }
                   onContextMenu={handleContextMenu}
+                  onLaneContextMenu={
+                    trackType === 'background' ||
+                    trackType === 'text' ||
+                    trackType === 'overlay' ||
+                    trackType === 'audio' ||
+                    trackType === 'voiceover'
+                      ? handleLaneContextMenu
+                      : undefined
+                  }
                 />
               ));
             })}
@@ -1315,7 +2155,6 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
           pps={pps}
           scrollLeft={timelineScrollLeft}
           rulerHeight={RULER_HEIGHT}
-          tracksHeight={totalHeight}
           onDrag={setCurrentTime}
         />
       </div>
@@ -1325,8 +2164,59 @@ export function Timeline({ onResizeStart }: TimelineProps = {}) {
       )}
 
       {bgDragGhost && draggedBgClip && (
-        <TimelineBackgroundDragGhost clip={draggedBgClip} ghost={bgDragGhost} />
+        <TimelineLaneDragGhost
+          clip={draggedBgClip}
+          ghost={bgDragGhost}
+          trackType="background"
+        />
       )}
+      {textDragGhost && draggedTextClip && (
+        <TimelineLaneDragGhost
+          clip={draggedTextClip}
+          ghost={textDragGhost}
+          trackType="text"
+        />
+      )}
+      {overlayDragGhost && draggedOverlayClip && (
+        <TimelineLaneDragGhost
+          clip={draggedOverlayClip}
+          ghost={overlayDragGhost}
+          trackType="overlay"
+        />
+      )}
+      {audioDragGhost && draggedAudioClip && (
+        <TimelineLaneDragGhost
+          clip={draggedAudioClip}
+          ghost={audioDragGhost}
+          trackType="audio"
+        />
+      )}
+      {voiceoverDragGhost && draggedVoiceoverClip && (
+        <TimelineLaneDragGhost
+          clip={draggedVoiceoverClip}
+          ghost={voiceoverDragGhost}
+          trackType="voiceover"
+        />
+      )}
+
+      {/* Global marquee overlay — fixed so it spans across all lanes regardless of scroll */}
+      {marquee &&
+        Math.abs(marquee.curCX - marquee.startCX) > 4 && (
+          <div
+            className="pointer-events-none"
+            style={{
+              position: 'fixed',
+              left: Math.min(marquee.startCX, marquee.curCX),
+              top: Math.min(marquee.startCY, marquee.curCY),
+              width: Math.abs(marquee.curCX - marquee.startCX),
+              height: Math.abs(marquee.curCY - marquee.startCY),
+              backgroundColor: 'rgba(34, 211, 238, 0.10)',
+              border: '1.5px solid rgba(34, 211, 238, 0.80)',
+              borderRadius: 4,
+              zIndex: 9999,
+            }}
+          />
+        )}
     </div>
   );
 }

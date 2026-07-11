@@ -1,104 +1,49 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 
 type OrderCreatorCtaProps = {
   creatorId: string;
+  creatorName?: string;
   isAuthenticated: boolean;
 };
 
-export function OrderCreatorCta({ creatorId, isAuthenticated }: OrderCreatorCtaProps) {
-  const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState('');
-  const [feedback, setFeedback] = useState<string | null>(null);
+function MessageIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+      />
+    </svg>
+  );
+}
+
+const iconButtonClass =
+  'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800';
+
+export function OrderCreatorCta({ creatorId, creatorName, isAuthenticated }: OrderCreatorCtaProps) {
+  const profileUrl = `/marketplace/${creatorId}`;
+  const discussUrl = `/dashboard/discussions?user=${encodeURIComponent(creatorId)}`;
+  const label = creatorName ? `Discuter avec ${creatorName}` : 'Discuter avec le créateur';
 
   if (!isAuthenticated) {
-    const redirect = encodeURIComponent(pathname || `/marketplace/${creatorId}`);
     return (
       <Link
-        href={`/login?redirect=${redirect}`}
-        className="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 sm:w-auto"
+        href={`/login?redirect=${encodeURIComponent(profileUrl)}`}
+        className={iconButtonClass}
+        title="Se connecter pour discuter"
+        aria-label="Se connecter pour discuter"
       >
-        Connectez-vous pour commander
+        <MessageIcon className="h-5 w-5" />
       </Link>
     );
   }
 
-  const onNotify = () => {
-    setFeedback(
-      email.trim()
-        ? `Merci ! Nous enregistrons ${email} pour la file d’attente (Sprint 5).`
-        : 'Merci pour votre intérêt — la commande en ligne arrive très bientôt !'
-    );
-  };
-
   return (
-    <div className="space-y-3">
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(true);
-          setFeedback(null);
-        }}
-        className="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 sm:w-auto"
-      >
-        Commander ce créateur
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/40"
-            aria-label="Fermer"
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="relative z-[101] w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl"
-          >
-            <h2 className="text-lg font-semibold text-gray-900">Bientôt disponible</h2>
-            <p className="mt-2 text-sm text-gray-600">
-              Fonctionnalité disponible très bientôt ! Vous pourrez initier une commande directement
-              depuis ce profil.
-            </p>
-            <label htmlFor="notify-email" className="mt-4 block text-sm font-medium text-gray-700">
-              Être notifié quand c&apos;est disponible (optionnel)
-            </label>
-            <input
-              id="notify-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              placeholder="vous@exemple.com"
-            />
-            {feedback && (
-              <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{feedback}</p>
-            )}
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Fermer
-              </button>
-              <button
-                type="button"
-                onClick={() => onNotify()}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-              >
-                Continuer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    <Link href={discussUrl} className={iconButtonClass} title={label} aria-label={label}>
+      <MessageIcon className="h-5 w-5" />
+    </Link>
   );
 }

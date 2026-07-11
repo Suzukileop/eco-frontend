@@ -103,13 +103,11 @@ export function HeaderAuth() {
             aria-label="Navigation connectée"
           >
             {navLink('/dashboard', 'Accueil')}
-            {navLink('/dashboard/requests', 'Mes demandes')}
-            {navLink('/dashboard/ecosystem/new', 'Écosystème')}
+            {navLink('/dashboard/ecosystem', 'Écosystème')}
             {navLink('/dashboard/analytics', 'Analytics')}
             {navLink('/marketplace', 'Marketplace')}
             {hasRole('ROLE_AGENT') && navLink('/dashboard/agent', 'File agent')}
-            {hasRole('ROLE_CREATOR') && navLink('/dashboard/creator/content', 'Mes contenus')}
-            {hasRole('ROLE_CREATOR') && navLink('/dashboard/creator/profile', 'Profil créateur')}
+            {hasRole('ROLE_CREATOR') && navLink('/dashboard/creator', 'Creator studio')}
             {hasRole('ROLE_ADMIN') && navLink('/admin/users', 'Admin')}
           </nav>
         </div>

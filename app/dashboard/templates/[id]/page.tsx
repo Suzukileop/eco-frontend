@@ -7,6 +7,12 @@ import { DashboardHomeShell } from '@/components/DashboardHomeShell';
 import { AnalysisProgress } from '@/components/templates/AnalysisProgress';
 import { GlobalTextSection } from '@/components/templates/GlobalTextSection';
 import { SegmentCard } from '@/components/templates/SegmentCard';
+import { TemplatesPageHeader } from '@/components/templates/TemplatesPageHeader';
+import {
+  templatesLinkClass,
+  templatesPrimaryBtnClass,
+  templatesSectionClass,
+} from '@/components/templates/templates-section-ui';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { getAnalysis } from '@/lib/templates';
@@ -107,7 +113,7 @@ export default function TemplateAnalysisDetailPage() {
     return (
       <DashboardHomeShell>
         <div className="space-y-4">
-          <Link href="/dashboard/templates" className="text-sm text-teal-600 hover:text-teal-800">
+          <Link href="/dashboard/templates" className={templatesLinkClass}>
             ← Mes analyses
           </Link>
           <ErrorAlert message={error} />
@@ -123,32 +129,23 @@ export default function TemplateAnalysisDetailPage() {
   return (
     <DashboardHomeShell>
       <div className="mx-auto max-w-4xl space-y-8">
-        <div>
-          <Link href="/dashboard/templates" className="text-sm text-teal-600 hover:text-teal-800">
-            ← Mes analyses
-          </Link>
-          <h1 className="mt-3 text-2xl font-bold text-gray-900">Analyse vidéo</h1>
-          {analysis.videoUrl && (
-            <p className="mt-1 truncate text-xs text-gray-500" title={analysis.videoUrl}>
-              {analysis.videoUrl}
-            </p>
-          )}
-        </div>
+        <TemplatesPageHeader
+          title="Analyse vidéo"
+          subtitle={analysis.videoUrl ?? undefined}
+          breadcrumbs={[{ href: '/dashboard/templates', label: '← Mes analyses' }]}
+        />
 
         {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
         {isInProgress(analysis.status) && <AnalysisProgress analysis={analysis} />}
 
         {analysis.status === 'FAILED' && (
-          <section className="rounded-2xl border border-red-100 bg-red-50 p-6">
-            <h2 className="text-lg font-semibold text-red-900">Analyse échouée</h2>
-            <p className="mt-2 text-sm text-red-800">
+          <section className="rounded-2xl border border-red-200 bg-red-50/80 p-6 dark:border-red-500/30 dark:bg-red-500/10">
+            <h2 className="text-lg font-bold text-red-900 dark:text-red-200">Analyse échouée</h2>
+            <p className="mt-2 text-sm text-red-800 dark:text-red-300">
               {analysis.errorMessage ?? 'Une erreur est survenue pendant le traitement.'}
             </p>
-            <Link
-              href="/dashboard/templates/new"
-              className="mt-4 inline-block text-sm font-semibold text-teal-700 hover:text-teal-900"
-            >
+            <Link href="/dashboard/templates/new" className={`${templatesLinkClass} mt-4 inline-block`}>
               Réessayer avec une nouvelle vidéo →
             </Link>
           </section>
@@ -156,20 +153,22 @@ export default function TemplateAnalysisDetailPage() {
 
         {analysis.status === 'DONE' && (
           <>
-            <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+            <section className={templatesSectionClass}>
               <div className="flex flex-wrap items-center justify-between gap-4">
-                <dl className="grid gap-2 text-sm sm:grid-cols-3">
+                <dl className="grid gap-3 text-sm sm:grid-cols-3">
                   <div>
-                    <dt className="text-gray-500">Séquences</dt>
-                    <dd className="font-semibold text-gray-900">{analysis.segmentsCount ?? segments.length}</dd>
+                    <dt className="text-neutral-500 dark:text-neutral-400">Séquences</dt>
+                    <dd className="font-semibold text-neutral-900 dark:text-white">
+                      {analysis.segmentsCount ?? segments.length}
+                    </dd>
                   </div>
                   <div>
-                    <dt className="text-gray-500">Crédits utilisés</dt>
-                    <dd className="font-semibold text-gray-900">{analysis.creditsUsed ?? '—'}</dd>
+                    <dt className="text-neutral-500 dark:text-neutral-400">Crédits utilisés</dt>
+                    <dd className="font-semibold text-neutral-900 dark:text-white">{analysis.creditsUsed ?? '—'}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-500">Durée traitement</dt>
-                    <dd className="font-semibold text-gray-900">
+                    <dt className="text-neutral-500 dark:text-neutral-400">Durée traitement</dt>
+                    <dd className="font-semibold text-neutral-900 dark:text-white">
                       {analysis.processingMs != null
                         ? `${(analysis.processingMs / 1000).toFixed(1)} s`
                         : '—'}
@@ -178,9 +177,9 @@ export default function TemplateAnalysisDetailPage() {
                 </dl>
                 <Link
                   href={`/dashboard/templates/${analysis.id}/studio`}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-700 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:from-violet-500 hover:to-indigo-600 transition-all"
+                  className={templatesPrimaryBtnClass}
                 >
-                  ✏️ Ouvrir l&apos;éditeur
+                  Ouvrir l&apos;éditeur
                 </Link>
               </div>
             </section>
@@ -189,7 +188,7 @@ export default function TemplateAnalysisDetailPage() {
 
             <div className="space-y-6">
               {segments.length === 0 ? (
-                <p className="text-sm text-gray-600">Aucun segment retourné.</p>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">Aucun segment retourné.</p>
               ) : (
                 segments.map((seg) => (
                   <SegmentCard

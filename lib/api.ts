@@ -1,16 +1,13 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { getAccessToken, setAccessToken } from './accessToken';
+import { refreshAccessToken, invalidateSessionCache } from './sessionRefresh';
 
-// Access token stored in memory only — never localStorage/sessionStorage
-let accessToken: string | null = null;
+export { setAccessToken, getAccessToken };
 
-export const setAccessToken = (token: string | null) => {
-  accessToken = token;
-};
-
-export const getAccessToken = () => accessToken;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080',
+  baseURL: API_BASE,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -19,8 +16,9 @@ const api = axios.create({
 
 // Request interceptor: attach access token to every request
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   // FormData must set Content-Type with boundary automatically (not application/json)
   if (config.data instanceof FormData) {
@@ -28,33 +26,6 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   }
   return config;
 });
-
-/**
- * Une seule promesse de refresh partagée : évite plusieurs POST /refresh en parallèle
- * quand plusieurs requêtes reçoivent 401 au même instant.
- */
-let refreshAuthPromise: Promise<string> | null = null;
-
-async function performTokenRefresh(): Promise<string> {
-  const response = await axios.post<{ accessToken: string; refreshToken?: string }>(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/auth/refresh`,
-    {},
-    { withCredentials: true }
-  );
-
-  const newAccessToken: string = response.data.accessToken;
-  setAccessToken(newAccessToken);
-
-  if (response.data.refreshToken && typeof window !== 'undefined') {
-    await fetch('/api/set-refresh-cookie', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: response.data.refreshToken }),
-    });
-  }
-
-  return newAccessToken;
-}
 
 // Response interceptor: handle 401 with silent token refresh
 api.interceptors.response.use(
@@ -66,26 +37,55 @@ api.interceptors.response.use(
 
     if (error.response?.status === 429) {
       const retryAfter = error.response.headers['retry-after'] ?? '60';
-      error.message = `Trop de tentatives. Réessayez dans ${retryAfter} secondes.`;
+      error.message = `Too many requests. Please try again in ${retryAfter} seconds.`;
       return Promise.reject(error);
     }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
+      const onOAuthPage =
+        typeof window !== 'undefined' && window.location.pathname.startsWith('/oauth/');
+      const isAuthEndpoint = originalRequest.url?.includes('/api/auth/');
 
-      if (!refreshAuthPromise) {
-        refreshAuthPromise = performTokenRefresh().finally(() => {
-          refreshAuthPromise = null;
-        });
+      if (onOAuthPage || isAuthEndpoint) {
+        return Promise.reject(error);
       }
 
+      originalRequest._retry = true;
+
       try {
-        const newToken = await refreshAuthPromise;
+        const newToken = await refreshAccessToken();
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
       } catch (refreshError) {
+        // If the refresh itself was rate-limited, do NOT redirect to /login —
+        // that would create an infinite loop (middleware bounces back to /dashboard
+        // because the refresh_token cookie still exists).
+        const refreshStatus = axios.isAxiosError(refreshError)
+          ? refreshError.response?.status
+          : null;
+
+        if (refreshStatus === 429) {
+          // Transient error — let the caller handle it (AuthContext shows retry UI)
+          return Promise.reject(refreshError);
+        }
+
+        // Session is no longer valid — clear stale in-memory token even if still present.
+        invalidateSessionCache();
         setAccessToken(null);
-        if (typeof window !== 'undefined') {
+
+        if (
+          typeof window !== 'undefined' &&
+          !window.location.pathname.startsWith('/oauth/') &&
+          !window.location.pathname.startsWith('/login')
+        ) {
+          try {
+            await fetch(`${API_BASE}/api/auth/logout`, {
+              method: 'POST',
+              credentials: 'include',
+            });
+          } catch {
+            // ignore — we're logging out anyway
+          }
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

@@ -1,4 +1,8 @@
 import type { Clip } from '@/types/composition';
+import {
+  STUDIO_TEXT_BASE_FONT_SIZE_MAX,
+  STUDIO_TEXT_BASE_FONT_SIZE_MIN,
+} from '@/lib/studio/textZone/textZoneGeometry';
 
 export const FONT_FAMILIES = [
   { label: 'Par défaut', value: 'inherit' },
@@ -32,7 +36,10 @@ export const COLOR_PRESETS = [
   '#a855f7', '#10b981', '#f59e0b', '#6b7280', '#1f2937',
 ];
 
-export const FONT_SIZE_OPTIONS = Array.from({ length: 196 }, (_, i) => i + 5);
+export const FONT_SIZE_OPTIONS = Array.from(
+  { length: STUDIO_TEXT_BASE_FONT_SIZE_MAX - STUDIO_TEXT_BASE_FONT_SIZE_MIN + 1 },
+  (_, i) => i + STUDIO_TEXT_BASE_FONT_SIZE_MIN
+);
 
 /** Valeurs d’aperçu quand aucun clip texte n’est éditable. */
 export const TEXT_PANEL_DEFAULTS: Clip = {

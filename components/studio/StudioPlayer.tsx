@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type ComponentType } from 'react';
+import { useEffect, useMemo, useRef, type ComponentType } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
 import { StudioComposition } from '@/remotion/StudioComposition';
 import {
@@ -20,25 +20,54 @@ interface StudioPlayerProps {
 
 export function StudioPlayer({ width, height, className }: StudioPlayerProps) {
   const composition = useCompositionStore((s) => s.composition);
+  const laneMuted = useCompositionStore((s) => s.laneMuted);
+  const laneHidden = useCompositionStore((s) => s.laneHidden);
+  const trackHidden = useCompositionStore((s) => s.trackHidden);
   const currentTime = useCompositionStore((s) => s.currentTime);
   const isPlaying = useCompositionStore((s) => s.isPlaying);
   const setCurrentTime = useCompositionStore((s) => s.setCurrentTime);
+  const setPlaybackDriver = useCompositionStore((s) => s.setPlaybackDriver);
   const playerRef = useRef<PlayerRef>(null);
   const syncingFromStore = useRef(false);
 
   const fps = composition?.fps ?? 30;
-  const remotionDims = composition
+  // WYSIWYG: the preview Player renders in the SAME coordinate space as the
+  // pause editor (Konva / TextZoneClip use these exact display dimensions).
+  // This guarantees fonts, frames and overlays are computed identically in
+  // pause and play. The export path uses its own 1920 space via calculateMetadata.
+  const fallbackDims = composition
     ? getRemotionDimensions(
         composition.format,
         composition.customAspectW,
         composition.customAspectH
       )
     : { width: 1080, height: 1920 };
+  const compositionWidth = width > 0 ? Math.round(width) : fallbackDims.width;
+  const compositionHeight = height > 0 ? Math.round(height) : fallbackDims.height;
+  const v1GlCoverReady = useCompositionStore((s) => s.v1GlCoverReady);
   const durationInFrames = composition ? getCompositionDurationFrames(composition) : 30;
-  const inputProps = composition
-    ? compositionToRemotionInput(composition)
-    : { composition: null as never };
+  const inputProps = useMemo(
+    () =>
+      composition
+        ? compositionToRemotionInput(
+            composition,
+            laneMuted,
+            laneHidden,
+            trackHidden,
+            true,
+            v1GlCoverReady
+          )
+        : { composition: null as never },
+    [composition, laneMuted, laneHidden, trackHidden, v1GlCoverReady]
+  );
 
+  // Remotion drives the playback clock while this component is mounted.
+  useEffect(() => {
+    setPlaybackDriver('remotion');
+    return () => setPlaybackDriver('raf');
+  }, [setPlaybackDriver]);
+
+  // Seek when paused and playhead moves (scrubbing).
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !composition || isPlaying) return;
@@ -51,16 +80,26 @@ export function StudioPlayer({ width, height, className }: StudioPlayerProps) {
     return () => window.clearTimeout(t);
   }, [currentTime, fps, isPlaying, composition]);
 
+  // Play / pause — seek to current playhead BEFORE starting playback.
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !composition) return;
-    if (isPlaying) {
-      void player.play();
-    } else {
-      player.pause();
-    }
-  }, [isPlaying, composition]);
 
+    if (isPlaying) {
+      syncingFromStore.current = true;
+      const frame = timeToFrame(useCompositionStore.getState().currentTime, fps);
+      player.seekTo(frame);
+      void player.play();
+      const t = window.setTimeout(() => {
+        syncingFromStore.current = false;
+      }, 100);
+      return () => window.clearTimeout(t);
+    }
+
+    player.pause();
+  }, [isPlaying, composition, fps]);
+
+  // Drive store currentTime from Remotion frame updates (single clock source).
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !composition) return;
@@ -95,8 +134,9 @@ export function StudioPlayer({ width, height, className }: StudioPlayerProps) {
       inputProps={inputProps as unknown as Record<string, unknown>}
       durationInFrames={durationInFrames}
       fps={fps}
-      compositionWidth={remotionDims.width}
-      compositionHeight={remotionDims.height}
+      compositionWidth={compositionWidth}
+      compositionHeight={compositionHeight}
+      initialFrame={timeToFrame(currentTime, fps)}
       style={{ width, height }}
       className={className}
       controls={false}

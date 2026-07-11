@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useCompositionStore } from '@/stores/compositionStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { CapCutRangeSlider } from '@/components/editor/CapCutRangeSlider';
 import {
   IconPlay,
   IconPause,
@@ -93,6 +94,7 @@ export function PlaybackControls() {
   const togglePreviewFullscreen = useEditorUiStore((s) => s.togglePreviewFullscreen);
   const {
     isPlaying,
+    playbackDriver,
     currentTime,
     composition,
     zoom,
@@ -101,6 +103,7 @@ export function PlaybackControls() {
     isMuted,
     clipboard,
     selectedClipId,
+    selectedClipIds,
     setIsPlaying,
     setCurrentTime,
     setZoom,
@@ -112,10 +115,15 @@ export function PlaybackControls() {
     splitClip,
     addTextClip,
     addOverlayStickerClip,
+    history,
+    future,
     undo,
     redo,
     removeClip,
   } = useCompositionStore();
+
+  const canUndo = history.length > 0;
+  const canRedo = future.length > 0;
 
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
@@ -139,7 +147,8 @@ export function PlaybackControls() {
   }, []);
 
   useEffect(() => {
-    if (isPlaying) {
+    // Remotion player drives currentTime via frameupdate — skip RAF to avoid desync.
+    if (isPlaying && playbackDriver !== 'remotion') {
       lastTimeRef.current = performance.now();
       rafRef.current = requestAnimationFrame(tick);
     } else {
@@ -152,7 +161,7 @@ export function PlaybackControls() {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [isPlaying, tick]);
+  }, [isPlaying, playbackDriver, tick]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -171,7 +180,32 @@ export function PlaybackControls() {
       } else if (e.code === 'ArrowRight') {
         setCurrentTime(currentTime + 1);
       } else if (e.code === 'Delete' || e.code === 'Backspace') {
-        if (selectedClipId) removeClip(selectedClipId);
+        const store = useCompositionStore.getState();
+        const voIds = store.getSelectedVoiceoverClipIds();
+        const audIds = store.getSelectedAudioClipIds();
+        const ovIds = store.getSelectedOverlayClipIds();
+        const textIds = store.getSelectedTextClipIds();
+        const bgIds = store.getSelectedBackgroundClipIds();
+        const multiIds =
+          voIds.length > 1
+            ? voIds
+            : audIds.length > 1
+              ? audIds
+              : ovIds.length > 1
+                ? ovIds
+                : textIds.length > 1
+                  ? textIds
+                  : bgIds.length > 1
+                    ? bgIds
+                    : [];
+        if (multiIds.length > 1) {
+          e.preventDefault();
+          store.removeClips(multiIds);
+          store.clearLaneClipSelection();
+        } else if (selectedClipId) {
+          e.preventDefault();
+          removeClip(selectedClipId);
+        }
       } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault();
         undo();
@@ -183,10 +217,35 @@ export function PlaybackControls() {
         redo();
       } else if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (selectedClipId) {
-          const store = useCompositionStore.getState();
-          const comp = store.composition;
-          if (!comp) return;
+        const store = useCompositionStore.getState();
+        const voIds = store.getSelectedVoiceoverClipIds();
+        const audIds = store.getSelectedAudioClipIds();
+        const ovIds = store.getSelectedOverlayClipIds();
+        const bgIds = store.getSelectedBackgroundClipIds();
+        const textIds = store.getSelectedTextClipIds();
+        const comp = store.composition;
+        if (!comp) return;
+        if (voIds.length > 1) {
+          const idSet = new Set(voIds);
+          const clips = comp.tracks.voiceover.filter((c) => idSet.has(c.id));
+          store.duplicateVoiceoverClips(clips);
+        } else if (audIds.length > 1) {
+          const idSet = new Set(audIds);
+          const clips = comp.tracks.audio.filter((c) => idSet.has(c.id));
+          store.duplicateAudioClips(clips);
+        } else if (ovIds.length > 1) {
+          const idSet = new Set(ovIds);
+          const clips = comp.tracks.overlay.filter((c) => idSet.has(c.id));
+          store.duplicateOverlayClips(clips);
+        } else if (bgIds.length > 1) {
+          const idSet = new Set(bgIds);
+          const clips = comp.tracks.background.filter((c) => idSet.has(c.id));
+          store.duplicateBackgroundClips(clips);
+        } else if (textIds.length > 1) {
+          const idSet = new Set(textIds);
+          const clips = comp.tracks.text.filter((c) => idSet.has(c.id));
+          store.duplicateTextClips(clips);
+        } else if (selectedClipId) {
           const allClips = [
             ...comp.tracks.background,
             ...comp.tracks.text,
@@ -195,8 +254,19 @@ export function PlaybackControls() {
             ...comp.tracks.voiceover,
           ];
           const clip = allClips.find((c) => c.id === selectedClipId);
-          if (clip) {
+          if (clip?.trackType === 'background') {
+            store.duplicateBackgroundClips([clip]);
+          } else if (clip?.trackType === 'text') {
+            store.duplicateTextClips([clip]);
+          } else if (clip?.trackType === 'overlay') {
+            store.duplicateOverlayClips([clip]);
+          } else if (clip?.trackType === 'audio') {
+            store.duplicateAudioClips([clip]);
+          } else if (clip?.trackType === 'voiceover') {
+            store.duplicateVoiceoverClips([clip]);
+          } else if (clip) {
             const dur = clip.endTime - clip.startTime;
+            store.saveToHistory();
             store.addClip({
               ...clip,
               id: `${clip.id}-copy-${Date.now()}`,
@@ -207,23 +277,75 @@ export function PlaybackControls() {
         }
       } else if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (selectedClipId) {
-          const store = useCompositionStore.getState();
-          const comp = store.composition;
-          if (!comp) return;
-          const allClips = [
-            ...comp.tracks.background,
-            ...comp.tracks.text,
-            ...comp.tracks.audio,
-            ...comp.tracks.overlay,
-            ...comp.tracks.voiceover,
-          ];
-          const clip = allClips.find((c) => c.id === selectedClipId);
-          if (clip) setClipboard(clip);
+        const store = useCompositionStore.getState();
+        const voIds = store.getSelectedVoiceoverClipIds();
+        const audIds = store.getSelectedAudioClipIds();
+        const ovIds = store.getSelectedOverlayClipIds();
+        const textIds = store.getSelectedTextClipIds();
+        if (voIds.length > 0) {
+          store.copySelectedVoiceoverClips();
+        } else if (audIds.length > 0) {
+          store.copySelectedAudioClips();
+        } else if (ovIds.length > 0) {
+          store.copySelectedOverlayClips();
+        } else if (textIds.length > 0) {
+          store.copySelectedTextClips();
+        } else {
+          store.copySelectedBackgroundClips();
+        }
+      } else if (e.code === 'KeyX' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        const store = useCompositionStore.getState();
+        const voIds = store.getSelectedVoiceoverClipIds();
+        const audIds = store.getSelectedAudioClipIds();
+        const ovIds = store.getSelectedOverlayClipIds();
+        const textIds = store.getSelectedTextClipIds();
+        const bgIds = store.getSelectedBackgroundClipIds();
+        const multiIds =
+          voIds.length > 0
+            ? voIds
+            : audIds.length > 0
+              ? audIds
+              : ovIds.length > 0
+                ? ovIds
+                : textIds.length > 0
+                  ? textIds
+                  : bgIds;
+        if (multiIds.length === 0) return;
+        store.saveToHistory();
+        if (voIds.length > 0) {
+          store.copySelectedVoiceoverClips();
+        } else if (audIds.length > 0) {
+          store.copySelectedAudioClips();
+        } else if (ovIds.length > 0) {
+          store.copySelectedOverlayClips();
+        } else if (textIds.length > 0) {
+          store.copySelectedTextClips();
+        } else {
+          store.copySelectedBackgroundClips();
+        }
+        if (multiIds.length > 1) {
+          store.removeClips(multiIds);
+          store.clearLaneClipSelection();
+        } else {
+          store.removeClip(multiIds[0]);
         }
       } else if (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (clipboard) pasteClip();
+        const store = useCompositionStore.getState();
+        const clip = store.clipboard;
+        const multi = store.clipboardMulti;
+        if (multi?.[0]?.trackType === 'voiceover' || clip?.trackType === 'voiceover') {
+          store.pasteVoiceoverClipboard();
+        } else if (multi?.[0]?.trackType === 'audio' || clip?.trackType === 'audio') {
+          store.pasteAudioClipboard();
+        } else if (multi?.[0]?.trackType === 'overlay' || clip?.trackType === 'overlay') {
+          store.pasteOverlayClipboard();
+        } else if (multi?.[0]?.trackType === 'text' || clip?.trackType === 'text') {
+          store.pasteTextClipboard();
+        } else {
+          store.pasteBackgroundClipboard();
+        }
       } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         if (selectedClipId) {
@@ -305,22 +427,79 @@ export function PlaybackControls() {
       </div>
 
       <div className="flex items-center gap-1.5">
-        <ToolbarBtn title="Annuler (Ctrl+Z)" onClick={undo}>
-          <IconUndo {...ICON} />
-        </ToolbarBtn>
-        <ToolbarBtn title="Rétablir (Ctrl+Y)" onClick={redo}>
-          <IconRedo {...ICON} />
-        </ToolbarBtn>
+        <div className="mx-0.5 flex items-center gap-0.5">
+          <button
+            type="button"
+            title="Annuler (Ctrl+Z)"
+            onClick={undo}
+            disabled={!canUndo}
+            className={`flex h-7 w-7 items-center justify-center transition-opacity ${
+              canUndo
+                ? 'text-neutral-900 hover:opacity-70'
+                : 'cursor-default text-neutral-300'
+            }`}
+          >
+            <IconUndo width={18} height={18} />
+          </button>
+          <button
+            type="button"
+            title="Rétablir (Ctrl+Y)"
+            onClick={redo}
+            disabled={!canRedo}
+            className={`flex h-7 w-7 items-center justify-center transition-opacity ${
+              canRedo
+                ? 'text-neutral-900 hover:opacity-70'
+                : 'cursor-default text-neutral-300'
+            }`}
+          >
+            <IconRedo width={18} height={18} />
+          </button>
+        </div>
 
         <ToolbarBtn
           title={
-            selectedClipId
+            selectedClipIds.length > 1
+              ? `Supprimer ${selectedClipIds.length} clips sélectionnés (Suppr)`
+              : selectedClipId
               ? 'Supprimer le clip sélectionné (Suppr)'
               : 'Sélectionnez un clip sur la timeline'
           }
-          disabled={!selectedClipId}
+          disabled={!selectedClipId && selectedClipIds.length === 0}
           onClick={() => {
-            if (selectedClipId) removeClip(selectedClipId);
+            const store = useCompositionStore.getState();
+            const voIds = store.getSelectedVoiceoverClipIds();
+            const audIds = store.getSelectedAudioClipIds();
+            const ovIds = store.getSelectedOverlayClipIds();
+            const bgIds = store.getSelectedBackgroundClipIds();
+            const textIds = store.getSelectedTextClipIds();
+            const ids =
+              voIds.length > 1
+                ? voIds
+                : audIds.length > 1
+                  ? audIds
+                  : ovIds.length > 1
+                    ? ovIds
+                    : textIds.length > 1
+                      ? textIds
+                      : bgIds.length > 1
+                        ? bgIds
+                        : voIds.length > 0
+                          ? voIds
+                          : audIds.length > 0
+                            ? audIds
+                            : ovIds.length > 0
+                              ? ovIds
+                              : textIds.length > 0
+                                ? textIds
+                                : bgIds;
+            if (ids.length > 1) {
+              store.removeClips(ids);
+              store.clearLaneClipSelection();
+            } else if (ids.length === 1) {
+              store.removeClip(ids[0]);
+            } else if (selectedClipId) {
+              removeClip(selectedClipId);
+            }
           }}
         >
           <IconTrash {...ICON} />
@@ -344,16 +523,15 @@ export function PlaybackControls() {
         >
           <IconZoomOut {...ICON} />
         </ToolbarBtn>
-        <input
-          type="range"
+        <CapCutRangeSlider
           min={0.3}
           max={10}
           step={0.1}
           value={zoom}
-          onChange={(e) => setZoom(Number(e.target.value))}
-          className="h-1.5 w-24 cursor-pointer accent-neutral-800"
+          onChange={setZoom}
+          width="6rem"
           title={`Zoom ${zoom.toFixed(1)}×`}
-          aria-label="Zoom timeline"
+          ariaLabel="Zoom timeline"
         />
         <ToolbarBtn
           title="Zoom avant"
@@ -384,20 +562,18 @@ export function PlaybackControls() {
             <IconVolume {...ICON} />
           )}
         </ToolbarBtn>
-        <input
-          type="range"
+        <CapCutRangeSlider
           min={0}
           max={1}
           step={0.01}
           value={isMuted ? 0 : masterVolume}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
+          onChange={(v) => {
             setMasterVolume(v);
             if (v > 0 && isMuted) setIsMuted(false);
           }}
-          className="h-1.5 w-16 cursor-pointer accent-neutral-800"
+          width="4rem"
           title="Volume principal"
-          aria-label="Volume principal"
+          ariaLabel="Volume principal"
         />
       </div>
     </div>

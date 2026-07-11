@@ -57,7 +57,7 @@ export const IMAGE_GENERATION_STYLES: ImageGenerationStyle[] = [
 
 export const IMAGE_PROMPT_MAX_LENGTH = 500;
 
-export const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4] as const;
+export const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4, 5] as const;
 
 export type ImageCountOption = (typeof IMAGE_COUNT_OPTIONS)[number];
 

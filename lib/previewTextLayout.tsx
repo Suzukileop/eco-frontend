@@ -11,6 +11,7 @@ import {
   measureTextElementNatural,
   resolveTextFramePx,
 } from '@/lib/studio/textBoundsMeasure';
+import { defaultOverlayBoxWidthPct } from '@/components/editor/MovableCanvasZone';
 
 export interface PreviewTextLayout {
   xPct: number;
@@ -52,46 +53,6 @@ function slotLineStyle(slot: TextTemplateSlotDef): CSSProperties {
 }
 
 export { buildClassicTextContentStyle } from '@/lib/studio/textContentStyle';
-
-/** Wrapper Remotion : position + cadre serré sur les glyphes (pas de padding interne). */
-export function buildRemotionClassicTextStyle(
-  clip: Clip,
-  canvasWidth: number,
-  canvasHeight: number
-): CSSProperties {
-  const frame = resolveTextFramePx(clip, canvasWidth, canvasHeight);
-  const natural = measureTextElementNatural(clip);
-  const needsWordWrap = frame.widthPx < natural.width - 3;
-  const base = buildClassicTextContentStyle(clip);
-  const align = clip.textAlign ?? 'center';
-
-  const rotation = clip.textRotation ?? clip.mediaRotation ?? 0;
-  const transform =
-    rotation !== 0
-      ? `translate(-50%, -50%) rotate(${rotation}deg)`
-      : 'translate(-50%, -50%)';
-
-  return {
-    ...base,
-    position: 'absolute',
-    left: `${clip.x ?? 50}%`,
-    top: `${clip.y ?? positionToY(clip.position)}%`,
-    transform,
-    display: 'block',
-    width: frame.widthPx,
-    maxWidth: frame.widthPx,
-    height: frame.heightPx,
-    minHeight: frame.heightPx,
-    margin: 0,
-    padding: 0,
-    boxSizing: 'border-box',
-    textAlign: align,
-    whiteSpace: needsWordWrap ? 'pre-wrap' : 'pre',
-    wordBreak: needsWordWrap ? 'break-word' : 'normal',
-    overflowWrap: needsWordWrap ? 'break-word' : 'normal',
-    overflow: 'hidden',
-  };
-}
 
 type TextLayoutCore = Omit<
   PreviewTextLayout,
@@ -165,7 +126,7 @@ export function getPreviewTextLayout(
   }
 
   const frame = resolveTextFramePx(clip, canvasWidth, canvasHeight);
-  const natural = measureTextElementNatural(clip);
+  const natural = measureTextElementNatural(clip, canvasHeight);
   const needsWordWrap = frame.widthPx < natural.width - 3;
   const fontSize = clip.fontSize ?? 24;
 
@@ -189,7 +150,7 @@ export function getPreviewTextLayout(
     xPct = (centerX / canvasWidth) * 100;
     yPct = (centerY / canvasHeight) * 100;
   }
-  const base = buildClassicTextContentStyle(clip);
+  const base = buildClassicTextContentStyle(clip, canvasHeight);
   const align = clip.textAlign ?? 'center';
 
   return {
@@ -272,6 +233,30 @@ export function renderPreviewTextHitContent(
       {layout.lines.join('\n')}
     </div>
   );
+}
+
+/** Style overlay / sticker positionné pour Remotion (aligné StudioOverlayHitZone). */
+export function buildRemotionOverlayStyle(clip: Clip): CSSProperties {
+  const xPct = clip.x ?? 50;
+  const yPct = clip.y ?? 50;
+  const boxWidthPct = clip.boxWidthPct ?? defaultOverlayBoxWidthPct(clip.content);
+  const rotation = clip.mediaRotation ?? 0;
+  const transform =
+    rotation !== 0
+      ? `translate(-50%, -50%) rotate(${rotation}deg)`
+      : 'translate(-50%, -50%)';
+
+  return {
+    ...buildOverlayContentStyle(clip),
+    position: 'absolute',
+    left: `${xPct}%`,
+    top: `${yPct}%`,
+    transform,
+    width: `${boxWidthPct}%`,
+    maxWidth: `${boxWidthPct}%`,
+    textAlign: 'center',
+    boxSizing: 'border-box',
+  };
 }
 
 /** Style overlay / sticker — cadre serré. */

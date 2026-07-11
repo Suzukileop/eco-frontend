@@ -15,6 +15,10 @@ import {
   applyCssFilterToImage,
   resolveMediaFilterCss,
 } from '@/lib/studio/mediaFilterPresets';
+import {
+  buildCenteredNativeMediaLayout,
+  containedMediaSizePx,
+} from '@/lib/studio/mediaDimensions';
 
 function useHtmlImage(url?: string, filterPreset?: string): HTMLImageElement | null {
   const [baseImg, setBaseImg] = useState<HTMLImageElement | null>(null);
@@ -88,7 +92,7 @@ export function StudioKonvaClipNode({
   stageHeight,
   interactive,
   selected,
-  hovered,
+  hovered: _hovered, // eslint-disable-line @typescript-eslint/no-unused-vars
   bindRef,
   onSelect,
   onHoverStart,
@@ -113,6 +117,14 @@ export function StudioKonvaClipNode({
   const displayWidth = liveLayout?.width ?? boxWidth;
   const displayHeight = liveLayout?.height ?? boxHeight;
   const rotation = liveLayout?.rotation ?? clip.mediaRotation ?? 0;
+  const naturalW = clip.mediaNaturalWidth ?? image?.naturalWidth ?? 0;
+  const naturalH = clip.mediaNaturalHeight ?? image?.naturalHeight ?? 0;
+  const contained = containedMediaSizePx(
+    displayWidth,
+    displayHeight,
+    naturalW,
+    naturalH
+  );
 
   useEffect(() => {
     bindRef(ref.current);
@@ -125,8 +137,10 @@ export function StudioKonvaClipNode({
     const nh = image.naturalHeight;
     if (nw <= 0 || nh <= 0) return;
     if (clip.mediaNaturalWidth && clip.mediaNaturalHeight) return;
-    onCommit({ mediaNaturalWidth: nw, mediaNaturalHeight: nh });
-  }, [image, clip.mediaNaturalWidth, clip.mediaNaturalHeight, onCommit]);
+    onCommit(
+      buildCenteredNativeMediaLayout(nw, nh, stageWidth, stageHeight)
+    );
+  }, [image, clip.mediaNaturalWidth, clip.mediaNaturalHeight, onCommit, stageWidth, stageHeight]);
 
   const handleTransformStart = () => {
     onTransformStart({
@@ -196,10 +210,10 @@ export function StudioKonvaClipNode({
       {image ? (
         <KonvaImage
           image={image}
-          x={-boxWidth / 2}
-          y={-boxHeight / 2}
-          width={boxWidth}
-          height={boxHeight}
+          x={-contained.width / 2}
+          y={-contained.height / 2}
+          width={contained.width}
+          height={contained.height}
           listening={false}
         />
       ) : (
@@ -216,16 +230,6 @@ export function StudioKonvaClipNode({
           listening={false}
         />
       )}
-      <Rect
-        x={-boxWidth / 2}
-        y={-boxHeight / 2}
-        width={boxWidth}
-        height={boxHeight}
-        stroke={hovered && !selected ? 'rgba(34,211,238,0.9)' : 'transparent'}
-        strokeWidth={hovered && !selected ? 1 : 0}
-        cornerRadius={4}
-        listening={false}
-      />
       <Text
         x={-boxWidth / 2}
         y={-12}

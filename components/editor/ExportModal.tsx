@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useCompositionStore } from '@/stores/compositionStore';
-import { exportComposition, getExportStatus } from '@/lib/compositions';
+import { exportComposition, getExportStatus, saveComposition } from '@/lib/compositions';
 import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ExportModalProps {
@@ -30,6 +30,16 @@ export function ExportModal({ compositionId, onClose }: ExportModalProps) {
     setMsgIdx(0);
 
     try {
+      // Flush latest composition state to backend before triggering render
+      if (composition) {
+        await saveComposition(compositionId, {
+          title: composition.title ?? 'Export',
+          compositionJson: composition,
+          format: composition.format ?? '9:16',
+          durationSeconds: composition.duration ?? 0,
+        });
+      }
+
       await exportComposition(compositionId);
       window.dispatchEvent(new Event('credits-updated'));
 
@@ -63,7 +73,7 @@ export function ExportModal({ compositionId, onClose }: ExportModalProps) {
       setError(getApiErrorMessage(e, 'Impossible de lancer l\'export.'));
       setStep('failed');
     }
-  }, [compositionId]);
+  }, [compositionId, composition]);
 
   const clipCount =
     (composition?.tracks.background.length ?? 0) +

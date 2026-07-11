@@ -111,6 +111,8 @@ export function buildClipFromTextTemplate(
     y: 50,
     boxWidthPct: 90,
     fontSize: 28,
+    textScaleBaseFontSize: 28,
+    textScalePct: 100,
     fontWeight: 'bold',
     fontColor: '#ffffff',
     segmentId,

@@ -13,18 +13,28 @@ import type {
 
 const BASE = '/api/templates';
 
-export async function analyzeVideoByUrl(videoUrl: string): Promise<VideoAnalysisResponse> {
+export async function analyzeVideoByUrl(
+  videoUrl: string,
+  imagesPerSegment?: number
+): Promise<VideoAnalysisResponse> {
   const body: AnalyzeUrlBody = { videoUrl: videoUrl.trim() };
+  if (imagesPerSegment != null) {
+    body.imagesPerSegment = imagesPerSegment;
+  }
   const res = await api.post<VideoAnalysisResponse>(`${BASE}/analyze/url`, body);
   return res.data;
 }
 
 export async function analyzeVideoByUpload(
   file: File,
-  onUploadProgress?: (percent: number) => void
+  onUploadProgress?: (percent: number) => void,
+  imagesPerSegment?: number
 ): Promise<VideoAnalysisResponse> {
   const form = new FormData();
   form.append('file', file);
+  if (imagesPerSegment != null) {
+    form.append('imagesPerSegment', String(imagesPerSegment));
+  }
   const res = await api.post<VideoAnalysisResponse>(`${BASE}/analyze/upload`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (event) => {

@@ -16,6 +16,11 @@ import type {
 } from '@/types/templates';
 import { CREDITS_GENERATE_VIDEO, CREDITS_REGENERATE_IMAGES } from '@/types/templates';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import {
+  templatesEyebrowClass,
+  templatesSecondaryBtnClass,
+  templatesSectionClass,
+} from '@/components/templates/templates-section-ui';
 
 function formatTimeMs(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -44,12 +49,12 @@ function SectionHeaderWithDownload({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+      <p className={templatesEyebrowClass}>{title}</p>
       {downloadUrl && (
         <button
           type="button"
           onClick={() => void downloadFromUrl(downloadUrl, downloadFilename)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:border-teal-300 hover:text-teal-800"
+          className={`${templatesSecondaryBtnClass} px-3 py-1.5 text-xs hover:border-orange-300 hover:text-orange-700 dark:hover:border-orange-500/40 dark:hover:text-orange-300`}
         >
           ⬇ Télécharger
         </button>
@@ -67,22 +72,22 @@ function AudioSuggestionsList({ suggestions }: { suggestions: AudioSuggestion[] 
         return (
           <li
             key={key}
-            className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm"
+            className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800/60"
           >
             {item.url && isLikelyUrl(item.url) ? (
               <a
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-teal-700 underline hover:text-teal-900"
+                className="font-medium text-orange-700 underline hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
               >
                 {label}
               </a>
             ) : (
-              <span className="font-medium text-gray-900">{label}</span>
+              <span className="font-medium text-neutral-900 dark:text-neutral-100">{label}</span>
             )}
             {item.description && (
-              <p className="mt-1 text-xs text-gray-600">{item.description}</p>
+              <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{item.description}</p>
             )}
           </li>
         );
@@ -103,7 +108,7 @@ function ResourceLinks({ resources }: { resources: string[] }) {
                 href={trimmed}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-teal-700 underline hover:text-teal-900"
+                className="text-sm text-orange-700 underline hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
               >
                 {trimmed}
               </a>
@@ -111,7 +116,7 @@ function ResourceLinks({ resources }: { resources: string[] }) {
           );
         }
         return (
-          <li key={`${i}-${trimmed.slice(0, 24)}`} className="text-sm text-gray-600">
+          <li key={`${i}-${trimmed.slice(0, 24)}`} className="text-sm text-neutral-600 dark:text-neutral-400">
             {trimmed}
           </li>
         );
@@ -239,13 +244,13 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
   };
 
   return (
-    <article className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
-        <h3 className="text-lg font-bold text-gray-900">
+    <article className={templatesSectionClass}>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 pb-4 dark:border-neutral-800">
+        <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
           [S{local.seqNumber}] {formatTimeMs(local.startTimeMs)} → {formatTimeMs(local.endTimeMs)}
         </h3>
         {local.transitionToNext && (
-          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-medium text-teal-800">
+          <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-800">
             {local.transitionToNext}
           </span>
         )}
@@ -260,13 +265,13 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
       <div className="mt-4 space-y-4">
         {local.backgroundDesc && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Fond</p>
-            <p className="mt-1 text-sm text-gray-800">{local.backgroundDesc}</p>
+            <p className={templatesEyebrowClass}>Fond</p>
+            <p className="mt-1 text-sm text-neutral-800 dark:text-neutral-200">{local.backgroundDesc}</p>
           </div>
         )}
 
         {local.intention && (
-          <p className="text-sm italic text-gray-500">{local.intention}</p>
+          <p className="text-sm italic text-neutral-500 dark:text-neutral-400">{local.intention}</p>
         )}
 
         {images.length > 0 && (
@@ -277,7 +282,7 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
               downloadFilename={`segment-s${local.seqNumber}-image-${safeImageIndex + 1}.${extensionFromUrl(images[safeImageIndex], 'png')}`}
             />
             <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+              <div className="relative flex-1 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-950/50">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={images[safeImageIndex]}
@@ -312,11 +317,11 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
                 type="button"
                 onClick={() => void handleRegenerate()}
                 disabled={regenerating}
-                className="shrink-0 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-100 disabled:opacity-60"
+                className="shrink-0 rounded-xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-800 hover:bg-orange-100 disabled:opacity-60 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-200 dark:hover:bg-orange-500/20"
               >
                 {regenerating ? (
                   <span className="inline-flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-600 border-t-transparent" />
                     Régénération…
                   </span>
                 ) : (
@@ -328,8 +333,8 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
         )}
 
         {images.length === 0 && (
-          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-            <p className="text-sm text-amber-900">
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 dark:border-amber-500/25 dark:bg-amber-500/10">
+            <p className="text-sm text-amber-900 dark:text-amber-200">
               Aucune image Nano Banana n&apos;a pu être générée pour ce segment. Vous pouvez réessayer
               ci-dessous.
             </p>
@@ -337,7 +342,7 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
               type="button"
               onClick={() => void handleRegenerate()}
               disabled={regenerating}
-              className="mt-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-100 disabled:opacity-60"
+              className="mt-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-800 hover:bg-orange-100 disabled:opacity-60 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-200 dark:hover:bg-orange-500/20"
             >
               {regenerating ? 'Génération…' : `🔄 Générer les images (-${CREDITS_REGENERATE_IMAGES} crédits)`}
             </button>
@@ -346,12 +351,12 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
 
         {local.capCutEffects && local.capCutEffects.length > 0 && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Effets CapCut</p>
+            <p className={templatesEyebrowClass}>Effets CapCut</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {local.capCutEffects.map((fx) => (
                 <span
                   key={fx}
-                  className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700"
+                  className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
                 >
                   {fx}
                 </span>
@@ -362,13 +367,13 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
 
         {(local.audioDesc || (local.audioSuggestions && local.audioSuggestions.length > 0)) && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Audio</p>
+            <p className={templatesEyebrowClass}>Audio</p>
             {local.audioDesc && (
-              <p className="mt-1 text-sm text-gray-800">{local.audioDesc}</p>
+              <p className="mt-1 text-sm text-neutral-800 dark:text-neutral-200">{local.audioDesc}</p>
             )}
             {local.audioSuggestions && local.audioSuggestions.length > 0 && (
               <div className="mt-3">
-                <p className="text-xs font-medium text-gray-600">
+                <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
                   Musiques &amp; instrumentaux suggérés ({local.audioSuggestions.length})
                 </p>
                 <AudioSuggestionsList suggestions={local.audioSuggestions} />
@@ -379,7 +384,7 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
 
         {local.resources && local.resources.length > 0 && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ressources suggérées</p>
+            <p className={templatesEyebrowClass}>Ressources suggérées</p>
             <ResourceLinks resources={local.resources} />
           </div>
         )}
@@ -404,7 +409,7 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
           </div>
         ) : (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Durée du fond vidéo</p>
+            <p className={templatesEyebrowClass}>Durée du fond vidéo</p>
             <div className="mt-2 flex gap-2">
               {([6, 10] as const).map((seconds) => (
                 <button
@@ -414,8 +419,8 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
                   onClick={() => setVideoDuration(seconds)}
                   className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
                     videoDuration === seconds
-                      ? 'border-teal-600 bg-teal-600 text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-teal-300'
+                      ? 'border-orange-600 bg-orange-600 text-white'
+                      : 'border-neutral-200 bg-white text-neutral-700 hover:border-orange-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-orange-500/40'
                   } disabled:opacity-60`}
                 >
                   {seconds}s
@@ -426,7 +431,7 @@ export function SegmentCard({ segment, analysisId, onSegmentUpdate }: SegmentCar
               type="button"
               onClick={() => void handleGenerateVideo()}
               disabled={generatingVideo}
-              className="mt-3 w-full rounded-xl bg-gradient-to-r from-teal-600 to-teal-700 px-4 py-3 text-sm font-semibold text-white hover:from-teal-500 hover:to-teal-600 disabled:opacity-60 sm:w-auto"
+              className="mt-3 w-full rounded-xl bg-gradient-to-r from-orange-600 to-orange-700 px-4 py-3 text-sm font-semibold text-white hover:from-orange-500 hover:to-orange-600 disabled:opacity-60 sm:w-auto"
             >
               {generatingVideo ? (
                 <span className="inline-flex items-center gap-2">

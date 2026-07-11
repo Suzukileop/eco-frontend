@@ -1,5 +1,4 @@
 import api from '@/lib/api';
-import type { ScheduledPostDto } from '@/types/scheduler';
 import type {
   AgentProposeBody,
   BotMessageBody,
@@ -17,8 +16,9 @@ import type {
   TariffConfigResponse,
   ValidateModelBody,
 } from '@/types/ecosystem';
+import type { ScheduledPostDto } from '@/types/scheduler';
 
-const DEFAULT_TARIF_UNIT_CENTS = 2500;
+const DEFAULT_TARIF_UNIT_CENTS = 1000;
 
 export function normalizeSpringPage<T>(raw: SpringPageRaw<T>): PagedResponse<T> {
   const content = raw.content ?? [];
@@ -111,11 +111,23 @@ export async function validateModel(
   return res.data;
 }
 
+/** Ignore l'étape validation modèle et passe le dossier en paiement (VALIDATED). */
+export async function skipModelValidation(requestId: string): Promise<NicheRequestResponse> {
+  const res = await api.post<NicheRequestResponse>(
+    `/api/ecosystem/my-requests/${encodeURIComponent(requestId)}/skip-model-validation`
+  );
+  return res.data;
+}
+
 export async function createCheckoutSession(requestId: string): Promise<CheckoutSessionResponse> {
   const res = await api.post<CheckoutSessionResponse>(
     `/api/payments/ecosystem/${encodeURIComponent(requestId)}/checkout`
   );
   return res.data;
+}
+
+export async function confirmEcosystemPayment(requestId: string): Promise<void> {
+  await api.post(`/api/payments/ecosystem/${encodeURIComponent(requestId)}/confirm`);
 }
 
 export async function getScheduledConfig(requestId: string): Promise<ScheduledConfigDto> {
@@ -136,6 +148,18 @@ export async function updateScheduledConfig(
   return res.data;
 }
 
+export async function getNicheAgentPosts(
+  requestId: string,
+  page = 0,
+  size = 20
+): Promise<PagedResponse<ScheduledPostDto>> {
+  const res = await api.get<PagedResponse<ScheduledPostDto>>(
+    `/api/scheduler/posts/niche/${encodeURIComponent(requestId)}`,
+    { params: { page, size } }
+  );
+  return res.data;
+}
+
 export async function fetchTarifUnitaireCents(): Promise<number> {
   try {
     const res = await api.get<TariffConfigResponse>('/api/admin/config/tarif');
@@ -145,16 +169,6 @@ export async function fetchTarifUnitaireCents(): Promise<number> {
     /* admin-only ou endpoint absent : fallback */
   }
   return DEFAULT_TARIF_UNIT_CENTS;
-}
-
-export async function getMyScheduledPosts(
-  page = 0,
-  size = 5
-): Promise<PagedResponse<ScheduledPostDto>> {
-  const res = await api.get<SpringPageRaw<ScheduledPostDto>>('/api/scheduler/posts', {
-    params: { page, size },
-  });
-  return normalizeSpringPage(res.data);
 }
 
 // --- Agent ---
@@ -204,6 +218,47 @@ export async function proposeAgentModel(
   const res = await api.put<NicheRequestResponse>(
     `/api/agent/niche-requests/${encodeURIComponent(requestId)}/propose`,
     body
+  );
+  return res.data;
+}
+
+export async function listAgentActiveNiches(
+  page = 0,
+  size = 20
+): Promise<PagedResponse<NicheRequestResponse>> {
+  const res = await api.get<PagedResponse<NicheRequestResponse>>('/api/agent/niche-requests/active', {
+    params: { page, size },
+  });
+  return res.data;
+}
+
+export async function listAgentDeliveredContent(
+  requestId: string,
+  page = 0,
+  size = 50
+): Promise<PagedResponse<ScheduledPostDto>> {
+  const res = await api.get<PagedResponse<ScheduledPostDto>>(
+    `/api/agent/niche-requests/${encodeURIComponent(requestId)}/delivered-content`,
+    { params: { page, size } }
+  );
+  return res.data;
+}
+
+export async function deliverAgentContent(
+  requestId: string,
+  file: File,
+  platform: string,
+  caption?: string
+): Promise<ScheduledPostDto> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await api.post<ScheduledPostDto>(
+    `/api/agent/niche-requests/${encodeURIComponent(requestId)}/deliver-content`,
+    form,
+    {
+      params: { platform, ...(caption?.trim() ? { caption: caption.trim() } : {}) },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }
   );
   return res.data;
 }

@@ -17,7 +17,7 @@ import {
 import { useCompositionStore } from '@/stores/compositionStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { buildClassicTextContentStyle } from '@/lib/studio/textContentStyle';
-import { clipToTextZoneModel, textZoneClipPatchChanged, textZoneModelToClipPatch } from '@/lib/studio/textZone/textZoneGeometry';
+import { clipToTextZoneModel, getTextScaleBaseFontSize, isCornerTextResizeDir, resolveClipRenderFontSizePx, scalePctFromCornerResizeDrag, textZoneClipPatchChanged, textZoneModelToClipPatch } from '@/lib/studio/textZone/textZoneGeometry';
 import { collectActiveClipLayouts } from '@/lib/studio/textZone/textZoneSnap';
 import {
   applyZoneLayoutFromModel,
@@ -76,6 +76,10 @@ export function TextZoneClip({
   const snapEnabled = useCompositionStore((s) => s.snapEnabled);
   const setKonvaSnapGuides = useEditorUiStore((s) => s.setKonvaSnapGuides);
   const clearKonvaSnapGuides = useEditorUiStore((s) => s.clearKonvaSnapGuides);
+  const setTextScaleDragPreview = useEditorUiStore((s) => s.setTextScaleDragPreview);
+
+  const clipRef = useRef(clip);
+  clipRef.current = clip;
 
   const snapLayouts = useMemo(() => {
     if (!composition) return [];
@@ -98,8 +102,10 @@ export function TextZoneClip({
   const wasEditingRef = useRef(false);
 
   draftRef.current = draft;
-  fontSizeRef.current = baseModel.fontSize;
-  rotationRef.current = baseModel.rotationDeg;
+  if (!dragRef.current && !pointerDragging) {
+    fontSizeRef.current = baseModel.fontSize;
+    rotationRef.current = baseModel.rotationDeg;
+  }
 
   const selected = interactionState === 'selected' || interactionState === 'editing';
   const editing = interactionState === 'editing';
@@ -122,15 +128,25 @@ export function TextZoneClip({
   const onCommitRef = useRef(onCommit);
   onCommitRef.current = onCommit;
 
-  const commitFromDom = useCallback(() => {
-    const refs = getRefs();
-    if (!refs) return;
-    const model = readModelFromDom(refs, draftRef.current, fontSizeRef.current);
-    const patch = textZoneModelToClipPatch(model, canvasWidth, canvasHeight);
-    if (textZoneClipPatchChanged(clip, patch)) {
-      onCommitRef.current(patch);
-    }
-  }, [canvasWidth, canvasHeight, clip, getRefs]);
+  const commitFromDom = useCallback(
+    (options?: { textScalePct?: number }) => {
+      const refs = getRefs();
+      if (!refs) return;
+      const currentClip = clipRef.current;
+      const model = readModelFromDom(refs, draftRef.current, fontSizeRef.current);
+      const patch = textZoneModelToClipPatch(
+        model,
+        currentClip,
+        canvasWidth,
+        canvasHeight,
+        options
+      );
+      if (textZoneClipPatchChanged(currentClip, patch)) {
+        onCommitRef.current(patch);
+      }
+    },
+    [canvasWidth, canvasHeight, getRefs]
+  );
 
   useEffect(() => {
     if (editing) return;
@@ -159,14 +175,13 @@ export function TextZoneClip({
       proportionalFrame: false,
       clip,
     });
-    fontSizeRef.current = baseModel.fontSize;
     syncFormatContentClip(refs, canvasWidth, canvasHeight);
 
     // Mesure initiale uniquement (insertion) — pas de resync hauteur en boucle.
     if (needsInitialDomMeasure) {
       initialDomMeasureRef.current = clip.id;
       const measured = readModelFromDom(refs, draft, baseModel.fontSize);
-      const patch = textZoneModelToClipPatch(measured, canvasWidth, canvasHeight);
+      const patch = textZoneModelToClipPatch(measured, clip, canvasWidth, canvasHeight);
       if (textZoneClipPatchChanged(clip, patch)) {
         onCommitRef.current(patch);
       }
@@ -193,7 +208,7 @@ export function TextZoneClip({
         commitFromDom();
       }
     }
-  }, [interactionState, pointerDragging, getRefs, commitFromDom]);
+  }, [interactionState, pointerDragging, getRefs, commitFromDom, clip, canvasWidth, canvasHeight]);
 
   useEffect(() => {
     if (!editing || !interactive) {
@@ -219,7 +234,7 @@ export function TextZoneClip({
       el.setSelectionRange(len, len);
     });
     return () => cancelAnimationFrame(id);
-  }, [editing, interactive, clip.id, getRefs]);
+  }, [editing, interactive, clip, getRefs]);
 
   useEffect(() => {
     if (!seedChar || !isPrimary || !selected) return;
@@ -234,7 +249,18 @@ export function TextZoneClip({
     commitFromDom();
     onEnterEdit();
     onSeedConsumed();
-  }, [seedChar, isPrimary, selected, onSeedConsumed, onEnterEdit, getRefs, commitFromDom]);
+  }, [
+    seedChar,
+    isPrimary,
+    selected,
+    onSeedConsumed,
+    onEnterEdit,
+    getRefs,
+    commitFromDom,
+    clip,
+    canvasWidth,
+    canvasHeight,
+  ]);
 
   useEffect(() => {
     const scale = pointerScale > 0 ? pointerScale : 1;
@@ -266,23 +292,37 @@ export function TextZoneClip({
         canvasWidth,
         canvasHeight,
         fontSizeRef.current,
+        getTextScaleBaseFontSize(clipRef.current),
         moveSnap,
         setKonvaSnapGuides,
-        clip
+        clipRef.current
       );
       fontSizeRef.current = nextFs;
+      if (drag.type === 'resize' && isCornerTextResizeDir(drag.dir)) {
+        const pct = scalePctFromCornerResizeDrag(clipRef.current, drag, canvasHeight);
+        setTextScaleDragPreview({ clipId: clipRef.current.id, pct });
+      }
     };
 
     const onUp = () => {
       clearKonvaSnapGuides();
+      setTextScaleDragPreview(null);
       if (!dragRef.current) {
         setPointerDragging(false);
         return;
       }
-      const dragKind = dragRef.current.type;
+      const drag = dragRef.current;
+      const dragKind = drag.type;
+      const cornerScaleCommit =
+        drag.type === 'resize' && isCornerTextResizeDir(drag.dir);
+      let textScalePct: number | undefined;
+      if (cornerScaleCommit) {
+        fontSizeRef.current = drag.fontSizePx;
+        textScalePct = scalePctFromCornerResizeDrag(clipRef.current, drag, canvasHeight);
+      }
+      commitFromDom(textScalePct != null ? { textScalePct } : undefined);
       dragRef.current = null;
       unlockPointerDragCursor();
-      commitFromDom();
       skipStoreLayoutRef.current = true;
       setPointerDragging(false);
       if (
@@ -302,18 +342,30 @@ export function TextZoneClip({
       window.removeEventListener('mouseup', onUp);
       window.removeEventListener('pointerup', onUp);
       clearKonvaSnapGuides();
+      setTextScaleDragPreview(null);
     };
-  }, [pointerScale, canvasWidth, canvasHeight, clip.id, snapEnabled, getRefs, commitFromDom, setKonvaSnapGuides, clearKonvaSnapGuides]);
+  }, [
+    pointerScale,
+    canvasWidth,
+    canvasHeight,
+    clip.id,
+    snapEnabled,
+    getRefs,
+    commitFromDom,
+    setKonvaSnapGuides,
+    clearKonvaSnapGuides,
+    setTextScaleDragPreview,
+  ]);
 
   const onRotateHandleMouseDown = (e: React.MouseEvent) => {
     if (!interactive || !selected) return;
     e.stopPropagation();
     e.preventDefault();
-    onSaveHistory();
     const refs = getRefs();
     if (!refs) return;
     const drag = beginRotateDragSession(e.clientX, e.clientY, refs, rotationRef.current);
     dragRef.current = drag;
+    onSaveHistory();
     lockPointerDragCursor(drag);
     capturePointer(e.currentTarget as HTMLElement, e.nativeEvent);
     setPointerDragging(true);
@@ -323,11 +375,18 @@ export function TextZoneClip({
     if (!interactive || !selected) return;
     e.stopPropagation();
     e.preventDefault();
-    onSaveHistory();
     const refs = getRefs();
     if (!refs) return;
-    const drag = startResizeDrag(dir, e.clientX, e.clientY, refs, fontSizeRef.current);
+    const domFs = parseFloat(refs.display.style.fontSize);
+    const renderFs =
+      Number.isFinite(domFs) && domFs > 0
+        ? domFs
+        : resolveClipRenderFontSizePx(clipRef.current, canvasHeight);
+    fontSizeRef.current = renderFs;
+    syncZoneTypography(refs, renderFs);
+    const drag = startResizeDrag(dir, e.clientX, e.clientY, refs, renderFs);
     dragRef.current = drag;
+    onSaveHistory();
     lockPointerDragCursor(drag);
     capturePointer(e.currentTarget as HTMLElement, e.nativeEvent);
     setPointerDragging(true);
@@ -355,9 +414,9 @@ export function TextZoneClip({
 
     const refs = getRefs();
     if (!refs) return;
-    onSaveHistory();
     const drag = startMoveDrag(e.clientX, e.clientY, refs);
     dragRef.current = drag;
+    onSaveHistory();
     lockPointerDragCursor(drag);
     if (zoneRef.current) capturePointer(zoneRef.current, e.nativeEvent);
     setPointerDragging(true);
@@ -375,7 +434,7 @@ export function TextZoneClip({
     if (!editing) onEnterEdit();
   };
 
-  const style = buildClassicTextContentStyle({ ...clip, fontSize: baseModel.fontSize });
+  const style = buildClassicTextContentStyle(clip, canvasHeight);
   const textColor = (style.color as string | undefined) ?? clip.fontColor ?? '#ffffff';
   const bgAlpha = clip.backgroundOpacity ?? 0;
   const hasTextBg = Boolean(clip.backgroundColor && bgAlpha > 0);

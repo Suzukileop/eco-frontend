@@ -5,6 +5,12 @@ import { generateTextVariants } from '@/lib/templates';
 import { getApiErrorMessage } from '@/lib/api-error';
 import type { VideoAnalysisResponse } from '@/types/templates';
 import { CREDITS_PER_TEXT_VARIANT } from '@/types/templates';
+import {
+  templatesEyebrowClass,
+  templatesInputClass,
+  templatesPrimaryBtnClass,
+  templatesSectionClass,
+} from '@/components/templates/templates-section-ui';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 
 type GlobalTextSectionProps = {
@@ -44,20 +50,18 @@ export function GlobalTextSection({ analysis, onAnalysisUpdate }: GlobalTextSect
   };
 
   return (
-    <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+    <section className={templatesSectionClass}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Texte global (toutes les séquences)
-          </h2>
-          <pre className="mt-2 max-h-64 overflow-y-auto rounded-xl bg-gray-100 p-4 text-sm text-gray-800 whitespace-pre-wrap">
+          <h2 className={templatesEyebrowClass}>Texte global (toutes les séquences)</h2>
+          <pre className="mt-2 max-h-64 overflow-y-auto rounded-xl bg-neutral-100 p-4 text-sm text-neutral-800 whitespace-pre-wrap dark:bg-neutral-950 dark:text-neutral-200">
             {globalText}
           </pre>
         </div>
 
         <div className="flex w-full shrink-0 flex-col gap-3 lg:w-72">
           <div>
-            <label htmlFor="text-theme" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <label htmlFor="text-theme" className={templatesEyebrowClass}>
               Thème (optionnel)
             </label>
             <input
@@ -67,15 +71,15 @@ export function GlobalTextSection({ analysis, onAnalysisUpdate }: GlobalTextSect
               onChange={(e) => setTheme(e.target.value)}
               disabled={generating}
               placeholder="ex. motivation sombre, humour…"
-              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-60"
+              className={templatesInputClass}
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
               Si vide, l&apos;IA propose des variantes du texte global sans thème imposé.
             </p>
           </div>
 
           <div>
-            <label htmlFor="variant-count" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <label htmlFor="variant-count" className={templatesEyebrowClass}>
               Nombre de variantes
             </label>
             <input
@@ -91,9 +95,9 @@ export function GlobalTextSection({ analysis, onAnalysisUpdate }: GlobalTextSect
                 }
               }}
               disabled={generating}
-              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-60"
+              className={templatesInputClass}
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
               {CREDITS_PER_TEXT_VARIANT} crédits par variante · total : {cost} crédits
             </p>
           </div>
@@ -102,7 +106,7 @@ export function GlobalTextSection({ analysis, onAnalysisUpdate }: GlobalTextSect
             type="button"
             onClick={() => void handleGenerate()}
             disabled={generating || variantCount < 1}
-            className="rounded-xl bg-gradient-to-r from-teal-600 to-teal-700 px-4 py-3 text-sm font-semibold text-white hover:from-teal-500 hover:to-teal-600 disabled:opacity-60"
+            className={templatesPrimaryBtnClass}
           >
             {generating ? (
               <span className="inline-flex items-center gap-2">
@@ -123,18 +127,16 @@ export function GlobalTextSection({ analysis, onAnalysisUpdate }: GlobalTextSect
       )}
 
       {variants.length > 0 && (
-        <div className="mt-6 border-t border-gray-100 pt-6">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Variantes générées ({variants.length})
-          </h3>
+        <div className="mt-6 border-t border-neutral-200 pt-6 dark:border-neutral-800">
+          <h3 className={templatesEyebrowClass}>Variantes générées ({variants.length})</h3>
           <ol className="mt-3 space-y-3">
             {variants.map((variant, index) => (
               <li
                 key={`${index}-${variant.slice(0, 24)}`}
-                className="rounded-xl border border-teal-100 bg-teal-50/50 p-4"
+                className="rounded-xl border border-orange-200/60 bg-orange-50/40 p-4 dark:border-orange-500/25 dark:bg-orange-500/8"
               >
-                <span className="text-xs font-bold text-teal-800">#{index + 1}</span>
-                <pre className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{variant}</pre>
+                <span className="text-xs font-bold text-orange-800 dark:text-orange-300">#{index + 1}</span>
+                <pre className="mt-1 text-sm text-neutral-800 whitespace-pre-wrap dark:text-neutral-200">{variant}</pre>
               </li>
             ))}
           </ol>

@@ -37,6 +37,7 @@ export type GlRenderer = {
     width: number,
     height: number
   ) => void;
+  invalidateTextures: () => void;
   dispose: () => void;
 };
 
@@ -44,10 +45,13 @@ export function createGlRenderer(canvas: HTMLCanvasElement): GlRenderer | null {
   const gl = canvas.getContext('webgl', {
     premultipliedAlpha: false,
     preserveDrawingBuffer: true,
+    alpha: true,
   }) as WebGLRenderingContext | null;
   if (!gl) return null;
 
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   const buffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -61,13 +65,28 @@ export function createGlRenderer(canvas: HTMLCanvasElement): GlRenderer | null {
     if (runner) return runner;
     const spec = getGlTransitionByName(glName);
     if (!spec) return null;
-    runner = createTransition(gl, spec, { resizeMode: 'cover' });
+    runner = createTransition(gl, spec, { resizeMode: 'contain' });
     runners.set(glName, runner);
     return runner;
   };
 
+  const isVideoEl = (source: TexImageSource): source is HTMLVideoElement =>
+    typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement;
+
   const getTexture = (key: string, source: TexImageSource) => {
     let tex = textureCache.get(key);
+    if (isVideoEl(source)) {
+      if (!tex) {
+        tex = createTexture(gl, source);
+        tex.minFilter = gl.LINEAR;
+        tex.magFilter = gl.LINEAR;
+        textureCache.set(key, tex);
+      } else {
+        tex.bind(0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      }
+      return tex;
+    }
     if (!tex) {
       tex = createTexture(gl, source);
       tex.minFilter = gl.LINEAR;
@@ -75,6 +94,11 @@ export function createGlRenderer(canvas: HTMLCanvasElement): GlRenderer | null {
       textureCache.set(key, tex);
     }
     return tex;
+  };
+
+  const invalidateTextures = () => {
+    textureCache.forEach((t) => t.dispose());
+    textureCache.clear();
   };
 
   return {
@@ -98,6 +122,7 @@ export function createGlRenderer(canvas: HTMLCanvasElement): GlRenderer | null {
         (spec.defaultParams ?? {}) as Record<string, number | boolean>
       );
     },
+    invalidateTextures,
     dispose() {
       runners.forEach((r) => r.dispose());
       textureCache.forEach((t) => t.dispose());

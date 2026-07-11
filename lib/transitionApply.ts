@@ -7,6 +7,9 @@ export interface ActiveTransitionBlend {
   toId: string;
   p: number;
   duration: number;
+  junction: number;
+  startTime: number;
+  endTime: number;
 }
 
 export type TransitionLayerMods = {
@@ -21,12 +24,135 @@ function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
 }
 
-/** Raccord actif sur la piste V0 (fenêtre temporelle de la transition). */
-export function findActiveTransitionBlend(
+/** Fenêtre CapCut : moitié sur M1, moitié sur M2, centrée sur la jonction. */
+export interface TransitionWindow {
+  junction: number;
+  duration: number;
+  /** = junction - duration/2 */
+  startTime: number;
+  /** = junction + duration/2 */
+  endTime: number;
+}
+
+export function clampTransitionDuration(
+  tr: Pick<Transition, 'duration'>,
+  from: Clip,
+  to: Clip
+): number {
+  const maxD = Math.min(
+    tr.duration,
+    Math.max(0.15, from.endTime - from.startTime - 0.05),
+    Math.max(0.15, to.endTime - to.startTime - 0.05)
+  );
+  return Math.max(0.15, Math.min(maxD, 2.5));
+}
+
+/** Jonction temporelle entre deux clips V1 contigus. */
+export function transitionJunction(from: Clip, to: Clip): number {
+  return (from.endTime + to.startTime) / 2;
+}
+
+export function resolveTransitionWindow(
+  tr: Transition,
+  from: Clip,
+  to: Clip
+): TransitionWindow | null {
+  if (tr.type === 'cut') return null;
+  if (Math.abs(from.endTime - to.startTime) > 0.15) return null;
+  const duration = clampTransitionDuration(tr, from, to);
+  const junction = transitionJunction(from, to);
+  const half = duration / 2;
+  return {
+    junction,
+    duration,
+    startTime: Math.max(from.startTime, junction - half),
+    endTime: Math.min(to.endTime, junction + half),
+  };
+}
+
+export function transitionProgressAt(
+  currentTime: number,
+  window: TransitionWindow,
+  tailSec = 0
+): number | null {
+  const end = window.endTime + Math.max(0, tailSec);
+  if (currentTime < window.startTime || currentTime >= end) return null;
+  return clamp01((currentTime - window.startTime) / window.duration);
+}
+
+/** Pré-charge ~1,2 s avant le début — invisible, sans bloquer la lecture M1. */
+export const TRANSITION_GL_PREFETCH_SEC = 1.2;
+
+export interface TransitionPrefetchContext {
+  fromId: string;
+  toId: string;
+  window: TransitionWindow;
+  previewTime: number;
+  previewProgress: number;
+}
+
+export function findTransitionPrefetchContext(
   transitions: Transition[],
   lane0: Clip[],
   currentTime: number,
   clipAllowed: (clipId: string) => boolean
+): TransitionPrefetchContext | null {
+  for (const tr of transitions) {
+    if (tr.type === 'cut') continue;
+    const from = lane0.find((c) => c.id === tr.fromClipId);
+    const to = lane0.find((c) => c.id === tr.toClipId);
+    if (!from || !to) continue;
+    if (!clipAllowed(from.id) || !clipAllowed(to.id)) continue;
+    if (!transitionConsecutiveOnLane(lane0, from, to)) continue;
+
+    const window = resolveTransitionWindow(tr, from, to);
+    if (!window) continue;
+
+    const lead = window.startTime - currentTime;
+    if (lead <= 0 || lead > TRANSITION_GL_PREFETCH_SEC) continue;
+
+    return {
+      fromId: from.id,
+      toId: to.id,
+      window,
+      previewTime: window.startTime,
+      previewProgress: 0,
+    };
+  }
+  return null;
+}
+
+/** Temps local dans le clip (secondes) pour la frame à afficher pendant la transition. */
+export function clipLocalTimeAtTransition(
+  clip: Clip,
+  role: 'from' | 'to',
+  window: TransitionWindow,
+  currentTime: number
+): number {
+  const trimStart = clip.trimStart ?? 0;
+  const visibleDuration = Math.max(0.1, clip.endTime - clip.startTime);
+  const { junction } = window;
+
+  if (role === 'from') {
+    if (currentTime >= junction) {
+      return trimStart + visibleDuration;
+    }
+    return trimStart + visibleDuration - Math.max(0, junction - currentTime);
+  }
+
+  if (currentTime <= junction) {
+    return trimStart;
+  }
+  return trimStart + Math.max(0, currentTime - junction);
+}
+
+/** Raccord actif sur la piste V0 — fenêtre centrée sur la jonction (CapCut). */
+export function findActiveTransitionBlend(
+  transitions: Transition[],
+  lane0: Clip[],
+  currentTime: number,
+  clipAllowed: (clipId: string) => boolean,
+  tailSec = 0
 ): ActiveTransitionBlend | null {
   for (const tr of transitions) {
     if (tr.type === 'cut') continue;
@@ -35,18 +161,22 @@ export function findActiveTransitionBlend(
     if (!from || !to) continue;
     if (!clipAllowed(from.id) || !clipAllowed(to.id)) continue;
     if (!transitionConsecutiveOnLane(lane0, from, to)) continue;
-    const junction = from.endTime;
-    if (Math.abs(junction - to.startTime) > 0.15) continue;
-    const maxD = Math.min(
-      tr.duration,
-      Math.max(0.15, from.endTime - from.startTime - 0.05),
-      Math.max(0.15, to.endTime - to.startTime - 0.05)
-    );
-    const d = Math.max(0.15, Math.min(maxD, 2.5));
-    if (currentTime >= junction - d && currentTime < junction) {
-      const p = clamp01((currentTime - (junction - d)) / d);
-      return { fromId: from.id, toId: to.id, p, duration: d };
-    }
+
+    const window = resolveTransitionWindow(tr, from, to);
+    if (!window) continue;
+
+    const p = transitionProgressAt(currentTime, window, tailSec);
+    if (p == null) continue;
+
+    return {
+      fromId: from.id,
+      toId: to.id,
+      p,
+      duration: window.duration,
+      junction: window.junction,
+      startTime: window.startTime,
+      endTime: window.endTime,
+    };
   }
   return null;
 }

@@ -7,6 +7,8 @@ interface BasicAdvancedModeSwitchProps {
   onChange: (mode: PanelBasicAdvancedMode) => void;
   disabled?: boolean;
   ariaLabel: string;
+  basicLabel?: string;
+  advancedLabel?: string;
 }
 
 /** Onglets Basic / Avancée — même espacement que le panneau texte (sans barre de fond). */
@@ -15,6 +17,8 @@ export function BasicAdvancedModeSwitch({
   onChange,
   disabled = false,
   ariaLabel,
+  basicLabel = 'Basic',
+  advancedLabel = 'Avancée',
 }: BasicAdvancedModeSwitchProps) {
   const btn = (id: PanelBasicAdvancedMode, label: string) => (
     <button
@@ -34,12 +38,12 @@ export function BasicAdvancedModeSwitch({
 
   return (
     <div
-      className="mx-3 mb-1 mt-3 flex shrink-0 gap-2"
+      className="flex shrink-0 gap-3"
       role="tablist"
       aria-label={ariaLabel}
     >
-      {btn('basic', 'Basic')}
-      {btn('advanced', 'Avancée')}
+      {btn('basic', basicLabel)}
+      {btn('advanced', advancedLabel)}
     </div>
   );
 }

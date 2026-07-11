@@ -532,9 +532,7 @@ export function MovableCanvasZone({
       </>
     ) : null;
 
-  const boxClass = isSelected
-    ? `${ringSelectedClass} rounded-sm`
-    : 'rounded-sm hover:ring-1 hover:ring-white/30';
+  const boxClass = isSelected ? `${ringSelectedClass} rounded-sm` : 'rounded-sm';
 
   const tightFrame =
     shrinkToContent && tightWidthPx != null && tightWidthPx > 0

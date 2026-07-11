@@ -6,6 +6,12 @@ import type { CSSProperties } from 'react';
 export const PANEL = {
   accent: '#22d3ee',
   accentDim: '#06b6d4',
+  /** Barre latérale navigation (CapCut) — noir pur */
+  navBg: '#000000',
+  /** Zone contenu adjacente — gris très foncé */
+  contentBg: '#1a1a1a',
+  navActiveBg: '#2d2d2d',
+  navHoverBg: '#141414',
   bgDeep: '#0f0f0f',
   bgShell: '#181818',
   bgCard: '#252525',
@@ -32,18 +38,22 @@ export const textSectionBoxStyle: CSSProperties = {
 
 export const panelClasses = {
   shell:
-    'flex flex-col h-full overflow-hidden relative border-l border-[#2a2a2a] bg-black',
+    'flex h-full overflow-hidden relative border-r border-[#2a2a2a]',
   collapsed:
-    'flex flex-col h-full bg-black border-l border-[#2a2a2a] items-center py-3 gap-3',
+    'flex flex-col h-full bg-black border-r border-[#2a2a2a] items-center py-3 gap-3',
+  navRail:
+    'flex w-[68px] shrink-0 flex-col border-r border-[#1a1a1a]',
+  navBtnActive:
+    'mx-1.5 flex flex-col items-center justify-center gap-1 rounded-lg px-1 py-2.5 text-[10px] font-medium text-white transition-colors',
+  navBtnInactive:
+    'mx-1.5 flex flex-col items-center justify-center gap-1 rounded-lg px-1 py-2.5 text-[10px] font-medium text-neutral-500 transition-colors hover:bg-[#141414] hover:text-neutral-300',
+  contentShell: 'flex min-w-0 flex-1 flex-col',
   seqNav:
-    'flex items-center justify-between border-b border-[#2a2a2a] px-3 py-2.5 shrink-0 bg-black',
-  tabs: 'flex shrink-0 border-b border-[#2a2a2a] bg-black',
-  tabActive:
-    'flex-1 py-2 text-[10px] font-bold uppercase transition-colors border-b-2 border-cyan-400 text-white',
-  tabInactive:
-    'flex-1 py-2 text-[10px] font-bold uppercase transition-colors text-neutral-500 hover:text-neutral-300',
+    'flex items-center justify-between border-b border-[#2a2a2a] px-3 py-2.5 shrink-0',
   scroll:
-    'flex-1 overflow-y-auto overscroll-contain p-3 space-y-4 bg-black [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+    'flex-1 overflow-y-auto overscroll-contain p-3 space-y-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+  contentFlex:
+    'flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3 pb-3',
   sectionTitle:
     'text-[10px] font-semibold uppercase tracking-wider text-neutral-400',
   sectionLabel: 'text-[10px] text-neutral-500 shrink-0',
@@ -76,9 +86,9 @@ export const panelClasses = {
   actionBtnSecondary:
     'w-full rounded-lg py-2.5 px-3 text-sm text-neutral-200 bg-[#252525] hover:bg-[#2e2e2e] transition-colors border border-[#333333]',
   collapseBtn:
-    'rounded-l-lg bg-[#333333] hover:bg-[#404040] text-white px-1.5 py-2 text-sm transition-colors',
+    'rounded-r-lg bg-[#333333] hover:bg-[#404040] text-white px-1.5 py-2 text-sm transition-colors',
   floatCollapse:
-    'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 z-30 rounded-l-lg bg-[#333333] hover:bg-[#404040] text-white px-1.5 py-2 text-xs shadow-lg transition-colors border border-[#404040]',
+    'absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 z-30 rounded-r-lg bg-[#333333] hover:bg-[#404040] text-white px-1.5 py-2 text-xs shadow-lg transition-colors border border-[#404040]',
   navBtn:
     'rounded-md px-2 py-1 text-neutral-400 hover:text-white hover:bg-[#252525] disabled:opacity-30 transition-colors text-sm',
   value: 'text-[10px] text-neutral-500 w-9 text-right tabular-nums',

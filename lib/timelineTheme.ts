@@ -1,14 +1,64 @@
 import type { TrackType } from '@/types/composition';
 
 /** Thème clair timeline / contrôles (référence CapCut). */
-export const LANE_HEIGHT = 48;
-export const LANE_GAP = 6;
-export const LABEL_COL_WIDTH = 96;
+/** Pistes utilitaires : texte, overlay, audio, voix off. */
+export const LANE_HEIGHT_COMPACT = 28;
+/** Piste vidéo superposition (V2+). */
+export const LANE_HEIGHT_VIDEO_OVERLAY = 40;
+/** Piste vidéo principale (V1). */
+export const LANE_HEIGHT_VIDEO_PRIMARY = 56;
+/** @deprecated Préférer getLaneHeight(trackType, laneIndex). */
+export const LANE_HEIGHT = LANE_HEIGHT_VIDEO_PRIMARY;
+export const LANE_GAP = 8;
+export const LABEL_COL_WIDTH = 112;
 export const RULER_HEIGHT = 32;
-export const LANE_CLIP_INSET_Y = 5;
+/** Largeur fixe du libellé piste (OV1, T1…) — alignement colonnes lock/eye. */
+export const LANE_HEADER_LABEL_WIDTH = 28;
+/** Boutons lock/eye — même taille sur toutes les pistes. */
+export const LANE_HEADER_BTN_PX = 20;
+export const LANE_CLIP_INSET_Y = 4;
+
+export function getLaneHeight(trackType: TrackType, laneIndex = 0): number {
+  if (trackType === 'background') {
+    return laneIndex === 0 ? LANE_HEIGHT_VIDEO_PRIMARY : LANE_HEIGHT_VIDEO_OVERLAY;
+  }
+  return LANE_HEIGHT_COMPACT;
+}
+
+export function getLaneClipInsetY(trackType: TrackType, laneIndex = 0): number {
+  if (trackType === 'background') {
+    return laneIndex === 0 ? 4 : 3;
+  }
+  return 2;
+}
+
+export function getLaneDragStep(trackType: TrackType, laneIndex = 0): number {
+  return getLaneHeight(trackType, laneIndex) + LANE_GAP;
+}
+
+/** Step moyen pour drag vertical entre pistes V (V1 et V2+ n’ont pas la même hauteur). */
+export function getBackgroundLaneDragStep(): number {
+  return (
+    Math.round((LANE_HEIGHT_VIDEO_PRIMARY + LANE_HEIGHT_VIDEO_OVERLAY) / 2) + LANE_GAP
+  );
+}
+
+export function isCompactLane(trackType: TrackType, laneIndex = 0): boolean {
+  return getLaneHeight(trackType, laneIndex) <= LANE_HEIGHT_COMPACT;
+}
+
+/** Pistes avec contrôle mute dans l’en-tête timeline. */
+export function trackSupportsLaneMute(trackType: TrackType): boolean {
+  return trackType === 'background' || trackType === 'audio' || trackType === 'voiceover';
+}
+
 /** Bandeau transitions au-dessus des clips (évite conflit avec trim). */
 export const TRANSITION_RAIL_HEIGHT = 14;
 export const CLIP_ICON_WIDTH = 24;
+
+export function getClipIconWidth(trackType: TrackType, laneIndex = 0): number {
+  return isCompactLane(trackType, laneIndex) ? 18 : CLIP_ICON_WIDTH;
+}
 /** Décalage des poignées trim quand un clip voisin touche la jonction. */
 export const TRIM_JUNCTION_INSET_PX = 14;
 
@@ -32,28 +82,41 @@ export const CLIP_SELECTION = {
   borderWidthPx: 2,
 } as const;
 
+/** Teinte preview — source unique pour pistes timeline et zone preview */
+const PREVIEW_WORKSPACE_BG = '#f0f5f7';
+/** Nuance plus soutenue (piste avec clip sélectionné — bien visible vs preview) */
+const LANE_SELECTED_BG = '#d2dce4';
+/** Nuance atténuée (piste verrouillée) */
+const LANE_LOCKED_BG = '#e8eef1';
+
 export const TIMELINE_LIGHT = {
   toolbarBg: 'bg-white',
   toolbarBorder: 'border-neutral-200',
   surfaceBg: 'bg-white',
   headerBg: '#ffffff',
-  laneSelectedGradient: 'linear-gradient(180deg, #d8dce3 0%, #cdd2da 100%)',
-  laneIdleBg: '#f0f1f4',
-  laneLockedBg: '#e8eaef',
+  /** Piste avec sélection — teinte preview renforcée */
+  laneSelectedBg: LANE_SELECTED_BG,
+  /** Piste sans sélection — identique au fond preview */
+  laneIdleBg: PREVIEW_WORKSPACE_BG,
+  laneLockedBg: LANE_LOCKED_BG,
   rulerBg: '#ffffff',
   gridLine: 'rgba(0,0,0,0.05)',
   playhead: '#171717',
   playheadLine: '#0a0a0a',
-  previewWorkspaceBg: '#f0f1f4',
+  /** Fond zone preview (autour du cadre) — bleu ciel très léger */
+  previewWorkspaceBg: PREVIEW_WORKSPACE_BG,
+  /** Survol zones format + menus contextuels (même teinte que la preview) */
+  previewWorkspaceHoverBg: PREVIEW_WORKSPACE_BG,
 } as const;
 
 /** Tête de lecture (réf. CapCut) — au-dessus de tous les éléments timeline. */
 export const PLAYHEAD = {
   zIndex: 200,
-  lineWidthPx: 2,
-  headWidthPx: 12,
-  headHeightPx: 22,
+  lineWidthPx: 1.5,
+  headWidthPx: 10,
+  headHeightPx: 20,
   headBorderPx: 1.5,
+  headRadiusPx: 2.5,
 } as const;
 
 /** Couleurs en hex — appliquées via style inline (Tailwind ne scanne pas lib/). */
@@ -124,6 +187,6 @@ export function getClipStyleForTrack(trackType: TrackType): ClipTrackStyle {
 
 export function laneStripBackground(hasSelection: boolean, locked: boolean): string {
   if (locked) return TIMELINE_LIGHT.laneLockedBg;
-  if (hasSelection) return TIMELINE_LIGHT.laneSelectedGradient;
+  if (hasSelection) return TIMELINE_LIGHT.laneSelectedBg;
   return TIMELINE_LIGHT.laneIdleBg;
 }

@@ -2,33 +2,27 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import type { Clip } from '@/types/composition';
 import { getQuickGlTransitions } from '@/lib/glTransitions';
+import { TransitionGlThumbnail } from '@/components/editor/TransitionGlThumbnail';
+import { resolveClipMediaUrl } from '@/lib/glTransitionMedia';
 
 const PICKER_Z = 320;
-/** Hauteur estimée du panneau (pour choisir au-dessus ou en dessous). */
-const PICKER_EST_HEIGHT = 200;
-
-const QUICK_THUMB: Record<string, string> = {
-  'basic-cut': 'linear-gradient(135deg,#374151 50%,#1f2937 50%)',
-  fade: 'linear-gradient(90deg,#1e3a5f,#4a5568)',
-  crossZoom: 'radial-gradient(circle at center,#2d3748 20%,#1a202c 80%)',
-  cube: 'linear-gradient(135deg,#4c51bf,#2d3748)',
-  GlitchMemories: 'repeating-linear-gradient(90deg,#1a1a2e,#16213e 4px,#0f3460 8px)',
-  DreamyZoom: 'radial-gradient(ellipse at center,#553c9a,#1a202c)',
-  directionalwarp: 'linear-gradient(120deg,#2b6cb0,#1a365d)',
-  burn: 'linear-gradient(180deg,#f6ad55,#c53030)',
-  circleopen: 'radial-gradient(circle at center,transparent 30%,#2d3748 31%)',
-};
+const PICKER_EST_HEIGHT = 280;
 
 export function TransitionQuickPicker({
   anchorRect,
   selectedGlName,
+  fromClip,
+  toClip,
   onSelectGlName,
   onOpenFullCatalog,
   onClose,
 }: {
   anchorRect: DOMRect;
   selectedGlName: string;
+  fromClip?: Clip;
+  toClip?: Clip;
   onSelectGlName: (glName: string) => void;
   onOpenFullCatalog: () => void;
   onClose: () => void;
@@ -37,6 +31,9 @@ export function TransitionQuickPicker({
   const presets = getQuickGlTransitions();
   const [mounted, setMounted] = useState(false);
   const [placement, setPlacement] = useState<'above' | 'below'>('above');
+
+  const previewFromUrl = fromClip ? resolveClipMediaUrl(fromClip) : undefined;
+  const previewToUrl = toClip ? resolveClipMediaUrl(toClip) : undefined;
 
   useEffect(() => {
     setMounted(true);
@@ -74,14 +71,14 @@ export function TransitionQuickPicker({
           position: 'fixed',
           left: centerX,
           top: anchorRect.top,
-          transform: 'translate(-50%, calc(-100% - 8px))',
+          transform: 'translate(-50%, calc(-100% - 10px))',
           zIndex: PICKER_Z,
         }
       : {
           position: 'fixed',
           left: centerX,
           top: anchorRect.bottom,
-          transform: 'translate(-50%, 8px)',
+          transform: 'translate(-50%, 10px)',
           zIndex: PICKER_Z,
         };
 
@@ -94,42 +91,40 @@ export function TransitionQuickPicker({
       role="dialog"
       aria-label="Choisir une transition"
     >
-      <div className="w-[min(92vw,320px)] rounded-lg border border-gray-600 bg-gray-900/98 p-2 shadow-xl shadow-black/50">
-        <p className="mb-1.5 px-0.5 text-[9px] font-semibold uppercase tracking-wide text-gray-400">
-          Choisir une transition
-        </p>
-        <div className="grid grid-cols-4 gap-1.5">
+      <div className="w-[min(92vw,360px)] overflow-hidden rounded-xl border border-[#3a3a3a] bg-[#141414]/98 shadow-2xl shadow-black/60 backdrop-blur-md">
+        <div className="border-b border-[#2a2a2a] px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400/90">
+            Choisir une transition
+          </p>
+          <p className="mt-0.5 text-[9px] text-neutral-500">
+            Aperçus WebGL · identiques à la bibliothèque
+          </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 p-2.5 sm:grid-cols-4">
           {presets.map((preset) => (
-            <button
+            <TransitionGlThumbnail
               key={preset.name}
-              type="button"
-              title={preset.label}
-              onClick={() => onSelectGlName(preset.name)}
-              className={`overflow-hidden rounded-md border text-left transition-all hover:scale-[1.03] ${
-                selectedGlName === preset.name
-                  ? 'border-blue-400 ring-1 ring-blue-500/80'
-                  : 'border-gray-700 hover:border-gray-500'
-              }`}
-            >
-              <div
-                className="relative aspect-square w-full"
-                style={{
-                  background: QUICK_THUMB[preset.name] ?? 'linear-gradient(135deg,#374151,#1f2937)',
-                }}
-              />
-              <p className="truncate px-0.5 py-0.5 text-center text-[8px] text-gray-300">
-                {preset.label}
-              </p>
-            </button>
+              glName={preset.name}
+              label={preset.label}
+              fromUrl={previewFromUrl}
+              toUrl={previewToUrl}
+              selected={selectedGlName === preset.name}
+              onSelect={() => onSelectGlName(preset.name)}
+            />
           ))}
         </div>
-        <button
-          type="button"
-          onClick={onOpenFullCatalog}
-          className="mt-2 w-full rounded-md border border-gray-600 py-1.5 text-[10px] font-medium text-blue-300 hover:bg-gray-800"
-        >
-          Tous les effets dans le panneau →
-        </button>
+
+        <div className="border-t border-[#2a2a2a] p-2">
+          <button
+            type="button"
+            onClick={onOpenFullCatalog}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#404040] bg-[#1e1e1e] py-2 text-[10px] font-semibold text-cyan-300 transition-colors hover:border-cyan-500/40 hover:bg-[#252528]"
+          >
+            <span>Tous les effets</span>
+            <span aria-hidden>→</span>
+          </button>
+        </div>
       </div>
     </div>,
     document.body

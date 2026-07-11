@@ -243,17 +243,17 @@ function ImageGalleryRow({
   if (items.length === 0) {
     if (!emptyMessage) return null;
     return (
-      <div>
-        <p className="mb-2 text-[10px] font-medium text-neutral-500">{title}</p>
+      <div className="flex flex-col gap-3">
+        <p className="text-[10px] font-medium text-neutral-500">{title}</p>
         <p className="text-[10px] text-neutral-600">{emptyMessage}</p>
       </div>
     );
   }
 
   return (
-    <div>
-      <p className="mb-2 text-[10px] font-medium text-neutral-500">{title}</p>
-      <div className="flex flex-row flex-wrap gap-3 px-1">
+    <div className="flex flex-col gap-3">
+      <p className="text-[10px] font-medium text-neutral-500">{title}</p>
+      <div className="flex flex-row flex-wrap gap-3">
         {items.map((item) => (
           <ImageGalleryCard
             key={item.id}
@@ -284,7 +284,7 @@ export function ImageGalleryPanel({
   if (!hasAny) return null;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-3">
       <ImageGalleryRow
         title="Images générées par l'IA"
         items={aiImages}

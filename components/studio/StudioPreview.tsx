@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useCompositionStore } from '@/stores/compositionStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import {
@@ -9,17 +8,14 @@ import {
   computePreviewScrollPadding,
   PREVIEW_MANIPULATION_MARGIN,
 } from '@/lib/previewLayout';
-import { formatDisplayLabel } from '@/lib/formatPresets';
-import { StudioGlOverlay } from '@/components/studio/StudioGlOverlay';
+import { TIMELINE_LIGHT } from '@/lib/timelineTheme';
+import { PreviewFormatPicker } from '@/components/editor/PreviewFormatPicker';
 import { StudioKonvaEditor } from '@/components/studio/StudioKonvaEditor';
 import { StudioTextClipLayer } from '@/components/studio/StudioTextClipLayer';
 import { StudioCanvasOverlay } from '@/components/studio/StudioCanvasOverlay';
 import { KonvaMultiSelectToolbar } from '@/components/studio/konva/KonvaMultiSelectToolbar';
-
-const StudioPlayer = dynamic(
-  () => import('@/components/studio/StudioPlayer').then((m) => m.StudioPlayer),
-  { ssr: false, loading: () => <div className="h-full w-full bg-gray-900 animate-pulse" /> }
-);
+import { StudioPlayer } from '@/components/studio/StudioPlayer';
+import { StudioGlOverlay } from '@/components/studio/StudioGlOverlay';
 
 /** Marge scroll verticale plus généreuse (style éditeur classique, déplacement horizontal facilité). */
 const STUDIO_SCROLL_PADDING_SCALE = 1.35;
@@ -136,7 +132,9 @@ export function StudioPreview({ fitBounds }: StudioPreviewProps) {
     if (isHandTool) return;
     if ((e.target as HTMLElement).closest('[data-text-zone]')) return;
     if ((e.target as HTMLElement).closest('[data-canvas-zone]')) return;
-    useCompositionStore.getState().setSelectedClip(null);
+    const store = useCompositionStore.getState();
+    store.clearLaneClipSelection();
+    store.setSelectedClip(null);
     useEditorUiStore.getState().setKonvaSelectedIds([]);
     useEditorUiStore.getState().setKonvaFocusedTextClipId(null);
     useEditorUiStore.getState().clearKonvaSnapGuides();
@@ -195,9 +193,7 @@ export function StudioPreview({ fitBounds }: StudioPreviewProps) {
       onMouseDown={isHandTool ? undefined : deselectCanvasZoneIfOutside}
     >
       <div
-        className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-2xl ${
-          showKonvaEditor ? 'overflow-visible' : 'overflow-hidden'
-        }`}
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 overflow-visible shadow-2xl"
         style={{ width: scaledW, height: scaledH }}
       >
         <div
@@ -223,7 +219,17 @@ export function StudioPreview({ fitBounds }: StudioPreviewProps) {
                 : undefined,
           }}
         >
-          {showKonvaEditor ? (
+          {/* Remotion player always mounted behind edit layers — keeps frame sync on scrub/play. */}
+          <div
+            className={`absolute inset-0 z-[10] overflow-visible ${
+              showKonvaEditor ? 'pointer-events-none' : ''
+            }`}
+          >
+            <StudioPlayer width={dimensions.width} height={dimensions.height} />
+            <StudioGlOverlay width={dimensions.width} height={dimensions.height} />
+          </div>
+
+          {showKonvaEditor && (
             <>
               <div
                 data-studio-konva-surface
@@ -256,11 +262,6 @@ export function StudioPreview({ fitBounds }: StudioPreviewProps) {
                 pointerScale={previewZoom}
               />
             </>
-          ) : (
-            <div className="absolute inset-0 z-[10] overflow-hidden">
-              <StudioPlayer width={dimensions.width} height={dimensions.height} />
-              <StudioGlOverlay width={dimensions.width} height={dimensions.height} />
-            </div>
           )}
         </div>
 
@@ -268,10 +269,7 @@ export function StudioPreview({ fitBounds }: StudioPreviewProps) {
           <div
             className="pointer-events-none absolute bottom-2 left-1/2 z-[41] -translate-x-1/2 rounded bg-black/45 px-2 py-0.5 text-[10px] font-medium text-white/90 tabular-nums"
           >
-            {formatDisplayLabel(format, composition?.customAspectW, composition?.customAspectH)}
-            <span className="ml-1 text-white/60">
-              · {dimensions.width}×{dimensions.height}
-            </span>
+            {dimensions.width}×{dimensions.height}
           </div>
         )}
 
@@ -286,28 +284,36 @@ export function StudioPreview({ fitBounds }: StudioPreviewProps) {
 
   return (
     <>
-      <div
-        ref={scrollRef}
-        data-editor-preview-zone
-        className={`h-full w-full overflow-y-auto overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
-          isHandTool ? (draggingHand ? 'cursor-grabbing' : 'cursor-grab') : ''
-        }`}
-        style={{ background: '#f0f1f4' }}
-        onMouseDown={(e) => {
-          if ((e.target as HTMLElement).closest('canvas')) return;
-          handlePreviewPanStart(e);
-          deselectCanvasZoneIfOutside(e);
-        }}
-      >
+      <div className="relative h-full w-full min-h-0">
+        {/* Overlay fixe : ne défile pas avec le scroll preview (réf. CapCut) */}
+        <div className="pointer-events-none absolute inset-0 z-[45]">
+          <PreviewFormatPicker />
+        </div>
+
         <div
-          className="flex w-full flex-col items-center"
-          style={{
-            paddingTop: scrollPadding.top,
-            paddingBottom: scrollPadding.bottom,
-            minHeight: '100%',
+          ref={scrollRef}
+          data-editor-preview-zone
+          className={`h-full w-full overflow-y-auto overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
+            isHandTool ? (draggingHand ? 'cursor-grabbing' : 'cursor-grab') : ''
+          }`}
+          style={{ background: TIMELINE_LIGHT.previewWorkspaceBg }}
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).closest('canvas')) return;
+            if ((e.target as HTMLElement).closest('[data-preview-format-picker]')) return;
+            handlePreviewPanStart(e);
+            deselectCanvasZoneIfOutside(e);
           }}
         >
-          {surface}
+          <div
+            className="flex w-full flex-col items-center"
+            style={{
+              paddingTop: scrollPadding.top,
+              paddingBottom: scrollPadding.bottom,
+              minHeight: '100%',
+            }}
+          >
+            {surface}
+          </div>
         </div>
       </div>
     </>

@@ -9,6 +9,7 @@ import { TextPanelCapCut } from '@/components/editor/TextPanelCapCut';
 import { TEXT_PANEL_DEFAULTS } from '@/lib/editor/textPanelConstants';
 import { TransitionGlPreview } from '@/components/editor/TransitionGlPreview';
 import { TransitionGlLibrary } from '@/components/editor/TransitionGlLibrary';
+import { resolveClipMediaUrl } from '@/lib/glTransitionMedia';
 import {
   GL_TRANSITION_CUT,
   formatGlTransitionLabel,
@@ -24,6 +25,7 @@ import {
   transitionConsecutiveOnLane,
 } from '@/lib/transitionApply';
 import { useCompositionStore } from '@/stores/compositionStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { generateSegmentVideo, getAnalysis } from '@/lib/templates';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { uploadCompositionAsset } from '@/lib/compositions';
@@ -31,11 +33,16 @@ import {
   MEDIA_FILTER_PRESET_IDS,
   MEDIA_FILTER_UI_LABELS,
 } from '@/lib/studio/mediaFilterPresets';
-import { probeMediaDimensions } from '@/lib/studio/mediaDimensions';
+import { buildCenteredNativeMediaLayoutFromUrl } from '@/lib/studio/mediaDimensions';
 import { ImageGalleryPanel, galleryItemFromUrl, type GalleryImageItem } from '@/components/editor/ImageGalleryPanel';
+import { AudioSuggestionsPanel } from '@/components/editor/AudioSuggestionsPanel';
 import { ImageGeneratePromptBox } from '@/components/editor/ImageGeneratePromptBox';
+import { VideoGeneratePromptBox } from '@/components/editor/VideoGeneratePromptBox';
 import { BasicAdvancedModeSwitch, type PanelBasicAdvancedMode } from '@/components/editor/BasicAdvancedModeSwitch';
+import { IconClipMusic } from '@/components/editor/TimelineIcons';
+import { formatAudioDuration, useAudioPreview, type AudioPreviewUi } from '@/hooks/useAudioPreview';
 import { CREDITS_GENERATE_VIDEO } from '@/types/templates';
+import { RightPanelSideNav, SECTION_TABS, type SectionTab } from '@/components/editor/RightPanelSideNav';
 import { PANEL, panelClasses as P, textSectionBoxStyle } from '@/lib/rightPanelTheme';
 
 // ── Transitions (piste V, clips consécutifs) ─────────────────────────────────
@@ -104,8 +111,8 @@ function TransitionSection() {
     });
   };
 
-  const fromMediaUrl = activeFrom?.thumbnail ?? activeFrom?.url;
-  const toMediaUrl = activeTo?.thumbnail ?? activeTo?.url;
+  const fromMediaUrl = activeFrom ? resolveClipMediaUrl(activeFrom) : undefined;
+  const toMediaUrl = activeTo ? resolveClipMediaUrl(activeTo) : undefined;
 
   const setDuration = (d: number) => {
     if (!activeFrom || !activeTo || !activeOk) return;
@@ -220,8 +227,8 @@ function TransitionSection() {
             )}
           </p>
           <TransitionGlPreview
-            fromUrl={fromMediaUrl}
-            toUrl={toMediaUrl}
+            fromClip={activeFrom}
+            toClip={activeTo}
             glTransitionName={resolvedGlName}
             duration={duration}
             disabled={!activeOk}
@@ -437,126 +444,342 @@ function TextSection({ segmentId }: { segmentId: string }) {
 
 // ── Éditeur d’un clip audio (musique ou voix off) ─────────────────────────────
 
-function AudioOrVoClipEditor({
-  clip,
-  emoji,
-  isSelected = false,
-}: {
-  clip: Clip;
-  emoji: string;
-  isSelected?: boolean;
-}) {
-  const { updateClip, removeClip } = useCompositionStore();
+function AudioClipPlayIcon({ className }: { className?: string }) {
   return (
-    <li
-      className={`rounded-lg border px-2 py-1.5 space-y-1.5 ${
-        isSelected
-          ? 'border-cyan-500/70 bg-cyan-950/25 ring-1 ring-cyan-500/40'
-          : clip.muted
-            ? 'border-[#3a3a3a] bg-[#252525]/30 opacity-60'
-            : 'border-[#333333] bg-[#2b2b2b]/60'
-      }`}
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+    </svg>
+  );
+}
+
+function AudioClipPauseIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M6 5h4v14H6V5Zm8 0h4v14h-4V5Z" />
+    </svg>
+  );
+}
+
+function AudioChevronUpIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path d="m18 15-6-6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AudioSlidersIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className={className} aria-hidden>
+      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" strokeLinecap="round" />
+      <path d="M2 14h4M10 8h4M18 16h4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function AudioTrashIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className={className} aria-hidden>
+      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AudioPlusIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={className} aria-hidden>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function clipThumbGradient(title: string): string {
+  let hash = 0;
+  for (let i = 0; i < title.length; i += 1) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `linear-gradient(135deg, hsl(${hue} 45% 38%) 0%, hsl(${(hue + 35) % 360} 50% 24%) 100%)`;
+}
+
+interface GalleryAudioItem {
+  id: string;
+  url: string;
+  name: string;
+  volume?: number;
+  playbackRate?: number;
+  fadeIn?: number;
+  fadeOut?: number;
+}
+
+function AudioPreviewScrubber({
+  current = 0,
+  total,
+  playing,
+  onSeek,
+}: {
+  current?: number;
+  total?: number;
+  playing?: boolean;
+  onSeek: (time: number) => void;
+}) {
+  const safeTotal =
+    total != null && Number.isFinite(total) && total > 0 ? total : Math.max(current, 1);
+  const safeCurrent = Math.max(0, Math.min(safeTotal, current ?? 0));
+  const progressPct = safeTotal > 0 ? (safeCurrent / safeTotal) * 100 : 0;
+
+  return (
+    <div
+      className="overflow-hidden border-t border-white/[0.06] px-3 pb-3 pt-2.5 animate-in fade-in slide-in-from-top-1 duration-200"
+      aria-live={playing ? 'polite' : 'off'}
     >
-      <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-neutral-200 truncate flex-1">
-          {emoji} {clip.content ?? 'Audio'}
-        </span>
-        <button
-          type="button"
-          onClick={() => updateClip(clip.id, { muted: !clip.muted })}
-          title={clip.muted ? 'Réactiver' : 'Muet'}
-          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-            clip.muted ? 'bg-[#404040] text-neutral-400' : 'bg-[#2b2b2b] text-neutral-300 hover:bg-[#404040]'
-          }`}
-        >
-          {clip.muted ? '🔇' : '🔊'}
-        </button>
-        <button
-          type="button"
-          onClick={() => removeClip(clip.id)}
-          className="shrink-0 rounded px-1 py-0.5 text-[10px] text-red-400 hover:bg-red-900/40"
-          title="Supprimer"
-        >
-          ✕
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-neutral-500 w-12 shrink-0">Volume</span>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.01}
-          value={clip.volume ?? 0.8}
-          onChange={(e) => updateClip(clip.id, { volume: parseFloat(e.target.value) })}
-          className="flex-1 h-1 accent-green-500 cursor-pointer"
-        />
-        <span className="text-[10px] text-neutral-400 w-8 text-right tabular-nums">
-          {Math.round((clip.volume ?? 0.8) * 100)}%
+      <div className="flex items-center gap-2.5">
+        <div className="relative flex h-3 min-w-0 flex-1 items-center">
+          <input
+            type="range"
+            min={0}
+            max={safeTotal}
+            step={0.05}
+            value={safeCurrent}
+            onChange={(e) => onSeek(parseFloat(e.target.value))}
+            style={{
+              background: `linear-gradient(to right, #8a8a8e 0%, #8a8a8e ${progressPct}%, #4a4a4e ${progressPct}%, #4a4a4e 100%)`,
+            }}
+            className="audio-preview-scrubber w-full"
+            aria-label="Position de lecture"
+            aria-valuetext={`${formatAudioDuration(safeCurrent)} sur ${formatAudioDuration(safeTotal)}`}
+          />
+        </div>
+        <span className="shrink-0 text-[10px] tabular-nums">
+          <span className="text-neutral-100">{formatAudioDuration(safeCurrent)}</span>
+          <span className="text-neutral-600"> | </span>
+          <span className="text-neutral-500">{formatAudioDuration(safeTotal)}</span>
         </span>
       </div>
+    </div>
+  );
+}
 
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-neutral-500 w-12 shrink-0">Vitesse</span>
-        <input
-          type="range"
-          min={0.25}
-          max={2}
-          step={0.05}
-          value={clip.playbackRate ?? 1}
-          onChange={(e) => updateClip(clip.id, { playbackRate: parseFloat(e.target.value) })}
-          className="flex-1 h-1 accent-cyan-500 cursor-pointer"
-        />
-        <span className="text-[10px] text-neutral-400 w-8 text-right tabular-nums">
-          {(clip.playbackRate ?? 1).toFixed(2)}x
-        </span>
-      </div>
+function AudioLibraryRow({
+  item,
+  previewUi,
+  previewDuration,
+  previewCurrentTime,
+  onTogglePlay,
+  onSeek,
+  onAddToTimeline,
+  onRemoveFromLibrary,
+  onUpdateSettings,
+}: {
+  item: GalleryAudioItem;
+  previewUi: AudioPreviewUi;
+  previewDuration?: number;
+  previewCurrentTime?: number;
+  onTogglePlay: (item: GalleryAudioItem) => void;
+  onSeek: (time: number) => void;
+  onAddToTimeline: () => void;
+  onRemoveFromLibrary: () => void;
+  onUpdateSettings: (patch: Partial<GalleryAudioItem>) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isActivePreview = previewUi?.clipId === item.id;
+  const isPlaying = isActivePreview && previewUi.playing;
+  const durationLabel =
+    previewDuration != null && Number.isFinite(previewDuration) && previewDuration > 0
+      ? formatAudioDuration(previewDuration)
+      : '--:--';
 
-      <div className="flex flex-col gap-1.5 pt-0.5 border-t border-[#3a3a3a]/40">
-        <p className="text-[9px] font-semibold uppercase tracking-wide text-neutral-500">Fondu</p>
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[10px] text-cyan-400/90 shrink-0 w-14">Fade in</span>
-            <input
-              type="range"
-              min={0}
-              max={3}
-              step={0.1}
-              value={clip.fadeIn ?? 0}
-              onChange={(e) => updateClip(clip.id, { fadeIn: parseFloat(e.target.value) })}
-              className="min-w-0 flex-1 h-1.5 accent-cyan-500 cursor-pointer"
-              title="Fade in"
+  return (
+    <li className="group/clip">
+      <div
+        className={`rounded-xl transition-all duration-200 ${
+          isActivePreview
+            ? 'border border-[#3a3a3a]/80 bg-[#252528]/95 backdrop-blur-md'
+            : expanded
+              ? 'border border-cyan-500/45 bg-[#141820]/90'
+              : 'group-hover/clip:bg-[#252528]/90 group-hover/clip:backdrop-blur-md'
+        }`}
+      >
+        <div className="flex min-h-[72px] items-center gap-3 px-3 py-3">
+          <div className="relative h-14 w-14 shrink-0">
+            <div
+              className="absolute inset-0 overflow-hidden rounded-lg"
+              style={{ background: clipThumbGradient(item.name) }}
             />
-            <span className="text-[10px] text-neutral-400 w-9 shrink-0 text-right tabular-nums">
-              {(clip.fadeIn ?? 0).toFixed(1)}s
-            </span>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg">
+              <IconClipMusic className="h-6 w-6 text-white/30" />
+            </div>
+            <div className="absolute inset-0 rounded-lg bg-black/20" />
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePlay(item);
+              }}
+              disabled={!item.url}
+              title={isPlaying ? 'Pause' : 'Écouter'}
+              className={`absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/45 text-white transition-opacity disabled:cursor-not-allowed ${
+                isActivePreview ? 'opacity-100' : 'opacity-0 group-hover/clip:opacity-100'
+              }`}
+            >
+              {isPlaying ? (
+                <AudioClipPauseIcon className="h-5 w-5 drop-shadow" />
+              ) : (
+                <AudioClipPlayIcon className="h-5 w-5 drop-shadow" />
+              )}
+            </button>
           </div>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[10px] text-orange-400/90 shrink-0 w-14">Fade out</span>
-            <input
-              type="range"
-              min={0}
-              max={3}
-              step={0.1}
-              value={clip.fadeOut ?? 0}
-              onChange={(e) => updateClip(clip.id, { fadeOut: parseFloat(e.target.value) })}
-              className="min-w-0 flex-1 h-1.5 accent-orange-500 cursor-pointer"
-              title="Fade out"
-            />
-            <span className="text-[10px] text-neutral-400 w-9 shrink-0 text-right tabular-nums">
-              {(clip.fadeOut ?? 0).toFixed(1)}s
-            </span>
+
+          <div className="min-w-0 flex-1 py-0.5">
+            <p className="truncate text-[13px] font-medium leading-snug text-neutral-100">
+              {item.name}
+            </p>
+            <p className="mt-0.5 text-[11px] tabular-nums text-neutral-500">{durationLabel}</p>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-end gap-1.5 self-start pt-0.5">
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                title={expanded ? 'Replier' : 'Réglages'}
+                className="rounded p-1.5 text-neutral-500 hover:bg-white/5 hover:text-neutral-200"
+              >
+                {expanded ? (
+                  <AudioChevronUpIcon className="h-4 w-4" />
+                ) : (
+                  <AudioSlidersIcon className="h-4 w-4" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onRemoveFromLibrary}
+                title="Retirer de la bibliothèque"
+                className="rounded p-1.5 text-neutral-500 hover:bg-red-900/30 hover:text-red-400"
+              >
+                <AudioTrashIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={onAddToTimeline}
+              title="Ajouter à la timeline"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500 text-white shadow-md opacity-0 transition-opacity hover:bg-cyan-400 group-hover/clip:opacity-100"
+            >
+              <AudioPlusIcon className="h-3 w-3" />
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="flex items-center gap-2 text-[10px] text-neutral-600">
-        <span>{clip.startTime.toFixed(1)}s → {clip.endTime.toFixed(1)}s</span>
+        {isActivePreview && (
+          <AudioPreviewScrubber
+            current={previewCurrentTime}
+            total={previewDuration}
+            playing={isPlaying}
+            onSeek={onSeek}
+          />
+        )}
+
+        {expanded && (
+          <div className="mx-2 mb-2 space-y-2.5 rounded-lg border border-cyan-500/35 bg-[#101418]/60 p-2.5 font-semibold">
+            <div>
+              <p className="mb-1.5 text-[10px] text-neutral-500">Volume &amp; vitesse</p>
+              <div className="space-y-1.5">
+                <div className="group/audio-slider flex items-center gap-2">
+                  <span className="w-12 shrink-0 text-[10px] text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    Volume
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.01}
+                    value={item.volume ?? 0.8}
+                    onChange={(e) =>
+                      onUpdateSettings({ volume: parseFloat(e.target.value) })
+                    }
+                    className="audio-settings-slider min-w-0 flex-1"
+                  />
+                  <span className="w-9 text-right text-[10px] tabular-nums text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    {Math.round((item.volume ?? 0.8) * 100)}%
+                  </span>
+                </div>
+                <div className="group/audio-slider flex items-center gap-2">
+                  <span className="w-12 shrink-0 text-[10px] text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    Vitesse
+                  </span>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={2}
+                    step={0.05}
+                    value={item.playbackRate ?? 1}
+                    onChange={(e) =>
+                      onUpdateSettings({ playbackRate: parseFloat(e.target.value) })
+                    }
+                    className="audio-settings-slider min-w-0 flex-1"
+                  />
+                  <span className="w-9 text-right text-[10px] tabular-nums text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    {(item.playbackRate ?? 1).toFixed(2)}x
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1.5 text-[10px] text-neutral-500">Fondu</p>
+              <div className="space-y-1.5">
+                <div className="group/audio-slider flex min-w-0 items-center gap-2">
+                  <span className="w-14 shrink-0 text-[10px] text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    Fade in
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={3}
+                    step={0.1}
+                    value={item.fadeIn ?? 0}
+                    onChange={(e) =>
+                      onUpdateSettings({ fadeIn: parseFloat(e.target.value) })
+                    }
+                    className="audio-settings-slider min-w-0 flex-1"
+                  />
+                  <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    {(item.fadeIn ?? 0).toFixed(1)}s
+                  </span>
+                </div>
+                <div className="group/audio-slider flex min-w-0 items-center gap-2">
+                  <span className="w-14 shrink-0 text-[10px] text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    Fade out
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={3}
+                    step={0.1}
+                    value={item.fadeOut ?? 0}
+                    onChange={(e) =>
+                      onUpdateSettings({ fadeOut: parseFloat(e.target.value) })
+                    }
+                    className="audio-settings-slider min-w-0 flex-1"
+                  />
+                  <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-neutral-500 transition-colors group-hover/audio-slider:text-white">
+                    {(item.fadeOut ?? 0).toFixed(1)}s
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </li>
   );
 }
+
+type AudioPanelMode = 'basic' | 'voiceover';
 
 // ── Section: AUDIO ───────────────────────────────────────────────────────────
 
@@ -571,30 +794,101 @@ function AudioSection({
 }) {
   const segment = analysis.segments?.find((s) => s.id === segmentId);
   const { addClip, currentTime, composition } = useCompositionStore();
-  const selectedClipId = useCompositionStore((s) => s.selectedClipId);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadedAudioLibrary, setUploadedAudioLibrary] = useState<GalleryAudioItem[]>([]);
+  const [uploadedVoLibrary, setUploadedVoLibrary] = useState<GalleryAudioItem[]>([]);
 
   const segBgClip = composition?.tracks.background.find((c) => c.segmentId === segmentId);
   const segDuration = segBgClip ? segBgClip.endTime - segBgClip.startTime : 5;
   const segStart = segBgClip?.startTime ?? currentTime;
 
-  // All audio clips currently on the track
-  const allAudioClips = composition?.tracks.audio ?? [];
-  const allVoiceoverClips = composition?.tracks.voiceover ?? [];
+  const audioLibrary = uploadedAudioLibrary;
+  const voLibrary = uploadedVoLibrary;
+
+  useEffect(() => {
+    setUploadedAudioLibrary((prev) => {
+      const byUrl = new Map(prev.map((i) => [i.url, i]));
+      let changed = false;
+      for (const c of composition?.tracks.audio ?? []) {
+        if (!c.url || byUrl.has(c.url)) continue;
+        byUrl.set(c.url, {
+          id: `lib-${c.id}`,
+          url: c.url,
+          name: c.content ?? 'Audio',
+          volume: c.volume ?? 0.8,
+          playbackRate: c.playbackRate ?? 1,
+          fadeIn: c.fadeIn ?? 0,
+          fadeOut: c.fadeOut ?? 0,
+        });
+        changed = true;
+      }
+      return changed ? Array.from(byUrl.values()) : prev;
+    });
+  }, [composition?.tracks.audio]);
+
+  useEffect(() => {
+    setUploadedVoLibrary((prev) => {
+      const byUrl = new Map(prev.map((i) => [i.url, i]));
+      let changed = false;
+      for (const c of composition?.tracks.voiceover ?? []) {
+        if (!c.url || byUrl.has(c.url)) continue;
+        byUrl.set(c.url, {
+          id: `lib-${c.id}`,
+          url: c.url,
+          name: c.content ?? 'Audio',
+          volume: c.volume ?? 1,
+          playbackRate: c.playbackRate ?? 1,
+          fadeIn: c.fadeIn ?? 0.15,
+          fadeOut: c.fadeOut ?? 0.15,
+        });
+        changed = true;
+      }
+      return changed ? Array.from(byUrl.values()) : prev;
+    });
+  }, [composition?.tracks.voiceover]);
 
   const voFileRef = useRef<HTMLInputElement>(null);
   const [voUploading, setVoUploading] = useState(false);
   const [voUploadPct, setVoUploadPct] = useState(0);
   const [voUploadError, setVoUploadError] = useState<string | null>(null);
+  const [panelMode, setPanelMode] = useState<AudioPanelMode>('basic');
+  const { previewUi, durations, currentTimes, togglePreview, seekPreview, applyPreviewSettings } =
+    useAudioPreview();
+
+  const handleTogglePreview = useCallback(
+    (item: GalleryAudioItem) => {
+      togglePreview(item.id, item.url, {
+        settings: {
+          volume: item.volume ?? 0.8,
+          playbackRate: item.playbackRate ?? 1,
+        },
+      });
+    },
+    [togglePreview]
+  );
 
   const voEnd = segBgClip ? segBgClip.endTime : segStart + segDuration;
 
   const handleAddSuggestion = useCallback(
     (url: string | null, title: string) => {
       if (!url) return;
+      setUploadedAudioLibrary((prev) => {
+        if (prev.some((i) => i.url === url)) return prev;
+        return [
+          ...prev,
+          {
+            id: `sug-${Date.now()}`,
+            url,
+            name: title,
+            volume: 0.8,
+            fadeIn: 0.5,
+            fadeOut: 0.5,
+          },
+        ];
+      });
       addClip({
         id: `audio-${Date.now()}`,
         trackType: 'audio',
@@ -612,6 +906,83 @@ function AudioSection({
     [addClip, segStart, segDuration, segmentId]
   );
 
+  const addAudioItemToTimeline = useCallback(
+    (item: GalleryAudioItem) => {
+      addClip({
+        id: `audio-${Date.now()}`,
+        trackType: 'audio',
+        type: 'audio',
+        startTime: currentTime,
+        endTime: currentTime + 30,
+        url: item.url,
+        volume: item.volume ?? 0.8,
+        playbackRate: item.playbackRate ?? 1,
+        fadeIn: item.fadeIn ?? 0,
+        fadeOut: item.fadeOut ?? 0,
+        content: item.name,
+      });
+    },
+    [addClip, currentTime]
+  );
+
+  const addVoItemToTimeline = useCallback(
+    (item: GalleryAudioItem) => {
+      addClip({
+        id: `vo-${Date.now()}`,
+        trackType: 'voiceover',
+        type: 'audio',
+        startTime: segStart,
+        endTime: voEnd,
+        url: item.url,
+        volume: item.volume ?? 1,
+        playbackRate: item.playbackRate ?? 1,
+        fadeIn: item.fadeIn ?? 0.15,
+        fadeOut: item.fadeOut ?? 0.15,
+        content: item.name,
+        segmentId,
+      });
+    },
+    [addClip, segStart, voEnd, segmentId]
+  );
+
+  const updateAudioLibraryItem = useCallback(
+    (id: string, patch: Partial<GalleryAudioItem>) => {
+      setUploadedAudioLibrary((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, ...patch } : i))
+      );
+      if (patch.volume != null || patch.playbackRate != null) {
+        applyPreviewSettings(id, {
+          volume: patch.volume,
+          playbackRate: patch.playbackRate,
+        });
+      }
+    },
+    [applyPreviewSettings]
+  );
+
+  const updateVoLibraryItem = useCallback(
+    (id: string, patch: Partial<GalleryAudioItem>) => {
+      setUploadedVoLibrary((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, ...patch } : i))
+      );
+      if (patch.volume != null || patch.playbackRate != null) {
+        applyPreviewSettings(id, {
+          volume: patch.volume,
+          playbackRate: patch.playbackRate,
+        });
+      }
+    },
+    [applyPreviewSettings]
+  );
+
+  const removeFromAudioLibrary = useCallback((id: string) => {
+    setUploadedAudioLibrary((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
+  const removeFromVoLibrary = useCallback((id: string) => {
+    setUploadedVoLibrary((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
   const handleUpload = useCallback(
     async (file: File) => {
       if (!compositionId) {
@@ -623,15 +994,20 @@ function AudioSection({
       setUploadError(null);
       try {
         const { assetUrl } = await uploadCompositionAsset(compositionId, file, setUploadPct);
-        addClip({
-          id: `audio-upload-${Date.now()}`,
-          trackType: 'audio',
-          type: 'audio',
-          startTime: currentTime,
-          endTime: currentTime + 30,
-          url: assetUrl,
-          volume: 0.8,
-          content: file.name,
+        setUploadedAudioLibrary((prev) => {
+          if (prev.some((i) => i.url === assetUrl)) return prev;
+          return [
+            ...prev,
+            {
+              id: `upload-${Date.now()}`,
+              url: assetUrl,
+              name: file.name,
+              volume: 0.8,
+              playbackRate: 1,
+              fadeIn: 0,
+              fadeOut: 0,
+            },
+          ];
         });
       } catch (e) {
         setUploadError(getApiErrorMessage(e, 'Impossible d\'importer l\'audio.'));
@@ -639,7 +1015,7 @@ function AudioSection({
         setUploading(false);
       }
     },
-    [compositionId, addClip, currentTime]
+    [compositionId]
   );
 
   const handleVoUpload = useCallback(
@@ -653,18 +1029,20 @@ function AudioSection({
       setVoUploadError(null);
       try {
         const { assetUrl } = await uploadCompositionAsset(compositionId, file, setVoUploadPct);
-        addClip({
-          id: `vo-upload-${Date.now()}`,
-          trackType: 'voiceover',
-          type: 'audio',
-          startTime: segStart,
-          endTime: voEnd,
-          url: assetUrl,
-          volume: 1,
-          fadeIn: 0.15,
-          fadeOut: 0.15,
-          content: file.name,
-          segmentId,
+        setUploadedVoLibrary((prev) => {
+          if (prev.some((i) => i.url === assetUrl)) return prev;
+          return [
+            ...prev,
+            {
+              id: `vo-upload-${Date.now()}`,
+              url: assetUrl,
+              name: file.name,
+              volume: 1,
+              playbackRate: 1,
+              fadeIn: 0.15,
+              fadeOut: 0.15,
+            },
+          ];
         });
       } catch (e) {
         setVoUploadError(getApiErrorMessage(e, 'Impossible d\'importer la voix off.'));
@@ -672,142 +1050,134 @@ function AudioSection({
         setVoUploading(false);
       }
     },
-    [compositionId, addClip, segStart, voEnd, segmentId]
+    [compositionId]
   );
 
   return (
-    <div className="space-y-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Audio</p>
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <BasicAdvancedModeSwitch
+        mode={panelMode === 'voiceover' ? 'advanced' : 'basic'}
+        onChange={(m) => setPanelMode(m === 'advanced' ? 'voiceover' : 'basic')}
+        basicLabel="Basic"
+        advancedLabel="Voix off"
+        ariaLabel="Mode audio"
+      />
 
-      {uploadError && <p className="text-[10px] text-red-400">{uploadError}</p>}
+      {panelMode === 'basic' ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {uploadError && <p className="text-[10px] text-red-400">{uploadError}</p>}
 
-      {/* ── Musique de fond (piste A) ── */}
-      {allAudioClips.length > 0 && (
-        <div>
-          <p className="text-[10px] text-neutral-500 mb-1">Musique / fond sonore (A)</p>
-          <ul className="space-y-2">
-            {allAudioClips.map((clip) => (
-              <AudioOrVoClipEditor
-                key={clip.id}
-                clip={clip}
-                emoji="🎵"
-                isSelected={clip.id === selectedClipId}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {segment?.audioSuggestions && segment.audioSuggestions.length > 0 && (
-        <div>
-          <p className="text-[10px] text-neutral-500 mb-1">Suggestions IA</p>
-          <ul className="space-y-1 max-h-40 overflow-y-auto pr-1">
-            {segment.audioSuggestions.map((s, i) => (
-              <li key={`${s.title}-${i}`} className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleAddSuggestion(s.url ?? null, s.title)}
-                  disabled={!s.url}
-                  className="shrink-0 rounded bg-green-700 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-green-600 disabled:opacity-40"
-                  title="Ajouter à la timeline"
-                >
-                  + Ajouter
-                </button>
-                <span className="text-xs text-neutral-300 truncate">{s.title}</span>
-                {s.url && (
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-[10px] text-cyan-400 hover:text-cyan-300"
-                  >
-                    ↗
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div>
-        <p className="text-[10px] text-neutral-500 mb-1">Votre audio (mp3/wav/aac)</p>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,.mp3,.wav,.aac"
-          className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); }}
-        />
-        {uploading ? (
-          <div className="rounded bg-[#2b2b2b] h-2 overflow-hidden">
-            <div className="h-full bg-green-500 transition-all" style={{ width: `${uploadPct}%` }} />
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="w-full rounded-lg border border-dashed border-[#3a3a3a] py-2 text-xs text-neutral-400 hover:border-neutral-400 hover:text-neutral-200 transition-colors"
-          >
-            📎 Choisir un fichier audio
-          </button>
-        )}
-      </div>
-
-      {/* ── Voix off (VO) — piste timeline séparée sous la musique ── */}
-      <div className="rounded-lg border border-pink-900/40 bg-pink-950/20 p-2.5 space-y-2">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-pink-400">Voix off (VO)</p>
-          <p className="text-[10px] text-neutral-400 leading-snug mt-0.5">
-            Narration, commentaire ou enregistrement par-dessus la musique. Les clips apparaissent sur la piste{' '}
-            <span className="text-pink-300 font-semibold">VO1, VO2…</span> sous la piste <span className="text-emerald-400">A</span>.
-            Même outils que la musique : volume, vitesse, fade, coupe sur la timeline.
-          </p>
-        </div>
-        {voUploadError && <p className="text-[10px] text-red-400">{voUploadError}</p>}
-        {allVoiceoverClips.length > 0 && (
-          <div>
-            <p className="text-[10px] text-neutral-500 mb-1">Clips voix off sur la composition</p>
+          {audioLibrary.length > 0 && (
             <ul className="space-y-2">
-              {allVoiceoverClips.map((clip) => (
-                <AudioOrVoClipEditor
-                  key={clip.id}
-                  clip={clip}
-                  emoji="🎙️"
-                  isSelected={clip.id === selectedClipId}
+              {audioLibrary.map((item) => (
+                <AudioLibraryRow
+                  key={item.id}
+                  item={item}
+                  previewUi={previewUi}
+                  previewDuration={durations[item.id]}
+                  previewCurrentTime={currentTimes[item.id]}
+                  onTogglePlay={handleTogglePreview}
+                  onSeek={(time) => seekPreview(item.id, time)}
+                  onAddToTimeline={() => addAudioItemToTimeline(item)}
+                  onRemoveFromLibrary={() => removeFromAudioLibrary(item.id)}
+                  onUpdateSettings={(patch) => updateAudioLibraryItem(item.id, patch)}
                 />
               ))}
             </ul>
+          )}
+
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,.mp3,.wav,.aac"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleUpload(f);
+              }}
+            />
+            {uploading ? (
+              <div className="h-2 overflow-hidden rounded-xl bg-[#2a2b2e]">
+                <div
+                  className="h-full bg-cyan-400 transition-all"
+                  style={{ width: `${uploadPct}%` }}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/25 bg-[#141414] px-4 py-2.5 text-xs font-medium text-neutral-200 transition-colors hover:border-white/40 hover:bg-[#1c1c1c]"
+              >
+                <span className="text-sm leading-none">+</span>
+                Ajouter un fichier audio
+              </button>
+            )}
           </div>
-        )}
-        <div>
-          <p className="text-[10px] text-neutral-500 mb-1">Importer une voix off</p>
-          <input
-            ref={voFileRef}
-            type="file"
-            accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,audio/webm,.mp3,.wav,.aac,.m4a,.webm"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void handleVoUpload(f);
-              e.target.value = '';
-            }}
-          />
-          {voUploading ? (
-            <div className="rounded bg-[#2b2b2b] h-2 overflow-hidden">
-              <div className="h-full bg-pink-500 transition-all" style={{ width: `${voUploadPct}%` }} />
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => voFileRef.current?.click()}
-              className="w-full rounded-lg border border-dashed border-pink-600/50 py-2 text-xs text-pink-200/90 hover:border-pink-400 hover:bg-pink-900/20 transition-colors"
-            >
-              🎙️ Choisir un fichier voix off
-            </button>
+
+          {segment?.audioSuggestions && segment.audioSuggestions.length > 0 && (
+            <AudioSuggestionsPanel
+              suggestions={segment.audioSuggestions}
+              onAdd={(url, title) => handleAddSuggestion(url, title)}
+            />
           )}
         </div>
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {voUploadError && <p className="text-[10px] text-red-400">{voUploadError}</p>}
+
+          {voLibrary.length > 0 && (
+            <ul className="space-y-2">
+              {voLibrary.map((item) => (
+                <AudioLibraryRow
+                  key={item.id}
+                  item={item}
+                  previewUi={previewUi}
+                  previewDuration={durations[item.id]}
+                  previewCurrentTime={currentTimes[item.id]}
+                  onTogglePlay={handleTogglePreview}
+                  onSeek={(time) => seekPreview(item.id, time)}
+                  onAddToTimeline={() => addVoItemToTimeline(item)}
+                  onRemoveFromLibrary={() => removeFromVoLibrary(item.id)}
+                  onUpdateSettings={(patch) => updateVoLibraryItem(item.id, patch)}
+                />
+              ))}
+            </ul>
+          )}
+
+          <div>
+            <input
+              ref={voFileRef}
+              type="file"
+              accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,audio/webm,.mp3,.wav,.aac,.m4a,.webm"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleVoUpload(f);
+                e.target.value = '';
+              }}
+            />
+            {voUploading ? (
+              <div className="h-2 overflow-hidden rounded-xl bg-[#2a2b2e]">
+                <div
+                  className="h-full bg-cyan-400 transition-all"
+                  style={{ width: `${voUploadPct}%` }}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => voFileRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/25 bg-[#141414] px-4 py-2.5 text-xs font-medium text-neutral-200 transition-colors hover:border-white/40 hover:bg-[#1c1c1c]"
+              >
+                <span className="text-sm leading-none">+</span>
+                Ajouter un fichier voix off
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -921,13 +1291,21 @@ function ImageSection({
     );
   }, [composition, selectedClipId, currentTime]);
 
-  const aiGeneratedUrls = segment?.generatedImages ?? [];
+  const aiGeneratedUrls = useMemo(
+    () => segment?.generatedImages ?? [],
+    [segment?.generatedImages]
+  );
 
   const handleAddImage = useCallback(
     (url: string) => {
       void (async () => {
         const fromAi = aiGeneratedUrls.includes(url);
-        const { width, height } = await probeMediaDimensions(url);
+        const layout = await buildCenteredNativeMediaLayoutFromUrl(
+          url,
+          'image',
+          composition ?? null,
+          useEditorUiStore.getState().previewCanvasSize
+        );
         insertClipAtPlayhead({
           id: `img-${Date.now()}`,
           trackType: 'background',
@@ -938,19 +1316,11 @@ function ImageSection({
           thumbnail: url,
           isFromAI: fromAi,
           segmentId,
-          x: 50,
-          y: 50,
-          boxWidthPct: 100,
-          mediaNaturalWidth: width,
-          mediaNaturalHeight: height,
-          mediaScale: 1,
-          mediaOffsetX: 0,
-          mediaOffsetY: 0,
-          mediaRotation: 0,
+          ...layout,
         });
       })();
     },
-    [insertClipAtPlayhead, currentTime, segmentId, aiGeneratedUrls]
+    [insertClipAtPlayhead, currentTime, segmentId, aiGeneratedUrls, composition]
   );
 
   const handleUpload = useCallback(
@@ -1029,62 +1399,60 @@ function ImageSection({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3">
       <BasicAdvancedModeSwitch
         mode={panelMode}
         ariaLabel="Mode d'édition image"
         onChange={setPanelMode}
       />
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {panelMode === 'basic' ? (
           <>
-            <div className="pt-1">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void handleUpload(f);
-                }}
-              />
-              {uploading ? (
-                <div className="rounded-xl bg-[#2a2b2e] px-4 py-3">
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[#1a1a1c]">
-                    <div
-                      className="h-full bg-cyan-400 transition-all"
-                      style={{ width: `${uploadPct}%` }}
-                    />
-                  </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleUpload(f);
+              }}
+            />
+            {uploading ? (
+              <div className="rounded-xl bg-[#2a2b2e] px-4 py-3">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[#1a1a1c]">
+                  <div
+                    className="h-full bg-cyan-400 transition-all"
+                    style={{ width: `${uploadPct}%` }}
+                  />
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2a2b2e] px-4 py-3 text-sm font-medium text-cyan-400 transition-colors hover:bg-[#33353a]"
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#2a2b2e] px-4 py-3 text-sm font-medium text-cyan-400 transition-colors hover:bg-[#33353a]"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M12 13V7" />
-                    <path d="m9 10 3-3 3 3" />
-                    <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
-                  </svg>
-                  Upload
-                </button>
-              )}
-            </div>
+                  <path d="M12 13V7" />
+                  <path d="m9 10 3-3 3 3" />
+                  <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
+                </svg>
+                Upload
+              </button>
+            )}
 
             <ImageGalleryPanel
               aiImages={aiImages}
@@ -1094,7 +1462,7 @@ function ImageSection({
             />
           </>
         ) : (
-          <div className="space-y-4 pb-2">
+          <div className="flex flex-col gap-3 pb-2">
             <FrameCanvasPanel />
             <FilterPicker
               targetClip={activeImageClip}
@@ -1105,7 +1473,7 @@ function ImageSection({
       </div>
 
       {panelMode === 'basic' && (
-        <div className="mt-auto shrink-0 border-t border-[#2e2e30] px-3 pb-1 pt-4">
+        <div className="min-w-0 w-full shrink-0 border-t border-[#2e2e30] pb-1 pt-3">
           <ImageGeneratePromptBox
             segmentId={segmentId}
             segment={segment}
@@ -1210,6 +1578,12 @@ function VideoSection({
         const seg = updated.segments?.find((s) => s.id === segmentId);
         if (seg?.generatedVideoUrl) {
           onAnalysisUpdate(updated);
+          const layout = await buildCenteredNativeMediaLayoutFromUrl(
+            seg.generatedVideoUrl,
+            'video',
+            composition ?? null,
+            useEditorUiStore.getState().previewCanvasSize
+          );
           insertClipAtPlayhead({
             id: `vid-ai-${Date.now()}`,
             trackType: 'background',
@@ -1219,13 +1593,7 @@ function VideoSection({
             url: seg.generatedVideoUrl,
             segmentId,
             isFromAI: true,
-            x: 50,
-            y: 50,
-            boxWidthPct: 100,
-            mediaScale: 1,
-            mediaOffsetX: 0,
-            mediaOffsetY: 0,
-            mediaRotation: 0,
+            ...layout,
           });
           window.dispatchEvent(new Event('credits-updated'));
           return;
@@ -1240,7 +1608,7 @@ function VideoSection({
     } finally {
       setGenerating(false);
     }
-  }, [segmentId, analysis.id, currentTime, insertClipAtPlayhead, onAnalysisUpdate]);
+  }, [segmentId, analysis.id, currentTime, insertClipAtPlayhead, onAnalysisUpdate, composition]);
 
   const handleUpload = useCallback(
     async (file: File) => {
@@ -1248,6 +1616,12 @@ function VideoSection({
       setUploading(true);
       try {
         const { assetUrl } = await uploadCompositionAsset(compositionId, file, setUploadPct);
+        const layout = await buildCenteredNativeMediaLayoutFromUrl(
+          assetUrl,
+          'video',
+          composition ?? null,
+          useEditorUiStore.getState().previewCanvasSize
+        );
         insertClipAtPlayhead({
           id: `vid-upload-${Date.now()}`,
           trackType: 'background',
@@ -1257,13 +1631,7 @@ function VideoSection({
           url: assetUrl,
           trimStart: 0,
           segmentId,
-          x: 50,
-          y: 50,
-          boxWidthPct: 100,
-          mediaScale: 1,
-          mediaOffsetX: 0,
-          mediaOffsetY: 0,
-          mediaRotation: 0,
+          ...layout,
         });
       } catch {
         // ignore
@@ -1271,105 +1639,119 @@ function VideoSection({
         setUploading(false);
       }
     },
-    [compositionId, insertClipAtPlayhead, currentTime, segmentId]
+    [compositionId, insertClipAtPlayhead, currentTime, segmentId, composition]
   );
 
   return (
-    <div className="space-y-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Vidéo</p>
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3">
+      {/* Zone scrollable */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Vidéo</p>
 
-      {error && <p className="text-[10px] text-red-400">{error}</p>}
+        {error && <p className="text-[10px] text-red-400">{error}</p>}
 
-      {segment?.generatedVideoUrl ? (
-        <div>
-          <p className="text-[10px] text-neutral-500 mb-1">Fond vidéo IA</p>
-          <video
-            src={segment.generatedVideoUrl}
-            muted
-            loop
-            autoPlay
-            playsInline
-            className="w-full rounded border border-[#3a3a3a]"
-            style={{ maxHeight: 100 }}
-          >
-            <track kind="captions" />
-          </video>
-          <button
-            type="button"
-            onClick={() =>
-              insertClipAtPlayhead({
-                id: `vid-ai-${Date.now()}`,
-                trackType: 'background',
-                type: 'video',
-                startTime: currentTime,
-                endTime: currentTime + (segment.videoDurationSeconds ?? 6),
-                url: segment.generatedVideoUrl!,
-                segmentId,
-                isFromAI: true,
-                x: 50,
-                y: 50,
-                boxWidthPct: 100,
-                mediaScale: 1,
-                mediaOffsetX: 0,
-                mediaOffsetY: 0,
-                mediaRotation: 0,
-              })
-            }
-            className="mt-1 w-full rounded-lg bg-[#2b2b2b] px-2 py-1 text-xs font-semibold text-white hover:bg-[#404040]"
-          >
-            + Ajouter à la timeline
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => void handleGenerate()}
-          disabled={generating}
-          className="w-full rounded-lg bg-gradient-to-r from-teal-700 to-teal-600 py-2 text-xs font-semibold text-white hover:from-teal-600 hover:to-teal-500 disabled:opacity-60"
-        >
-          {generating ? (
-            <span className="inline-flex items-center gap-2">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Génération…
-            </span>
-          ) : (
-            `🎬 Générer fond vidéo (-${CREDITS_GENERATE_VIDEO} crédits)`
-          )}
-        </button>
-      )}
-
-      <div>
-        <p className="text-[10px] text-neutral-500 mb-1">Votre vidéo (mp4/mov/webm)</p>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
-          className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); }}
-        />
-        {uploading ? (
-          <div className="rounded bg-[#2b2b2b] h-2 overflow-hidden">
-            <div className="h-full bg-teal-500 transition-all" style={{ width: `${uploadPct}%` }} />
+        {segment?.generatedVideoUrl ? (
+          <div>
+            <p className="text-[10px] text-neutral-500 mb-1">Fond vidéo IA</p>
+            <video
+              src={segment.generatedVideoUrl}
+              muted
+              loop
+              autoPlay
+              playsInline
+              className="w-full rounded border border-[#3a3a3a]"
+              style={{ maxHeight: 100 }}
+            >
+              <track kind="captions" />
+            </video>
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  const layout = await buildCenteredNativeMediaLayoutFromUrl(
+                    segment.generatedVideoUrl!,
+                    'video',
+                    composition ?? null,
+                    useEditorUiStore.getState().previewCanvasSize
+                  );
+                  insertClipAtPlayhead({
+                    id: `vid-ai-${Date.now()}`,
+                    trackType: 'background',
+                    type: 'video',
+                    startTime: currentTime,
+                    endTime: currentTime + (segment.videoDurationSeconds ?? 6),
+                    url: segment.generatedVideoUrl!,
+                    segmentId,
+                    isFromAI: true,
+                    ...layout,
+                  });
+                })();
+              }}
+              className="mt-1 w-full rounded-lg bg-[#2b2b2b] px-2 py-1 text-xs font-semibold text-white hover:bg-[#404040]"
+            >
+              + Ajouter à la timeline
+            </button>
           </div>
         ) : (
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
-            className="w-full rounded-lg border border-dashed border-[#3a3a3a] py-2 text-xs text-neutral-400 hover:border-neutral-400 hover:text-neutral-200 transition-colors"
+            onClick={() => void handleGenerate()}
+            disabled={generating}
+            className="w-full rounded-lg bg-gradient-to-r from-orange-700 to-orange-600 py-2 text-xs font-semibold text-white hover:from-orange-600 hover:to-orange-500 disabled:opacity-60"
           >
-            📎 Choisir une vidéo
+            {generating ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Génération…
+              </span>
+            ) : (
+              `🎬 Générer fond vidéo (-${CREDITS_GENERATE_VIDEO} crédits)`
+            )}
           </button>
+        )}
+
+        <div>
+          <p className="text-[10px] text-neutral-500 mb-1">Votre vidéo (mp4/mov/webm)</p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); }}
+          />
+          {uploading ? (
+            <div className="rounded bg-[#2b2b2b] h-2 overflow-hidden">
+              <div className="h-full bg-orange-500 transition-all" style={{ width: `${uploadPct}%` }} />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="w-full rounded-lg border border-dashed border-[#3a3a3a] py-2 text-xs text-neutral-400 hover:border-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              📎 Choisir une vidéo
+            </button>
+          )}
+        </div>
+
+        <FilterPicker
+          targetClip={activeVideoClip}
+          emptyHint="Sélectionnez une vidéo sur la timeline pour appliquer un filtre."
+        />
+
+        {activeVideoClip && (
+          <TransformerSection clip={activeVideoClip} format={composition?.format ?? '9:16'} />
         )}
       </div>
 
-      <FilterPicker
-        targetClip={activeVideoClip}
-        emptyHint="Sélectionnez une vidéo sur la timeline pour appliquer un filtre."
-      />
-
-      {activeVideoClip && (
-        <TransformerSection clip={activeVideoClip} format={composition?.format ?? '9:16'} />
-      )}
+      {/* Formulaire de génération ancré en bas — identique à ImageSection */}
+      <div className="min-w-0 w-full shrink-0 border-t border-[#2e2e30] pb-1 pt-3">
+        <VideoGeneratePromptBox
+          segmentId={segmentId}
+          analysis={analysis}
+          onAnalysisUpdate={onAnalysisUpdate}
+        />
+      </div>
     </div>
   );
 }
@@ -1638,10 +2020,8 @@ interface RightPanelProps {
   onAnalysisUpdate: (a: VideoAnalysisResponse) => void;
   isOpen?: boolean;
   onToggle?: () => void;
+  standalone?: boolean;
 }
-
-const SECTION_TABS = ['TEXTE', 'AUDIO', 'IMAGE', 'VIDÉO', 'OV', 'TRANS'] as const;
-type SectionTab = typeof SECTION_TABS[number];
 
 export function RightPanel({
   analysis,
@@ -1649,6 +2029,7 @@ export function RightPanel({
   onAnalysisUpdate,
   isOpen = true,
   onToggle,
+  standalone = false,
 }: RightPanelProps) {
   const { activeSequence, setActiveSequence, composition, setCurrentTime } =
     useCompositionStore();
@@ -1676,7 +2057,7 @@ export function RightPanel({
           title="Ouvrir le panneau"
           className={P.collapseBtn}
         >
-          ◀
+          ▶
         </button>
         <div className="flex flex-col items-center gap-2 text-[10px] text-neutral-500 tracking-wider [writing-mode:vertical-rl] rotate-180 mt-2">
           <span>OUTILS</span>
@@ -1709,8 +2090,39 @@ export function RightPanel({
 
   if (!activeSegment) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
-        Aucune séquence
+      <div className={P.shell}>
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            title="Réduire le panneau"
+            className={P.floatCollapse}
+          >
+            ◀
+          </button>
+        )}
+
+        <RightPanelSideNav tab={tab} onTabChange={setTab} />
+
+        <div
+          className={P.contentShell}
+          style={{ backgroundColor: PANEL.contentBg }}
+        >
+          <div
+            className={P.scroll}
+            style={{ backgroundColor: PANEL.contentBg }}
+          >
+            {tab === 'TEXTE' && <TextSection segmentId="" />}
+            {tab === 'TRANS' && <TransitionSection />}
+            {tab !== 'TEXTE' && tab !== 'TRANS' && (
+              <div className="p-4 text-sm leading-relaxed text-neutral-400">
+                {standalone
+                  ? 'Lancez une analyse IA depuis Templates pour débloquer image, audio et vidéo par séquence.'
+                  : 'Aucune séquence disponible pour cette analyse.'}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -1724,52 +2136,49 @@ export function RightPanel({
           title="Réduire le panneau"
           className={P.floatCollapse}
         >
-          ▶
+          ◀
         </button>
       )}
 
-      <div className={P.seqNav}>
-        <button
-          type="button"
-          onClick={handlePrev}
-          disabled={activeSequence === 0}
-          className={P.navBtn}
-        >
-          ‹
-        </button>
-        <span className="text-xs font-semibold text-white tracking-wide">
-          Séquence {activeSequence + 1} / {segCount}
-        </span>
-        <button
-          type="button"
-          onClick={handleNext}
-          disabled={activeSequence >= segCount - 1}
-          className={P.navBtn}
-        >
-          ›
-        </button>
-      </div>
-
-      <div className={P.tabs}>
-        {SECTION_TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={tab === t ? P.tabActive : P.tabInactive}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <RightPanelSideNav tab={tab} onTabChange={setTab} />
 
       <div
-        className={
-          tab === 'IMAGE'
-            ? 'flex min-h-0 flex-1 flex-col overflow-hidden bg-black px-3 pb-3'
-            : P.scroll
-        }
+        className={P.contentShell}
+        style={{ backgroundColor: PANEL.contentBg }}
       >
+        <div
+          className={P.seqNav}
+          style={{ backgroundColor: PANEL.contentBg }}
+        >
+          <button
+            type="button"
+            onClick={handlePrev}
+            disabled={activeSequence === 0}
+            className={P.navBtn}
+          >
+            ‹
+          </button>
+          <span className="text-xs font-semibold text-white tracking-wide">
+            Séquence {activeSequence + 1} / {segCount}
+          </span>
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={activeSequence >= segCount - 1}
+            className={P.navBtn}
+          >
+            ›
+          </button>
+        </div>
+
+        <div
+          className={
+            tab === 'IMAGE' || tab === 'AUDIO' || tab === 'VIDÉO'
+              ? P.contentFlex
+              : P.scroll
+          }
+          style={{ backgroundColor: PANEL.contentBg }}
+        >
         {tab === 'TEXTE' && (
           <TextSection segmentId={activeSegment.id} />
         )}
@@ -1805,6 +2214,7 @@ export function RightPanel({
         {tab === 'TRANS' && (
           <TransitionSection />
         )}
+        </div>
       </div>
     </div>
   );

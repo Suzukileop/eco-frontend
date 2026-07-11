@@ -11,15 +11,15 @@ import {
 import {
   applyGlTransitionToJunction,
   firstBackgroundLane,
+  transitionJunction,
 } from '@/lib/transitionApply';
 import { TransitionQuickPicker } from '@/components/editor/TransitionQuickPicker';
 
-/** Icône transition (deux traits) — au-dessus des clips, priorité clic sur le trim. */
+/** Icône transition CapCut (◆) — chevauche M1 et M2. */
 function TransitionIcon() {
   return (
-    <span className="flex h-3.5 w-3.5 items-center justify-center gap-[2px] rounded-sm border border-neutral-400/80 bg-white shadow-sm">
-      <span className="h-2 w-[2px] rounded-full bg-neutral-500" aria-hidden />
-      <span className="h-2 w-[2px] rounded-full bg-neutral-500" aria-hidden />
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-cyan-400/70 bg-white text-[11px] font-bold leading-none text-cyan-600 shadow-md">
+      ◆
     </span>
   );
 }
@@ -41,18 +41,26 @@ export function TransitionMarker({
   const openTransitionsPanelForClipPair = useCompositionStore((s) => s.openTransitionsPanelForClipPair);
   const { addTransition, updateTransition, removeTransition, setCurrentTime } = useCompositionStore();
 
-  const left = fromClip.endTime * pps;
-  const isSelected =
-    selectedTransitionJunction?.fromClipId === fromClip.id &&
-    selectedTransitionJunction?.toClipId === toClip.id;
+  const junction = transitionJunction(fromClip, toClip);
+  const junctionCenterPx = junction * pps;
 
   const existing = composition?.transitions.find(
     (t) => t.fromClipId === fromClip.id && t.toClipId === toClip.id
   );
+  const transitionDuration =
+    existing && existing.type !== 'cut' ? existing.duration ?? 0.55 : 0.55;
+  const spanPx = Math.max(28, transitionDuration * pps);
+  const spanLeft = junctionCenterPx - spanPx / 2;
+
+  const isSelected =
+    selectedTransitionJunction?.fromClipId === fromClip.id &&
+    selectedTransitionJunction?.toClipId === toClip.id;
+
   const glName = existing ? resolveGlTransitionName(existing) : null;
   const resolvedSelectedName =
     !existing || existing.type === 'cut' ? GL_TRANSITION_CUT : glName ?? GL_TRANSITION_CUT;
   const markerLabel = formatGlTransitionLabel(resolvedSelectedName);
+  const hasActiveTransition = Boolean(existing && existing.type !== 'cut' && glName);
 
   const syncAnchor = useCallback(() => {
     if (buttonRef.current) setAnchorRect(buttonRef.current.getBoundingClientRect());
@@ -62,7 +70,7 @@ export function TransitionMarker({
     e.stopPropagation();
     e.preventDefault();
     openTransitionsPanelForClipPair(fromClip.id, toClip.id);
-    setCurrentTime(Math.max(0, fromClip.endTime - 0.08));
+    setCurrentTime(Math.max(0, junction - transitionDuration * 0.25));
     syncAnchor();
     setPickerOpen(true);
   };
@@ -89,24 +97,34 @@ export function TransitionMarker({
     setPickerOpen(false);
   };
 
+  const showAlways = isSelected || hasActiveTransition;
+
   return (
     <>
+      {/* Zone CapCut : chevauche la fin de M1 et le début de M2 */}
       <div
-        className="absolute z-[60] flex items-center justify-center pointer-events-auto"
-        style={{ left, top: '50%', transform: 'translate(-50%, -50%)' }}
+        className="group/tr-junction pointer-events-auto absolute top-0 bottom-0 z-[65] flex items-center justify-center"
+        style={{
+          left: spanLeft,
+          width: spanPx,
+        }}
       >
+        {hasActiveTransition && (
+          <div
+            className="pointer-events-none absolute inset-x-1 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-cyan-400/35"
+            aria-hidden
+          />
+        )}
         <button
           ref={buttonRef}
           type="button"
           onClick={handleMarkerClick}
           onMouseDown={(e) => e.stopPropagation()}
-          className={`rounded-md p-0.5 transition-all ${
-            isSelected
-              ? 'ring-2 ring-cyan-400 ring-offset-1 ring-offset-white scale-110'
-              : !existing || existing.type === 'cut'
-                ? 'opacity-90 hover:opacity-100 hover:scale-105'
-                : 'scale-105 ring-1 ring-neutral-500/40'
-          }`}
+          className={`relative z-[1] rounded-md p-0.5 transition-all duration-150 ${
+            showAlways
+              ? 'opacity-100 scale-110 ring-2 ring-cyan-400 ring-offset-1 ring-offset-white'
+              : 'opacity-0 scale-95 group-hover/tr-junction:opacity-100 group-hover/tr-junction:scale-105'
+          } ${hasActiveTransition && !isSelected ? 'ring-1 ring-cyan-400/50' : ''}`}
           title={`${markerLabel} — transition entre les clips`}
           aria-pressed={isSelected}
           aria-label={`Transition : ${markerLabel}`}
@@ -118,6 +136,8 @@ export function TransitionMarker({
         <TransitionQuickPicker
           anchorRect={anchorRect}
           selectedGlName={resolvedSelectedName}
+          fromClip={fromClip}
+          toClip={toClip}
           onSelectGlName={applyGlName}
           onOpenFullCatalog={() => setPickerOpen(false)}
           onClose={() => setPickerOpen(false)}

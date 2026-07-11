@@ -13,19 +13,19 @@ const tiles: ServiceTile[] = [
   {
     title: 'Écosystème',
     description: 'Demander une niche et suivre votre dossier.',
-    href: '/dashboard/ecosystem/new',
+    href: '/dashboard/ecosystem',
     className: 'from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700',
   },
   {
     title: 'Templates IA',
     description: 'Analyse vidéo Grok et fonds Nano Banana.',
     href: '/dashboard/templates/new',
-    className: 'from-teal-600 to-teal-800 hover:from-teal-500 hover:to-teal-700',
+    className: 'from-orange-600 to-orange-800 hover:from-orange-500 hover:to-orange-700',
   },
   {
     title: 'Éditeur vidéo',
     description: 'Montage sur vos analyses terminées (Remotion).',
-    href: '/dashboard/templates',
+    href: '/dashboard/editor/studio',
     className: 'from-indigo-600 to-violet-800 hover:from-indigo-500 hover:to-violet-700',
   },
   {

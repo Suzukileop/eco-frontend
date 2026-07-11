@@ -5,8 +5,10 @@ import type { Clip } from '@/types/composition';
 import { useCompositionStore } from '@/stores/compositionStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import {
-  STUDIO_TEXT_FONT_SIZE_MAX,
-  STUDIO_TEXT_FONT_SIZE_MIN,
+  applyTextScalePctChange,
+  getTextScalePct,
+  STUDIO_TEXT_SCALE_MAX_PCT,
+  STUDIO_TEXT_SCALE_MIN_PCT,
 } from '@/lib/studio/textZone/textZoneGeometry';
 
 const ROW_LABEL = 'text-[12px] text-neutral-500 leading-none';
@@ -177,23 +179,25 @@ function applyTextPositionPx(axis: 'x' | 'y', valuePx: number, canvasW: number, 
   return { y: Math.max(0, Math.min(100, ((valuePx / canvasH) + 0.5) * 100)) };
 }
 
-function textClipToScalePct(clip: Clip): number {
-  return Math.max(10, Math.min(500, Math.round(((clip.fontSize ?? 24) / 24) * 100)));
-}
-
-function applyTextScalePct(valuePct: number): Pick<Clip, 'fontSize'> {
-  const fs = Math.round((24 * valuePct) / 100);
-  return { fontSize: Math.max(STUDIO_TEXT_FONT_SIZE_MIN, Math.min(STUDIO_TEXT_FONT_SIZE_MAX, fs)) };
+function applyTextScalePct(valuePct: number): Pick<Clip, 'textScalePct'> {
+  return applyTextScalePctChange(valuePct);
 }
 
 /** Transformer CapCut pour clips texte (position, échelle, rotation). */
 export function TextTransformerSection({ clip, disabled = false }: { clip: Clip; disabled?: boolean }) {
   const updateClip = useCompositionStore((s) => s.updateClip);
   const previewCanvasSize = useEditorUiStore((s) => s.previewCanvasSize);
+  const textScaleDragPreview = useEditorUiStore((s) => s.textScaleDragPreview);
 
   const position = textClipToPositionPx(clip, previewCanvasSize.width, previewCanvasSize.height);
   const rotation = Math.round(clip.textRotation ?? 0);
-  const scalePct = textClipToScalePct(clip);
+  const scalePct =
+    textScaleDragPreview?.clipId === clip.id
+      ? textScaleDragPreview.pct
+      : getTextScalePct(
+          clip,
+          previewCanvasSize.height > 0 ? previewCanvasSize.height : undefined
+        );
 
   const posMinX = -Math.round(previewCanvasSize.width);
   const posMaxX = Math.round(previewCanvasSize.width);
@@ -205,7 +209,7 @@ export function TextTransformerSection({ clip, disabled = false }: { clip: Clip;
       x: 50,
       y: 50,
       textRotation: 0,
-      fontSize: 24,
+      textScalePct: 100,
     });
 
   const upd = (patch: Partial<Clip>) => {
@@ -226,8 +230,8 @@ export function TextTransformerSection({ clip, disabled = false }: { clip: Clip;
         <div className="flex items-center gap-2.5">
           <input
             type="range"
-            min={10}
-            max={500}
+            min={STUDIO_TEXT_SCALE_MIN_PCT}
+            max={STUDIO_TEXT_SCALE_MAX_PCT}
             step={1}
             value={scalePct}
             onChange={(e) => upd(applyTextScalePct(parseFloat(e.target.value)))}
@@ -237,8 +241,8 @@ export function TextTransformerSection({ clip, disabled = false }: { clip: Clip;
             <CapCutDarkStepperField
               value={scalePct}
               onChange={(v) => upd(applyTextScalePct(v))}
-              min={10}
-              max={500}
+              min={STUDIO_TEXT_SCALE_MIN_PCT}
+              max={STUDIO_TEXT_SCALE_MAX_PCT}
               trailingLabel="%"
             />
           </div>

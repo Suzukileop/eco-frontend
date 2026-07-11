@@ -86,10 +86,13 @@ export interface NicheRequestResponse {
   updatedAt?: string | null;
   activatedAt?: string | null;
   nextStep: NextStep | string;
-  /** Renvoyé après validation acceptée + création session Stripe */
-  stripeCheckoutUrl?: string | null;
+  /** Renvoyé après validation acceptée + création session VPI */
+  checkoutUrl?: string | null;
   rejectionReason?: string | null;
   deadline?: string | null;
+  agentId?: string | null;
+  clientEmail?: string | null;
+  clientFullName?: string | null;
 }
 
 export interface NicheRequestFormData {
@@ -226,31 +229,198 @@ export interface NotificationDto {
   isRead: boolean;
   createdAt: string;
   refId?: string | null;
+  refSecondaryId?: string | null;
+}
+
+export interface CreatorReviewItem {
+  id: string;
+  reviewerName: string;
+  rating: number;
+  comment: string | null;
+  wouldRecommend: boolean;
+  createdAt: string;
+}
+
+export interface CreatorReputationDto {
+  averageRating: number | null;
+  reviewCount: number;
+  recommendPercent: number;
+  trustBadges: string[];
+  recentReviews: CreatorReviewItem[];
+  ratingDistribution?: Partial<Record<1 | 2 | 3 | 4 | 5, number>>;
+}
+
+export interface ExperienceProofLink {
+  id: string;
+  label: string;
+  url: string;
+  platform?: ExperienceProofPlatform | null;
+  sortOrder: number;
+}
+
+export type ExperienceBlockStatus = 'ONGOING' | 'FINISHED';
+
+export type ExperienceEmploymentType =
+  | 'FULL_TIME'
+  | 'PART_TIME'
+  | 'CONTRACT'
+  | 'FREELANCE'
+  | 'INTERNSHIP';
+
+export type ExperienceProofPlatform =
+  | 'GITHUB'
+  | 'FACEBOOK'
+  | 'LINKEDIN'
+  | 'INSTAGRAM'
+  | 'YOUTUBE'
+  | 'WEBSITE'
+  | 'OTHER';
+
+export interface ProfileMediaBlock {
+  id: string;
+  sortOrder: number;
+  /** Job title (experience blocks). */
+  title?: string | null;
+  /** Employer / context label, e.g. Freelance, Studio créatif. */
+  organization?: string | null;
+  text: string;
+  mediaUrl?: string | null;
+  mediaType?: 'IMAGE' | 'VIDEO' | null;
+  /** Date range, e.g. 2021 — present */
+  period?: string | null;
+  /** Skill / topic tags shown as pills on experience blocks. */
+  subtitles?: string[];
+  /** Ongoing vs finished role/project. */
+  status?: ExperienceBlockStatus | null;
+  /** Bullet list of responsibilities / tasks. */
+  tasks?: string[];
+  /** Tools / software used on this role (display names from the tools catalog). */
+  tools?: string[];
+  /** Proof links (GitHub, Facebook, case study, etc.). */
+  links?: ExperienceProofLink[];
+  /** Short remark / caveat. */
+  remarks?: string | null;
+  /** City or remote. */
+  location?: string | null;
+  /** Employment / engagement type. */
+  employmentType?: ExperienceEmploymentType | null;
+}
+
+export interface ProfileServiceItem {
+  id: string;
+  sortOrder: number;
+  title: string;
+  description: string;
+  basePriceCents: number | null;
+  deadline: string | null;
+}
+
+export interface FaqItem {
+  id: string;
+  sortOrder: number;
+  question: string;
+  answer: string;
+}
+
+export type ProfileLinkType = 'WEBSITE' | 'CTA' | 'CUSTOM' | 'SOCIAL';
+
+export interface ProfileLink {
+  id: string;
+  type: ProfileLinkType | string;
+  label: string;
+  url: string;
+  sortOrder: number;
+  platform?: string | null;
 }
 
 export interface CreatorProfileDto {
   id: string;
+  userId?: string;
+  fullName?: string | null;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
+  coverObjectPositionY?: number | null;
   bio: string | null;
-  niche: string | null;
+  specialite: string | null;
   websiteUrl: string | null;
-  socialLinks: Record<string, string> | null;
+  socialLinks: Record<string, string> | string | null;
   isVerified?: boolean | null;
+  portfolioCount?: number;
+  languages?: string | null;
+  ctaLabel?: string | null;
+  ctaUrl?: string | null;
+  locationCity?: string | null;
+  locationCountry?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  timezoneId?: string | null;
+  contactAddress?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  availabilityHours?: string | null;
+  isAvailable?: boolean;
+  contactVisibility?: string | null;
+  studioHeaderLayout?: string | null;
+  studioHeaderContentStyle?: string | null;
+  studioTabNavAlign?: string | null;
+  whyMeBlocks?: ProfileMediaBlock[];
+  experienceBlocks?: ProfileMediaBlock[];
+  yearsOfExperience?: number | null;
+  strengthsToolsMastered?: string[];
+  reputation?: CreatorReputationDto | null;
+  profileVisits?: number;
+  gender?: string | null;
+  spokenLanguages?: string[];
+  profileServices?: ProfileServiceItem[];
+  faqItems?: FaqItem[];
+  profileLinks?: ProfileLink[];
+  memberSince?: string | null;
+  responseTimeLabel?: string | null;
+  responseTimeSampleCount?: number | null;
 }
 
 export interface CreatorProfileUpdateBody {
   bio?: string;
-  niche?: string;
+  specialite?: string;
   websiteUrl?: string;
   socialLinks?: Record<string, string>;
+  languages?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  gender?: string;
+  spokenLanguages?: string[];
+  profileServices?: ProfileServiceItem[];
+  faqItems?: FaqItem[];
+  profileLinks?: ProfileLink[];
+  locationCity?: string;
+  locationCountry?: string;
+  locationLat?: number;
+  locationLng?: number;
+  timezoneId?: string;
+  contactAddress?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  availabilityHours?: string;
+  isAvailable?: boolean;
+  contactVisibility?: string;
+  studioHeaderLayout?: string;
+  studioHeaderContentStyle?: string;
+  studioTabNavAlign?: string;
+  coverObjectPositionY?: number;
+  whyMeBlocks?: ProfileMediaBlock[];
+  experienceBlocks?: ProfileMediaBlock[];
+  yearsOfExperience?: number | null;
+  strengthsToolsMastered?: string[];
 }
 
 export const SOCIAL_PLATFORMS = [
-  { value: 'INSTAGRAM', label: 'Instagram' },
   { value: 'YOUTUBE', label: 'YouTube' },
-  { value: 'TIKTOK', label: 'TikTok' },
   { value: 'TWITTER', label: 'X (Twitter)' },
   { value: 'LINKEDIN', label: 'LinkedIn' },
-  { value: 'OTHER', label: 'Autre' },
+  { value: 'GITHUB', label: 'GitHub' },
+  { value: 'INSTAGRAM', label: 'Instagram' },
+  { value: 'TIKTOK', label: 'TikTok' },
+  { value: 'OTHER', label: 'Other' },
 ] as const;
 
 export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number]['value'];

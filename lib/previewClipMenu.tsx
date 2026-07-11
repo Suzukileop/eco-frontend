@@ -1,15 +1,18 @@
 'use client';
 
 import type { Clip, Composition } from '@/types/composition';
+import { getClipBackgroundLane } from '@/lib/backgroundLanes';
+import { isBackgroundClipboardClip } from '@/lib/backgroundPaste';
 import { useCompositionStore } from '@/stores/compositionStore';
+import type { CapCutMenuItem } from '@/components/editor/CapCutContextMenu';
 import {
   IconCopy,
   IconCut,
   IconDuplicate,
   IconPaste,
+  IconSplit,
   IconTrash,
 } from '@/components/editor/TimelineIcons';
-import type { PreviewCtxMenuItem } from '@/components/editor/PreviewClipContextMenu';
 
 export function findClipInComposition(
   composition: Composition | null,
@@ -28,10 +31,15 @@ export function findClipInComposition(
 export function buildPreviewClipMenuItems(
   clipId: string,
   onClose: () => void
-): PreviewCtxMenuItem[] {
+): CapCutMenuItem[] {
   const state = useCompositionStore.getState();
   const clip = findClipInComposition(state.composition, clipId);
-  const hasClipboard = Boolean(state.clipboard);
+  const isBg = clip?.trackType === 'background';
+  const hasClipboard = isBackgroundClipboardClip(state.clipboard);
+  const canSplit =
+    !!clip &&
+    state.currentTime > clip.startTime + 0.05 &&
+    state.currentTime < clip.endTime - 0.05;
 
   const closeAnd = (fn: () => void) => () => {
     fn();
@@ -40,10 +48,19 @@ export function buildPreviewClipMenuItems(
 
   return [
     {
+      id: 'split',
+      label: 'Diviser',
+      icon: <IconSplit />,
+      shortcut: ['Ctrl', 'B'],
+      disabled: !canSplit || !isBg,
+      action: closeAnd(() => state.splitClip(clipId, state.currentTime)),
+    },
+    {
       id: 'copy',
       label: 'Copier',
       icon: <IconCopy />,
-      disabled: !clip,
+      shortcut: ['Ctrl', 'C'],
+      disabled: !isBg,
       action: closeAnd(() => {
         if (clip) state.setClipboard(clip);
       }),
@@ -52,7 +69,8 @@ export function buildPreviewClipMenuItems(
       id: 'cut',
       label: 'Couper',
       icon: <IconCut />,
-      disabled: !clip,
+      shortcut: ['Ctrl', 'X'],
+      disabled: !isBg,
       action: closeAnd(() => {
         if (!clip) return;
         state.saveToHistory();
@@ -64,16 +82,18 @@ export function buildPreviewClipMenuItems(
       id: 'paste',
       label: 'Coller',
       icon: <IconPaste />,
+      shortcut: ['Ctrl', 'V'],
       disabled: !hasClipboard,
-      action: closeAnd(() => {
-        state.pasteClip();
-      }),
+      action: closeAnd(() =>
+        state.pasteClip(clip ? getClipBackgroundLane(clip) : 0)
+      ),
     },
     {
       id: 'duplicate',
       label: 'Dupliquer',
       icon: <IconDuplicate />,
-      disabled: !clip,
+      shortcut: ['Ctrl', 'D'],
+      disabled: !isBg,
       action: closeAnd(() => {
         if (!clip || !state.composition) return;
         state.saveToHistory();
@@ -90,11 +110,9 @@ export function buildPreviewClipMenuItems(
       id: 'delete',
       label: 'Supprimer',
       icon: <IconTrash />,
-      danger: true,
+      shortcut: ['Suppr'],
       disabled: !clip,
-      action: closeAnd(() => {
-        state.removeClip(clipId);
-      }),
+      action: closeAnd(() => state.removeClip(clipId)),
     },
   ];
 }

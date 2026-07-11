@@ -19,8 +19,9 @@ import {
 } from '@/lib/editor/textPanelConstants';
 import { TextTransformerSection } from '@/components/editor/TextTransformerSection';
 import {
-  STUDIO_TEXT_FONT_SIZE_MAX,
-  STUDIO_TEXT_FONT_SIZE_MIN,
+  applyTextPanelFontSizeChange,
+  clampTextBaseFontSize,
+  getTextScaleBaseFontSize,
 } from '@/lib/studio/textZone/textZoneGeometry';
 import {
   applyTextCaseMode,
@@ -28,6 +29,7 @@ import {
   type TextCaseMode,
 } from '@/lib/editor/textCase';
 import { BasicAdvancedModeSwitch, type PanelBasicAdvancedMode } from '@/components/editor/BasicAdvancedModeSwitch';
+import { useCompositionStore } from '@/stores/compositionStore';
 
 const TEXT_STYLE_GROUPS: TextStyleGroup[] = ['basique', 'tendance', 'classique'];
 
@@ -122,7 +124,7 @@ function CapCutFontSizePicker({
   }, [open, value]);
 
   const pick = (size: number) => {
-    const clamped = Math.max(STUDIO_TEXT_FONT_SIZE_MIN, Math.min(STUDIO_TEXT_FONT_SIZE_MAX, size));
+    const clamped = clampTextBaseFontSize(size);
     onChange(clamped);
     setOpen(false);
   };
@@ -665,6 +667,8 @@ function TextEffectsSection({
 }
 
 export function TextPanelCapCut({ textClip, canEdit, upd, editableClip }: TextPanelCapCutProps) {
+  const currentTime = useCompositionStore((s) => s.currentTime);
+  const addTextClip = useCompositionStore((s) => s.addTextClip);
   const [panelMode, setPanelMode] = useState<PanelBasicAdvancedMode>('basic');
   const [alignOpen, setAlignOpen] = useState(false);
   const [caseOpen, setCaseOpen] = useState(false);
@@ -696,10 +700,15 @@ export function TextPanelCapCut({ textClip, canEdit, upd, editableClip }: TextPa
       return;
     }
     const def = getTextStylePresetDef(presetId);
+    const stylePatch = def?.patch ?? {};
+    const { fontSize: presetFontSize, ...restStylePatch } = stylePatch;
     upd({
       textPreset: presetId,
       textShadow: false,
-      ...(def?.patch ?? {}),
+      ...restStylePatch,
+      ...(presetFontSize != null
+        ? applyTextPanelFontSizeChange(textClip, presetFontSize)
+        : {}),
     });
   };
 
@@ -735,7 +744,7 @@ export function TextPanelCapCut({ textClip, canEdit, upd, editableClip }: TextPa
   };
 
   return (
-    <div className={`bg-black ${!canEdit ? 'opacity-60' : ''}`}>
+    <div className={`flex flex-col gap-3 bg-black ${!canEdit ? 'opacity-60' : ''}`}>
       <BasicAdvancedModeSwitch
         mode={panelMode}
         disabled={!canEdit}
@@ -746,10 +755,17 @@ export function TextPanelCapCut({ textClip, canEdit, upd, editableClip }: TextPa
         }}
       />
 
+      <button
+        type="button"
+        onClick={() => addTextClip(currentTime, currentTime + 5)}
+        className="w-full rounded-xl bg-[#252525] py-2.5 text-[14px] font-semibold text-neutral-100 transition-colors hover:bg-[#333333]"
+      >
+        ajouter un texte
+      </button>
+
       {panelMode === 'basic' ? (
         <>
       {/* ── Zone saisie + police + barre d'outils ── */}
-      <div className="space-y-3 bg-black px-3 pb-3 pt-3">
         <textarea
           value={textClip.content ?? ''}
           onChange={(e) => upd({ content: e.target.value })}
@@ -759,7 +775,7 @@ export function TextPanelCapCut({ textClip, canEdit, upd, editableClip }: TextPa
           className={`w-full resize-none rounded-xl ${INPUT_BG} px-3 py-2.5 text-[14px] leading-relaxed text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 disabled:cursor-not-allowed`}
         />
 
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <CapCutSelect
             value={textClip.fontFamily ?? 'inherit'}
             onChange={(v) => upd({ fontFamily: v })}
@@ -774,8 +790,8 @@ export function TextPanelCapCut({ textClip, canEdit, upd, editableClip }: TextPa
             ))}
           </CapCutSelect>
           <CapCutFontSizePicker
-            value={textClip.fontSize ?? 24}
-            onChange={(v) => upd({ fontSize: v })}
+            value={clampTextBaseFontSize(getTextScaleBaseFontSize(textClip))}
+            onChange={(v) => upd(applyTextPanelFontSizeChange(textClip, v))}
             disabled={!canEdit}
             options={FONT_SIZE_OPTIONS}
           />
@@ -910,7 +926,6 @@ export function TextPanelCapCut({ textClip, canEdit, upd, editableClip }: TextPa
             </DetailPopover>
           </div>
         </div>
-      </div>
 
       {/* ── Style ── */}
       <div className={`${SECTION} px-4 py-3 space-y-2`}>

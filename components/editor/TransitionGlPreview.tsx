@@ -1,74 +1,150 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { createGlRenderer, loadMediaSource } from '@/lib/glTransitionRenderer';
-import { isCustomGlTransitionName } from '@/lib/customGlTransitions';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Clip } from '@/types/composition';
+import { createGlRenderer } from '@/lib/glTransitionRenderer';
+import { TransitionVideoPair } from '@/lib/glTransitionMedia';
+import { computePreviewTransitionFramePx } from '@/lib/studio/mediaDimensions';
+import {
+  resolveTransitionWindow,
+  transitionJunction,
+  type TransitionWindow,
+} from '@/lib/transitionApply';
 import { isCutTransitionName } from '@/lib/glTransitions';
 
 const PREVIEW_W = 280;
 const PREVIEW_H = 158;
+/** Même progression que les miniatures de la bibliothèque GL. */
+const THUMB_MATCH_PROGRESS = 0.5;
+
+function buildPreviewWindow(
+  fromClip: Clip,
+  toClip: Clip,
+  duration: number
+): TransitionWindow {
+  return (
+    resolveTransitionWindow(
+      { id: 'preview', fromClipId: fromClip.id, toClipId: toClip.id, type: 'fade', duration },
+      fromClip,
+      toClip
+    ) ?? {
+      junction: transitionJunction(fromClip, toClip),
+      duration,
+      startTime: transitionJunction(fromClip, toClip) - duration / 2,
+      endTime: transitionJunction(fromClip, toClip) + duration / 2,
+    }
+  );
+}
 
 export function TransitionGlPreview({
-  fromUrl,
-  toUrl,
+  fromClip,
+  toClip,
   glTransitionName,
   duration,
   disabled,
 }: {
-  fromUrl?: string;
-  toUrl?: string;
+  fromClip?: Clip;
+  toClip?: Clip;
   glTransitionName: string | null;
   duration: number;
   disabled?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<ReturnType<typeof createGlRenderer> | null>(null);
+  const videoPairRef = useRef<TransitionVideoPair | null>(null);
   const rafRef = useRef<number | null>(null);
-  const sourcesRef = useRef<{ from: TexImageSource; to: TexImageSource } | null>(null);
+  const glNameRef = useRef<string | null>(null);
+  const drawingRef = useRef(false);
+  const progressRef = useRef(THUMB_MATCH_PROGRESS);
+  const fromRef = useRef(fromClip);
+  const toRef = useRef(toClip);
+  const windowRef = useRef<TransitionWindow | null>(null);
+  fromRef.current = fromClip;
+  toRef.current = toClip;
+
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(THUMB_MATCH_PROGRESS);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   const isCut = isCutTransitionName(glTransitionName);
-  const canRender = !disabled && !isCut && !!glTransitionName && !!fromUrl && !!toUrl;
+  const canRender = !disabled && !isCut && !!glTransitionName && !!fromClip && !!toClip;
 
-  const drawAt = useCallback(
-    (p: number) => {
-      const renderer = rendererRef.current;
-      const sources = sourcesRef.current;
-      const canvas = canvasRef.current;
-      if (!renderer || !sources || !canvas || !glTransitionName || isCut) return;
-      renderer.draw(p, glTransitionName, sources.from, sources.to, PREVIEW_W, PREVIEW_H);
+  const transitionWindow = useMemo(() => {
+    if (!fromClip || !toClip) return null;
+    return buildPreviewWindow(fromClip, toClip, duration);
+  }, [fromClip, toClip, duration]);
+  windowRef.current = transitionWindow;
+
+  const drawAt = useCallback(async (p: number) => {
+    const renderer = rendererRef.current;
+    const canvas = canvasRef.current;
+    const name = glNameRef.current;
+    const window = windowRef.current;
+    const from = fromRef.current;
+    const to = toRef.current;
+    const pair = videoPairRef.current;
+    if (!renderer || !canvas || !name || !window || !from || !to || !pair || drawingRef.current) {
+      return;
+    }
+
+    drawingRef.current = true;
+    try {
+      const currentTime = window.startTime + p * window.duration;
+      const sources = await pair.seekToTime(from, to, window, currentTime);
+
+      const frame = computePreviewTransitionFramePx(PREVIEW_W, PREVIEW_H);
+      const cw = Math.max(1, Math.round(frame.width));
+      const ch = Math.max(1, Math.round(frame.height));
+
+      canvas.width = cw;
+      canvas.height = ch;
+      canvas.style.width = `${PREVIEW_W}px`;
+      canvas.style.height = `${PREVIEW_H}px`;
+
+      renderer.draw(p, name, sources.from, sources.to, cw, ch);
+
+      progressRef.current = p;
       setProgress(p);
-    },
-    [glTransitionName, isCut]
-  );
+    } finally {
+      drawingRef.current = false;
+    }
+  }, []);
 
   useEffect(() => {
     setPlaying(false);
-    setProgress(0);
+    progressRef.current = THUMB_MATCH_PROGRESS;
+    setProgress(THUMB_MATCH_PROGRESS);
     setReady(false);
     setLoadError(null);
-    sourcesRef.current = null;
+    glNameRef.current = null;
+    rendererRef.current?.dispose();
+    rendererRef.current = null;
+    videoPairRef.current?.dispose();
+    videoPairRef.current = null;
 
-    if (!canRender) return;
+    if (!canRender || !fromClip || !toClip || !glTransitionName || !transitionWindow) return;
 
     let cancelled = false;
+
     (async () => {
       try {
-        const [from, to] = await Promise.all([
-          loadMediaSource(fromUrl!),
-          loadMediaSource(toUrl!),
-        ]);
-        if (cancelled) return;
-        sourcesRef.current = { from, to };
+        glNameRef.current = glTransitionName;
         const canvas = canvasRef.current;
-        if (!canvas) return;
-        rendererRef.current?.dispose();
+        if (!canvas || cancelled) return;
         rendererRef.current = createGlRenderer(canvas);
-        setReady(!!rendererRef.current);
-        drawAt(0);
+
+        const pair = new TransitionVideoPair();
+        await pair.load(fromClip, toClip);
+        if (cancelled) {
+          pair.dispose();
+          return;
+        }
+        videoPairRef.current = pair;
+
+        await drawAt(THUMB_MATCH_PROGRESS);
+        if (cancelled) return;
+        setReady(true);
       } catch {
         if (!cancelled) setLoadError('Impossible de charger les images du raccord.');
       }
@@ -77,18 +153,20 @@ export function TransitionGlPreview({
     return () => {
       cancelled = true;
     };
-  }, [canRender, fromUrl, toUrl, drawAt]);
+  }, [canRender, fromClip, toClip, glTransitionName, transitionWindow, drawAt]);
 
   useEffect(() => {
-    if (!ready || isCut) return;
-    drawAt(progress);
-  }, [glTransitionName, ready, isCut, drawAt, progress]);
+    if (!ready || isCut || !glTransitionName) return;
+    glNameRef.current = glTransitionName;
+    void drawAt(progressRef.current);
+  }, [glTransitionName, ready, isCut, drawAt]);
 
   useEffect(() => {
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       rendererRef.current?.dispose();
       rendererRef.current = null;
+      videoPairRef.current?.dispose();
     };
   }, []);
 
@@ -101,32 +179,26 @@ export function TransitionGlPreview({
   }, []);
 
   const play = useCallback(() => {
-    if (!canRender || !ready) return;
+    if (!canRender || !ready || !transitionWindow) return;
+
     stopPlay();
     setPlaying(true);
+
     const start = performance.now();
-    const dur = Math.max(0.2, duration) * 1000;
+    const dur = Math.max(0.2, transitionWindow.duration) * 1000;
+
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / dur);
-      drawAt(p);
-      if (p < 1) {
-        rafRef.current = requestAnimationFrame(tick);
-      } else {
-        stopPlay();
-      }
+      void drawAt(p).then(() => {
+        if (p < 1) {
+          rafRef.current = requestAnimationFrame(tick);
+        } else {
+          stopPlay();
+        }
+      });
     };
     rafRef.current = requestAnimationFrame(tick);
-  }, [canRender, ready, duration, drawAt, stopPlay]);
-
-  const playRef = useRef(play);
-  playRef.current = play;
-
-  useEffect(() => {
-    if (!ready || !canRender || !glTransitionName) return;
-    if (!isCustomGlTransitionName(glTransitionName)) return;
-    const id = window.setTimeout(() => playRef.current(), 450);
-    return () => clearTimeout(id);
-  }, [ready, canRender, glTransitionName, fromUrl, toUrl]);
+  }, [canRender, ready, transitionWindow, drawAt, stopPlay]);
 
   return (
     <div className="space-y-2">
@@ -136,9 +208,8 @@ export function TransitionGlPreview({
       >
         <canvas
           ref={canvasRef}
-          width={PREVIEW_W}
-          height={PREVIEW_H}
-          className="block h-full w-full"
+          className="absolute inset-0 h-full w-full"
+          style={{ background: 'transparent' }}
         />
         {(!canRender || loadError) && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#1a1a1a]/90 px-3 text-center text-[10px] text-neutral-500">
@@ -169,7 +240,7 @@ export function TransitionGlPreview({
             value={progress}
             onChange={(e) => {
               stopPlay();
-              drawAt(parseFloat(e.target.value));
+              void drawAt(parseFloat(e.target.value));
             }}
             className="min-w-0 flex-1 h-1.5 accent-cyan-500 cursor-pointer"
             aria-label="Progression transition"

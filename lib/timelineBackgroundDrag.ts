@@ -1,14 +1,15 @@
 import type { Clip } from '@/types/composition';
 import { LABEL_COL_WIDTH } from '@/lib/timelineTheme';
 import {
+  packLane0Clips,
+  previewMagneticV1LaneLayout,
+  resolveV1DragDisplayTrace,
+} from '@/lib/primaryBackgroundLane';
+import {
   getClipBackgroundLane,
   laneIndexFromVerticalDrag,
   PRIMARY_BACKGROUND_LANE,
 } from '@/lib/backgroundLanes';
-import {
-  applyMagneticV1TraceSnap,
-  previewMagneticV1LaneLayout,
-} from '@/lib/primaryBackgroundLane';
 import {
   previewOverlayShiftLayout,
   resolveSnappedDisplayTrace,
@@ -27,6 +28,8 @@ export interface BackgroundDragPreview {
   shiftsNeighbors: boolean;
   narrowGapInsert?: boolean;
   laneRippleLayout?: Clip[];
+  /** V1 recollée quand le clip quitté la piste principale (aperçu pendant le drag). */
+  sourceLaneRippleLayout?: Clip[];
 }
 
 export interface BackgroundDragGhost {
@@ -78,7 +81,8 @@ export interface ClampedBackgroundDragPointer {
 }
 
 /**
- * Limite le drag à la zone pistes (scroll timeline) : pas avant 00:00 ni hors cadre.
+ * Limite le drag à la zone pistes (scroll timeline) : pas avant 00:00.
+ * Si maxGhostStartTime est null, pas de limite à droite (superposition libre).
  */
 export function clampBackgroundDragPointer(
   clientX: number,
@@ -88,7 +92,7 @@ export function clampBackgroundDragPointer(
   ghostHeight: number,
   scrollEl: HTMLElement | null,
   pps: number,
-  maxGhostStartTime: number
+  maxGhostStartTime: number | null
 ): ClampedBackgroundDragPointer {
   if (!scrollEl || pps <= 0) {
     return {
@@ -102,10 +106,13 @@ export function clampBackgroundDragPointer(
   const rect = scrollEl.getBoundingClientRect();
   const timelineZeroX = rect.left + LABEL_COL_WIDTH - scrollEl.scrollLeft;
   const minClientX = timelineZeroX + grabDx;
-  const maxStart = Math.max(0, maxGhostStartTime);
-  const maxClientX = timelineZeroX + maxStart * pps + grabDx;
 
-  const cx = Math.min(Math.max(clientX, minClientX), maxClientX);
+  let cx = Math.max(clientX, minClientX);
+  if (maxGhostStartTime != null) {
+    const maxStart = Math.max(0, maxGhostStartTime);
+    const maxClientX = timelineZeroX + maxStart * pps + grabDx;
+    cx = Math.min(cx, maxClientX);
+  }
 
   const tracksTop = rect.top;
   const tracksBottom = rect.bottom;
@@ -219,19 +226,24 @@ export function buildBackgroundDragPreview(
   options?: BuildBackgroundDragPreviewOptions
 ): BackgroundDragPreview {
   const duration = Math.max(0.1, clip.endTime - clip.startTime);
+  const sourceLane = getClipBackgroundLane(clip);
   const laneClips = allBg.filter((c) => getClipBackgroundLane(c) === targetLane);
   const withoutDragged = laneClips.filter((c) => c.id !== clip.id);
-  let snapped = resolveSnappedDisplayTrace(
-    withoutDragged,
-    ghostStartTime,
-    duration,
-    options
-  );
 
   const isPrimaryLane = targetLane === PRIMARY_BACKGROUND_LANE;
-  if (isPrimaryLane) {
-    snapped = applyMagneticV1TraceSnap(withoutDragged, snapped, duration);
-  }
+  const snapped = isPrimaryLane
+    ? resolveV1DragDisplayTrace(
+        withoutDragged,
+        ghostStartTime,
+        duration,
+        options
+      )
+    : resolveSnappedDisplayTrace(
+        withoutDragged,
+        ghostStartTime,
+        duration,
+        options
+      );
 
   const shiftPreview = previewOverlayShiftLayout(
     withoutDragged,
@@ -252,6 +264,17 @@ export function buildBackgroundDragPreview(
       ? shiftPreview.layoutClips
       : undefined;
 
+  const sourceLaneRippleLayout =
+    sourceLane === PRIMARY_BACKGROUND_LANE && targetLane !== PRIMARY_BACKGROUND_LANE
+      ? packLane0Clips(
+          allBg.filter(
+            (c) =>
+              getClipBackgroundLane(c) === PRIMARY_BACKGROUND_LANE &&
+              c.id !== clip.id
+          )
+        )
+      : undefined;
+
   return {
     clipId: clip.id,
     targetLane,
@@ -263,6 +286,7 @@ export function buildBackgroundDragPreview(
     shiftsNeighbors: shiftPreview.shiftsNeighbors,
     narrowGapInsert: snapped.narrowGapInsert,
     laneRippleLayout,
+    sourceLaneRippleLayout,
   };
 }
 
@@ -279,7 +303,7 @@ export function updateBackgroundDragSession(
   rowStepPx: number,
   scrollEl: HTMLElement | null,
   pps: number,
-  maxGhostStartTime: number,
+  maxGhostStartTime: number | null,
   snapEnabled: boolean
 ): BackgroundDragSession {
   const clamped = clampBackgroundDragPointer(

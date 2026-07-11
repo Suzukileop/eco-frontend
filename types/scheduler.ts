@@ -20,11 +20,16 @@ export interface ValidatedNicheDto {
 export interface ScheduledPostDto {
   id: string;
   platform: SchedulerPlatform | string;
+  contentUrl?: string | null;
+  contentType?: ContentSourceType | string;
   caption: string;
   scheduledAt: string;
   status: SchedulerPostStatus;
+  publishedAt?: string | null;
+  errorMessage?: string | null;
   externalUrl?: string | null;
   nicheRef?: string | null;
+  deliveryNumber?: number | null;
   createdAt?: string;
 }
 

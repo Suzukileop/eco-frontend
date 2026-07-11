@@ -3,6 +3,13 @@
 import { useEffect, useRef } from 'react';
 import { useCompositionStore } from '@/stores/compositionStore';
 import type { Clip } from '@/types/composition';
+import { getClipAudioLane } from '@/lib/audioLanes';
+import { isPanelPreviewActiveFor } from '@/lib/audioPreviewGate';
+import {
+  registerTimelineAudio,
+  unregisterTimelineAudio,
+} from '@/lib/timelineAudioRegistry';
+import { getClipVoiceoverLane } from '@/lib/voiceoverLanes';
 
 /** Linear fade-in / fade-out gain (0–1) from timeline position vs clip bounds. */
 function audioFadeGain(clip: Clip, compositionTime: number): number {
@@ -28,27 +35,6 @@ function audioFadeGain(clip: Clip, compositionTime: number): number {
   return Math.max(0, Math.min(1, inRamp * outRamp));
 }
 
-/** Lane index for overlap stacking (same algorithm as Timeline). */
-function laneIndexForClip(trackList: Clip[], clipId: string): number {
-  const sorted = [...trackList].sort((a, b) => a.startTime - b.startTime);
-  const lanes: Clip[][] = [];
-  for (const clip of sorted) {
-    let placed = false;
-    for (const lane of lanes) {
-      if (lane[lane.length - 1].endTime <= clip.startTime + 0.001) {
-        lane.push(clip);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) lanes.push([clip]);
-  }
-  for (let i = 0; i < lanes.length; i++) {
-    if (lanes[i].some((c) => c.id === clipId)) return i;
-  }
-  return 0;
-}
-
 type StoreSlice = ReturnType<typeof useCompositionStore.getState>;
 
 /** Master × piste visible (piste entière + lane). 0 si muet global. */
@@ -59,14 +45,16 @@ function masterMultiplierForClip(clip: Clip, state: StoreSlice): number {
 
   if (clip.trackType === 'audio') {
     if (state.trackHidden.audio) return 0;
-    const lane = laneIndexForClip(comp.tracks.audio, clip.id);
+    const lane = getClipAudioLane(clip);
     if (state.laneHidden[`audio-${lane}`]) return 0;
+    if (state.laneMuted[`audio-${lane}`]) return 0;
     return state.masterVolume;
   }
   if (clip.trackType === 'voiceover') {
     if (state.trackHidden.voiceover) return 0;
-    const lane = laneIndexForClip(comp.tracks.voiceover, clip.id);
+    const lane = getClipVoiceoverLane(clip);
     if (state.laneHidden[`voiceover-${lane}`]) return 0;
+    if (state.laneMuted[`voiceover-${lane}`]) return 0;
     return state.masterVolume;
   }
   return 0;
@@ -115,6 +103,7 @@ export function useAudioEngine() {
       audioMap.current.forEach((el, id) => {
         if (!currentIds.has(id)) {
           el.pause();
+          unregisterTimelineAudio(id);
           const l = endListeners.current.get(id);
           if (l) { el.removeEventListener('timeupdate', l); endListeners.current.delete(id); }
           lastMeta.current.delete(id);
@@ -133,6 +122,12 @@ export function useAudioEngine() {
           el = new Audio(clip.url);
           el.preload = 'auto';
           audioMap.current.set(clip.id, el);
+          registerTimelineAudio(clip.id, el);
+        }
+
+        if (isPanelPreviewActiveFor(clip.id)) {
+          if (!el!.paused) el!.pause();
+          return;
         }
 
         const masterM = masterMultiplierForClip(clip, state);
@@ -174,6 +169,11 @@ export function useAudioEngine() {
           clip.startTime <= state.currentTime && clip.endTime > state.currentTime;
         const audible = masterMultiplierForClip(clip, state) > 0;
 
+        if (isPanelPreviewActiveFor(clip.id)) {
+          if (!el.paused) el.pause();
+          return;
+        }
+
         if (isActive && state.isPlaying && audible) {
           const trimStart = clip.trimStart ?? 0;
           const offset    = Math.max(0, state.currentTime - clip.startTime + trimStart);
@@ -196,6 +196,7 @@ export function useAudioEngine() {
       audioMap.current.forEach((el, id) => {
         const l = endListeners.current.get(id);
         if (l) el.removeEventListener('timeupdate', l);
+        unregisterTimelineAudio(id);
         el.pause();
         el.src = '';
       });

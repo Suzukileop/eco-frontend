@@ -32,7 +32,6 @@ interface EditorUiState {
   setPreviewZoom: (value: number) => void;
   setPreviewTool: (tool: PreviewTool) => void;
   setPreviewCanvasSize: (size: PreviewCanvasSize) => void;
-  togglePreviewTool: () => void;
   toggleFocusMode: () => void;
 
   konvaSelectedIds: string[];
@@ -54,6 +53,10 @@ interface EditorUiState {
   konvaLiveLayouts: Record<string, KonvaLiveClipLayout>;
   setKonvaLiveLayout: (clipId: string, layout: KonvaLiveClipLayout | null) => void;
   clearKonvaLiveLayouts: () => void;
+
+  /** Échelle en direct pendant un resize coin (panneau Transformer). */
+  textScaleDragPreview: { clipId: string; pct: number } | null;
+  setTextScaleDragPreview: (preview: { clipId: string; pct: number } | null) => void;
 }
 
 function clampPreviewZoom(z: number): number {
@@ -75,8 +78,6 @@ export const useEditorUiStore = create<EditorUiState>((set, get) => ({
   setPreviewZoom: (value) => set({ previewZoom: clampPreviewZoom(value) }),
   setPreviewTool: (tool) => set({ previewTool: tool }),
   setPreviewCanvasSize: (size) => set({ previewCanvasSize: size }),
-  togglePreviewTool: () =>
-    set((s) => ({ previewTool: s.previewTool === 'hand' ? 'select' : 'hand' })),
   toggleFocusMode: () => {
     const { focusMode, deepFocusMode } = get();
     if (deepFocusMode || document.fullscreenElement) {
@@ -120,6 +121,9 @@ export const useEditorUiStore = create<EditorUiState>((set, get) => ({
       return { konvaLiveLayouts: { ...s.konvaLiveLayouts, [clipId]: layout } };
     }),
   clearKonvaLiveLayouts: () => set({ konvaLiveLayouts: {} }),
+
+  textScaleDragPreview: null,
+  setTextScaleDragPreview: (preview) => set({ textScaleDragPreview: preview }),
 }));
 
 export async function enterBrowserFullscreen(): Promise<void> {
@@ -137,5 +141,6 @@ export async function exitBrowserFullscreen(): Promise<void> {
 
 export function isEditorPath(pathname: string | null): boolean {
   if (!pathname) return false;
+  if (pathname.startsWith('/dashboard/editor/studio')) return true;
   return /\/dashboard\/templates\/[^/]+\/(editor|studio)$/.test(pathname);
 }

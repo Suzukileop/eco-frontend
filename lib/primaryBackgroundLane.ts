@@ -4,6 +4,11 @@ import {
   isOnPrimaryBackgroundLane,
   PRIMARY_BACKGROUND_LANE,
 } from '@/lib/backgroundLanes';
+import type { ResolveSnappedDisplayTraceOptions } from '@/lib/timelineTraceSnap';
+import {
+  resolveSnappedDisplayTrace,
+  type SnappedDisplayTrace,
+} from '@/lib/timelineTraceSnap';
 
 const TIME_EPS = 0.001;
 
@@ -43,6 +48,51 @@ export function applyMagneticV1TraceSnap(
       narrowGapInsert: snapped.narrowGapInsert,
     };
   }
+  return snapped;
+}
+
+/** Fin de la séquence V1 (sans le clip déplacé), recollée bout à bout. */
+export function v1SequenceTailTime(laneWithoutDragged: Clip[]): number {
+  if (laneWithoutDragged.length === 0) return 0;
+  const packed = packLane0Clips(laneWithoutDragged);
+  return packed[packed.length - 1].endTime;
+}
+
+/**
+ * Trace V1 pendant le drag :
+ * - insertion / réordonnancement au survol des médias (logique CapCut existante) ;
+ * - glisser vers la droite au-delà de la séquence → ombre calée après le dernier élément
+ *   (le ghost suit le curseur, pas l’ombre).
+ */
+export function resolveV1DragDisplayTrace(
+  laneWithoutDragged: Clip[],
+  ghostStartTime: number,
+  duration: number,
+  options?: ResolveSnappedDisplayTraceOptions
+): SnappedDisplayTrace {
+  const safeDuration = Math.max(0.1, duration);
+  const safeStart = Math.max(0, ghostStartTime);
+  const ghostCenter = safeStart + safeDuration / 2;
+  const tail = v1SequenceTailTime(laneWithoutDragged);
+
+  if (
+    laneWithoutDragged.length > 0 &&
+    (safeStart >= tail - TIME_EPS || ghostCenter >= tail - TIME_EPS)
+  ) {
+    return {
+      displayStart: tail,
+      displayEnd: tail + safeDuration,
+      narrowGapInsert: false,
+    };
+  }
+
+  let snapped = resolveSnappedDisplayTrace(
+    laneWithoutDragged,
+    ghostStartTime,
+    duration,
+    options
+  );
+  snapped = applyMagneticV1TraceSnap(laneWithoutDragged, snapped, duration);
   return snapped;
 }
 
@@ -100,24 +150,37 @@ function applyTrimOnStartChange(clip: Clip, deltaStart: number): Clip {
 }
 
 /**
- * Étire / rétrécit un clip V1 : seul ce clip change de durée ;
- * les voisins à gauche / droite se décalent sans changer de durée.
+ * Étirement sur une piste V (V1 ou superposition) :
+ * - gauche : bloqué au bord du média précédent ;
+ * - droite : remplit d’abord le gap (ex. E1-2), repousse M2+ seulement quand M1 touche M2.
  */
-export function rippleResizeLane0(
-  lane0: Clip[],
+export function rippleResizeBackgroundLane(
+  laneClips: Clip[],
   clipId: string,
   newStart: number,
   newEnd: number
 ): Clip[] {
-  const sorted = [...lane0].sort((a, b) => a.startTime - b.startTime);
+  const sorted = [...laneClips].sort((a, b) => a.startTime - b.startTime);
   const idx = sorted.findIndex((c) => c.id === clipId);
   if (idx < 0) return sorted;
 
   const target = sorted[idx];
-  const safeStart = Math.max(0, newStart);
+  const prev = idx > 0 ? sorted[idx - 1] : null;
+  const next = idx < sorted.length - 1 ? sorted[idx + 1] : null;
+  const minStart = prev ? prev.endTime : 0;
+
+  let safeStart = Math.max(0, newStart);
+  safeStart = Math.max(minStart, Math.min(safeStart, target.endTime - 0.1));
+
   const safeEnd = Math.max(safeStart + 0.1, newEnd);
   const deltaStart = safeStart - target.startTime;
   const deltaEnd = safeEnd - target.endTime;
+
+  /** Débordement après le gap : repousse à partir de la fin du gap (début de M2). */
+  const pushOverflow =
+    next && deltaEnd > TIME_EPS
+      ? Math.max(0, safeEnd - next.startTime)
+      : 0;
 
   return sorted.map((clip, j) => {
     if (clip.id === clipId) {
@@ -126,22 +189,25 @@ export function rippleResizeLane0(
         deltaStart
       );
     }
-    if (j < idx && Math.abs(deltaStart) > TIME_EPS) {
+    if (j > idx && pushOverflow > TIME_EPS) {
       return {
         ...clip,
-        startTime: Math.max(0, clip.startTime + deltaStart),
-        endTime: Math.max(0.1, clip.endTime + deltaStart),
-      };
-    }
-    if (j > idx && Math.abs(deltaEnd) > TIME_EPS) {
-      return {
-        ...clip,
-        startTime: clip.startTime + deltaEnd,
-        endTime: clip.endTime + deltaEnd,
+        startTime: clip.startTime + pushOverflow,
+        endTime: clip.endTime + pushOverflow,
       };
     }
     return clip;
   });
+}
+
+/** @deprecated Alias — utiliser rippleResizeBackgroundLane */
+export function rippleResizeLane0(
+  lane0: Clip[],
+  clipId: string,
+  newStart: number,
+  newEnd: number
+): Clip[] {
+  return rippleResizeBackgroundLane(lane0, clipId, newStart, newEnd);
 }
 
 /** Insertion au playhead sur V1 uniquement (autres pistes V / OV inchangées). */

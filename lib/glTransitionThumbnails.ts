@@ -1,4 +1,5 @@
-import { createGlRenderer, loadMediaSource } from '@/lib/glTransitionRenderer';
+import { createGlRenderer } from '@/lib/glTransitionRenderer';
+import { loadGlSourcesFromUrls } from '@/lib/glTransitionMedia';
 import { isCutTransitionName } from '@/lib/glTransitions';
 
 const THUMB_W = 96;
@@ -72,14 +73,7 @@ async function resolveSources(
   fromUrl?: string,
   toUrl?: string
 ): Promise<{ from: TexImageSource; to: TexImageSource }> {
-  if (fromUrl && toUrl) {
-    const [from, to] = await Promise.all([
-      loadMediaSource(fromUrl),
-      loadMediaSource(toUrl),
-    ]);
-    return { from, to };
-  }
-  return getPlaceholderSources();
+  return loadGlSourcesFromUrls(fromUrl, toUrl);
 }
 
 function renderToDataUrl(

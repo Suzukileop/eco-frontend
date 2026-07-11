@@ -1,12 +1,13 @@
 'use client';
 
 import type { AnalysisStatus, ProcessingStage, VideoAnalysisResponse } from '@/types/templates';
+import { templatesSectionClass } from '@/components/templates/templates-section-ui';
 
 const STEPS: { id: ProcessingStage; label: string }[] = [
-  { id: 'FETCHING_MEDIA', label: '🔗 Récupération de la vidéo...' },
-  { id: 'GROK_ANALYSIS', label: '🤖 Grok analyse la vidéo séquence par séquence...' },
-  { id: 'GENERATING_IMAGES', label: '🎨 Nano Banana génère les fonds pour chaque séquence...' },
-  { id: 'FINALIZING', label: '✅ Finalisation...' },
+  { id: 'FETCHING_MEDIA', label: 'Récupération de la vidéo' },
+  { id: 'GROK_ANALYSIS', label: 'Analyse Grok séquence par séquence' },
+  { id: 'GENERATING_IMAGES', label: 'Génération des fonds Nano Banana' },
+  { id: 'FINALIZING', label: 'Finalisation' },
 ];
 
 function activeStepIndex(analysis: VideoAnalysisResponse): number {
@@ -38,12 +39,12 @@ export function AnalysisProgress({ analysis }: { analysis: VideoAnalysisResponse
 
   return (
     <section
-      className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 to-white p-6 shadow-sm"
+      className={`${templatesSectionClass} border-orange-200/50 bg-gradient-to-br from-orange-50/80 to-white/90 dark:border-orange-500/20 dark:from-orange-500/10 dark:to-neutral-900/85`}
       aria-live="polite"
       aria-busy={analysis.status !== 'DONE'}
     >
-      <h2 className="text-lg font-semibold text-gray-900">Analyse en cours</h2>
-      <p className="mt-1 text-sm text-gray-600">
+      <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Analyse en cours</h2>
+      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
         Cela peut prendre plusieurs minutes selon la durée de la vidéo.
       </p>
       <ol className="mt-6 space-y-4">
@@ -52,29 +53,29 @@ export function AnalysisProgress({ analysis }: { analysis: VideoAnalysisResponse
           return (
             <li key={step.id} className="flex items-start gap-3">
               <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
                   state === 'done'
-                    ? 'bg-teal-600 text-white'
+                    ? 'bg-orange-500 text-white'
                     : state === 'active'
-                      ? 'bg-teal-100 text-teal-800 ring-2 ring-teal-500'
-                      : 'bg-gray-100 text-gray-400'
+                      ? 'bg-orange-100 text-orange-800 ring-2 ring-orange-500 dark:bg-orange-500/20 dark:text-orange-200'
+                      : 'bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500'
                 }`}
                 aria-hidden
               >
                 {state === 'done' ? '✓' : index + 1}
               </span>
               <span
-                className={`flex-1 text-sm ${
+                className={`flex-1 pt-1 text-sm ${
                   state === 'active'
-                    ? 'font-semibold text-teal-900'
+                    ? 'font-semibold text-orange-900 dark:text-orange-200'
                     : state === 'done'
-                      ? 'text-gray-700'
-                      : 'text-gray-400'
+                      ? 'text-neutral-700 dark:text-neutral-300'
+                      : 'text-neutral-400 dark:text-neutral-500'
                 }`}
               >
                 {step.label}
                 {state === 'active' && (
-                  <span className="ml-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-teal-600 border-t-transparent align-middle" />
+                  <span className="ml-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-orange-500 border-t-transparent align-middle" />
                 )}
               </span>
             </li>
@@ -82,7 +83,7 @@ export function AnalysisProgress({ analysis }: { analysis: VideoAnalysisResponse
         })}
       </ol>
       {typeof analysis.segmentsCount === 'number' && analysis.segmentsCount > 0 && (
-        <p className="mt-4 text-xs text-gray-500">
+        <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-400">
           {analysis.segmentsCount} séquence{analysis.segmentsCount > 1 ? 's' : ''} détectée
           {analysis.segmentsCount > 1 ? 's' : ''} jusqu&apos;ici…
         </p>

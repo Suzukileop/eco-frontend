@@ -2,6 +2,7 @@
 
 import type { PreviewTool } from '@/stores/editorUiStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { IconHandPan } from '@/components/editor/TimelineIcons';
 
 function IconCursor() {
   return (
@@ -11,17 +12,9 @@ function IconCursor() {
   );
 }
 
-function IconHand() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7 11V8a2 2 0 114 0v1M11 10V7a2 2 0 114 0v2M15 9V7a2 2 0 114 0v5M7 11v5a5 5 0 0010 0v-2" />
-    </svg>
-  );
-}
-
 const TOOLS: { id: PreviewTool; label: string; icon: React.ReactNode }[] = [
   { id: 'select', label: 'Sélection', icon: <IconCursor /> },
-  { id: 'hand', label: 'Main (déplacer la vue)', icon: <IconHand /> },
+  { id: 'hand', label: 'Main (déplacer la vue)', icon: <IconHandPan width={16} height={16} /> },
 ];
 
 export function PreviewToolsBar() {
@@ -38,7 +31,7 @@ export function PreviewToolsBar() {
         <button
           key={t.id}
           type="button"
-          title={`${t.label}${t.id === 'hand' ? ' (Ctrl+H)' : ''}`}
+          title={t.label}
           aria-label={t.label}
           aria-pressed={previewTool === t.id}
           onClick={() => setPreviewTool(t.id)}

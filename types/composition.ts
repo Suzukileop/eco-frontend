@@ -79,6 +79,10 @@ export interface Clip {
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   fontFamily?: string;
   fontSize?: number;
+  /** Taille de police à 100 % d’échelle (Transformer) — unités CapCut (5–32). */
+  textScaleBaseFontSize?: number;
+  /** Échelle Transformer (10–500 %), relative à `textScaleBaseFontSize`. */
+  textScalePct?: number;
   fontWeight?: 'normal' | 'bold';
   fontStyle?: 'normal' | 'italic';
   textDecoration?: 'none' | 'underline' | 'line-through';
@@ -121,6 +125,26 @@ export interface Clip {
    * ≥ 1 = superposition libre, indépendante de V1).
    */
   backgroundLane?: number;
+
+  /**
+   * Piste texte dans la timeline (0 = T1, ≥ 1 = T2+ — superposition libre sur chaque ligne).
+   */
+  textLane?: number;
+
+  /**
+   * Piste overlay dans la timeline (0 = OV1, ≥ 1 = OV2+ — superposition libre).
+   */
+  overlayLane?: number;
+
+  /**
+   * Piste audio dans la timeline (0 = A1, ≥ 1 = A2+ — superposition libre, empilement vers le bas).
+   */
+  audioLane?: number;
+
+  /**
+   * Piste voix off dans la timeline (0 = VO1, ≥ 1 = VO2+ — superposition libre, empilement vers le bas).
+   */
+  voiceoverLane?: number;
 }
 
 export interface Transition {

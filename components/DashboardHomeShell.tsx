@@ -1,35 +1,40 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Role } from '@/types/auth';
 
-export function DashboardHomeShell({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const { user, isLoading } = useAuth();
+/** Conteneur de page dashboard — l’auth est déjà gérée par `DashboardShell`. */
+export function DashboardHomeShell({
+  children,
+  wide = false,
+  fullWidth = false,
+  fillViewport = false,
+}: {
+  children: React.ReactNode;
+  wide?: boolean;
+  /** Pleine largeur utile (sans max-w centré) — listes / tableaux larges */
+  fullWidth?: boolean;
+  /** Remplit la zone utile du dashboard (pas de scroll page) */
+  fillViewport?: boolean;
+}) {
+  const widthClass = fullWidth
+    ? 'w-full max-w-none'
+    : wide
+      ? 'mx-auto max-w-7xl'
+      : 'mx-auto max-w-6xl';
 
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/login');
-    }
-  }, [isLoading, user, router]);
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
-
-  if (!user) return null;
-
-  return <main className="mx-auto max-w-5xl space-y-8 px-4 py-10">{children}</main>;
+  return (
+    <main
+      className={`relative z-10 ${widthClass} ${
+        fillViewport ? 'flex min-h-0 flex-1 flex-col' : 'space-y-6'
+      }`}
+    >
+      {children}
+    </main>
+  );
 }
 
 function RolesCard({ roles }: { roles: Role[] }) {
@@ -73,8 +78,8 @@ export function DashboardWelcomeSection() {
           {showCreatorHub && (
             <div className="mt-4">
               <Link
-                href="/dashboard/creator/content"
-                className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800 transition hover:bg-indigo-100"
+                href="/dashboard/creator"
+                className="inline-flex items-center gap-2 rounded-lg border border-[#F97316]/25 bg-[#FFF7ED] px-4 py-2 text-sm font-semibold text-[#EA580C] transition hover:bg-[#FFEDD5]"
               >
                 Mon espace créateur
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

@@ -1,5 +1,4 @@
 import type { Clip, Format } from '@/types/composition';
-import { getAspectRatio } from '@/lib/formatPresets';
 import { resolveTextFramePx } from '@/lib/studio/textBoundsMeasure';
 import { mediaFrameHeightPx } from '@/lib/studio/mediaDimensions';
 
@@ -19,9 +18,9 @@ export function clipToKonvaBounds(
   clip: Clip,
   canvasWidth: number,
   canvasHeight: number,
-  format: Format = '9:16',
-  customAspectW?: number,
-  customAspectH?: number
+  _format: Format = '9:16', // eslint-disable-line @typescript-eslint/no-unused-vars
+  _customAspectW?: number,  // eslint-disable-line @typescript-eslint/no-unused-vars
+  _customAspectH?: number   // eslint-disable-line @typescript-eslint/no-unused-vars
 ): KonvaClipBounds {
   const isText = clip.trackType === 'text' || clip.type === 'text';
 
@@ -42,9 +41,8 @@ export function clipToKonvaBounds(
   const xPct = clip.x ?? 50;
   const yPct = clip.y ?? 50;
   const boxWidthPct = clip.boxWidthPct ?? 100;
-  const ratio = getAspectRatio(format, customAspectW, customAspectH);
   const width = (canvasWidth * boxWidthPct) / 100;
-  const height = mediaFrameHeightPx(width, clip, ratio.h / ratio.w);
+  const height = mediaFrameHeightPx(width, clip);
 
   return {
     clipId: clip.id,

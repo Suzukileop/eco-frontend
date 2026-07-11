@@ -1,38 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from 'recharts';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { DashboardHomeShell } from '@/components/DashboardHomeShell';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { AnalyticsChartsSkeleton } from '@/components/analytics/AnalyticsChartsSkeleton';
 import type { AnalyticsDashboardDto, DailyPublicationPoint, PlatformShareSlice } from '@/types/analytics';
 
-const PLATFORM_COLORS: Record<string, string> = {
-  INSTAGRAM: '#E1306C',
-  TIKTOK: '#010101',
-  YOUTUBE: '#FF0000',
-  FACEBOOK: '#1877F2',
-};
-
-function pickColor(platform: string): string {
-  const key = platform.toUpperCase();
-  return PLATFORM_COLORS[key] ?? '#6366f1';
-}
+const AnalyticsCharts = dynamic(() => import('@/components/analytics/AnalyticsCharts'), {
+  loading: () => <AnalyticsChartsSkeleton />,
+  ssr: false,
+});
 
 function normalizeDashboard(raw: unknown): AnalyticsDashboardDto {
   if (!raw || typeof raw !== 'object') {
@@ -102,8 +84,8 @@ export default function AnalyticsPage() {
     <DashboardHomeShell>
       <div className="space-y-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-          <p className="mt-1 text-sm text-gray-600">Vue d’ensemble de vos publications.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Analytics</h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-neutral-400">Vue d’ensemble de vos publications.</p>
         </div>
 
         {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
@@ -113,8 +95,8 @@ export default function AnalyticsPage() {
             <LoadingSpinner size="lg" />
           </div>
         ) : !data ? null : isEmpty ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center shadow-sm">
-            <p className="text-gray-700">
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+            <p className="text-gray-700 dark:text-neutral-300">
               Aucune publication pour le moment — commencez par planifier un contenu !
             </p>
             <Link
@@ -136,53 +118,7 @@ export default function AnalyticsPage() {
               <KpiCard label="Total vues" value={String(data.kpis.totalViews)} />
             </div>
 
-            <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-gray-900">Publications par jour (30 derniers jours)</h2>
-              <div className="mt-4 h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data.publicationsLast30Days}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                    <Tooltip
-                      formatter={(value: number, _name: string, item: { payload?: DailyPublicationPoint }) => {
-                        const views = item?.payload?.views;
-                        return [
-                          typeof views === 'number' ? `${value} (vues : ${views})` : value,
-                          'Publications',
-                        ];
-                      }}
-                    />
-                    <Line type="monotone" dataKey="count" stroke="#4f46e5" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-gray-900">Répartition par plateforme</h2>
-              <div className="mt-4 h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={data.platformDistribution}
-                      dataKey="count"
-                      nameKey="platform"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={100}
-                      label
-                    >
-                      {data.platformDistribution.map((entry, index) => (
-                        <Cell key={`cell-${entry.platform}-${index}`} fill={pickColor(entry.platform)} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
+            <AnalyticsCharts data={data} />
           </>
         )}
       </div>
@@ -192,9 +128,9 @@ export default function AnalyticsPage() {
 
 function KpiCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+    <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-neutral-400">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
     </div>
   );
 }

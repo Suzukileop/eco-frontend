@@ -1,5 +1,6 @@
 import type { Clip } from '@/types/composition';
 import { buildClassicTextContentStyle } from '@/lib/studio/textContentStyle';
+import { resolveClipRenderFontSizePx } from '@/lib/studio/textZone/textZoneGeometry';
 import { centerFromFixedCorner } from '@/lib/studio/canvasPointer';
 import { positionToY } from '@/lib/textPosition';
 
@@ -43,25 +44,30 @@ function applyCssToElement(el: HTMLElement, style: Record<string, string | numbe
  */
 /** Mesure sans césure auto : uniquement les retours ligne explicites (\\n). */
 export function measureTextElementNatural(
-  clip: Clip
+  clip: Clip,
+  canvasHeight?: number
 ): { width: number; height: number } {
-  return measureTextElementTight(clip, undefined, { allowWordWrap: false });
+  return measureTextElementTight(clip, undefined, { allowWordWrap: false, canvasHeight });
 }
 
 export function measureTextElementTight(
   clip: Clip,
   maxWrapPx?: number,
-  options?: { allowWordWrap?: boolean }
+  options?: { allowWordWrap?: boolean; canvasHeight?: number }
 ): { width: number; height: number } {
   const allowWordWrap = options?.allowWordWrap !== false;
+  const canvasHeight = options?.canvasHeight;
   if (typeof document === 'undefined') {
-    const fs = clip.fontSize ?? 24;
+    const fs =
+      canvasHeight != null && canvasHeight > 0
+        ? resolveClipRenderFontSizePx(clip, canvasHeight)
+        : clip.fontSize ?? 24;
     const lh = clip.lineHeight ?? 1.1;
     return { width: 120, height: Math.ceil(fs * lh * 2) };
   }
 
   const el = document.createElement('div');
-  const base = buildClassicTextContentStyle(clip);
+  const base = buildClassicTextContentStyle(clip, canvasHeight);
   const raw = clip.content ?? '';
   const content = raw.length > 0 ? raw : '\u00A0';
 
@@ -130,13 +136,14 @@ export function measureTextElementTight(
 export function measureTextContentFrame(
   clip: Clip,
   canvasWidth: number,
+  canvasHeight?: number,
   fontSizeOverride?: number
 ): { widthPx: number; heightPx: number } {
   const minPx = 24;
   const canvasCapPx = Math.max(minPx, Math.floor(canvasWidth * 0.96));
   const measuredClip =
     fontSizeOverride != null ? { ...clip, fontSize: fontSizeOverride } : clip;
-  const natural = measureTextElementNatural(measuredClip);
+  const natural = measureTextElementNatural(measuredClip, canvasHeight);
 
   const storedPct = measuredClip.boxWidthPct ?? 85;
   const storedPx = (canvasWidth * storedPct) / 100;
@@ -150,7 +157,10 @@ export function measureTextContentFrame(
   const heightPx = Math.max(
     minPx,
     needsWordWrap
-      ? measureTextElementTight(measuredClip, widthPx, { allowWordWrap: true }).height
+      ? measureTextElementTight(measuredClip, widthPx, {
+          allowWordWrap: true,
+          canvasHeight,
+        }).height
       : natural.height
   );
 
@@ -162,8 +172,8 @@ export function resolveTextFramePx(
   canvasWidth: number,
   canvasHeight: number
 ): TextFramePx {
-  const { widthPx, heightPx } = measureTextContentFrame(clip, canvasWidth);
-  const natural = measureTextElementNatural(clip);
+  const { widthPx, heightPx } = measureTextContentFrame(clip, canvasWidth, canvasHeight);
+  const natural = measureTextElementNatural(clip, canvasHeight);
   const storedPct = clip.boxWidthPct ?? 85;
   const isLegacyWide = storedPct >= LEGACY_WIDE_BOX_PCT;
 
@@ -240,7 +250,7 @@ export function patchTextPositionFromAnchor(
     return null;
   }
 
-  const measured = measureTextContentFrame(clip, canvasWidth);
+  const measured = measureTextContentFrame(clip, canvasWidth, canvasHeight);
   const widthPx = frameSize?.widthPx ?? measured.widthPx;
   const heightPx = frameSize?.heightPx ?? measured.heightPx;
   const { centerX, centerY } = centerFromFixedCorner(

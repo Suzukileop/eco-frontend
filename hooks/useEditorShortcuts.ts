@@ -13,34 +13,23 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function useEditorShortcuts() {
-  const selectedClipId = useCompositionStore((s) => s.selectedClipId);
-  const removeClip = useCompositionStore((s) => s.removeClip);
-
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
-        e.preventDefault();
-        useEditorUiStore.getState().togglePreviewTool();
-        return;
-      }
-
-      if (
-        (e.key === 'Delete' || e.key === 'Backspace') &&
-        selectedClipId &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey
-      ) {
-        e.preventDefault();
-        removeClip(selectedClipId);
+      // Escape: clear multi-selection on media track
+      if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const { selectedClipIds, clearLaneClipSelection } = useCompositionStore.getState();
+        if (selectedClipIds.length > 0) {
+          e.preventDefault();
+          clearLaneClipSelection();
+        }
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedClipId, removeClip]);
+  }, []);
 
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {

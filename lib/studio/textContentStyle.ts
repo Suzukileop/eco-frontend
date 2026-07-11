@@ -1,7 +1,12 @@
 import type { CSSProperties } from 'react';
 import type { Clip } from '@/types/composition';
 import { resolveTextPresetStyle } from '@/lib/textStyleCatalog';
-import { TEXT_ZONE_PADDING_X, TEXT_ZONE_PADDING_Y } from '@/lib/studio/textZone/textZoneGeometry';
+import {
+  resolveClipRenderFontSizePx,
+  STUDIO_TEXT_CANVAS_REF_HEIGHT,
+  TEXT_ZONE_PADDING_X,
+  TEXT_ZONE_PADDING_Y,
+} from '@/lib/studio/textZone/textZoneGeometry';
 
 function buildTextShadow(clip: Clip): string {
   if (clip.textPreset && clip.textPreset !== 'none') return '';
@@ -16,7 +21,10 @@ function buildTextShadow(clip: Clip): string {
 }
 
 /** Style contenu texte classique — cadre serré sur les glyphes (réf. CapCut). */
-export function buildClassicTextContentStyle(clip: Clip): CSSProperties {
+export function buildClassicTextContentStyle(
+  clip: Clip,
+  canvasHeight?: number
+): CSSProperties {
   const presetStyle = resolveTextPresetStyle(clip);
   const bgHex = clip.backgroundColor;
   const bgAlpha = clip.backgroundOpacity ?? 0;
@@ -26,13 +34,17 @@ export function buildClassicTextContentStyle(clip: Clip): CSSProperties {
     : 'transparent';
 
   const isGradientFill = presetStyle.WebkitTextFillColor === 'transparent';
+  const renderFontSize =
+    canvasHeight != null && canvasHeight > 0
+      ? resolveClipRenderFontSizePx(clip, canvasHeight)
+      : resolveClipRenderFontSizePx(clip, STUDIO_TEXT_CANVAS_REF_HEIGHT);
 
   return {
     display: 'inline-block',
     width: 'fit-content',
     margin: 0,
     fontFamily: clip.fontFamily ?? 'inherit',
-    fontSize: clip.fontSize ?? 24,
+    fontSize: renderFontSize,
     fontWeight: clip.fontWeight ?? 'bold',
     fontStyle: clip.fontStyle ?? 'normal',
     textDecoration: clip.textDecoration !== 'none' ? clip.textDecoration : undefined,

@@ -11,6 +11,7 @@ import {
   clipToEffectiveScalePct,
   clipToPositionPx,
 } from '@/lib/mediaTransform';
+import { buildCenteredNativeMediaLayout } from '@/lib/studio/mediaDimensions';
 import { panelClasses as P, textSectionBoxStyle } from '@/lib/rightPanelTheme';
 
 const ROW_LABEL = 'text-[12px] text-neutral-400 leading-none';
@@ -312,7 +313,16 @@ export function TransformerSection({
   const posMinY = -Math.round(previewCanvasSize.height);
   const posMaxY = Math.round(previewCanvasSize.height);
 
-  const reset = () =>
+  const reset = () => {
+    const nw = clip.mediaNaturalWidth;
+    const nh = clip.mediaNaturalHeight;
+    if (nw && nh && nw > 0 && nh > 0 && previewCanvasSize.width > 0 && previewCanvasSize.height > 0) {
+      updateClip(
+        clip.id,
+        buildCenteredNativeMediaLayout(nw, nh, previewCanvasSize.width, previewCanvasSize.height)
+      );
+      return;
+    }
     updateClip(clip.id, {
       x: 50,
       y: 50,
@@ -322,6 +332,7 @@ export function TransformerSection({
       mediaOffsetY: 0,
       mediaRotation: 0,
     });
+  };
 
   return (
     <SectionBox>

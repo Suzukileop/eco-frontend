@@ -10,7 +10,8 @@ import {
 } from '@/components/editor/MovableCanvasZone';
 import { MediaRotationHandle } from '@/components/editor/MediaRotationHandle';
 import { resolveMediaAspectRatio, isDomMediaClip } from '@/lib/studio/mediaDimensions';
-import { getLane0Clips } from '@/lib/backgroundLanes';
+import { getLane0Clips, getClipBackgroundLane } from '@/lib/backgroundLanes';
+import { getClipOverlayLane } from '@/lib/overlayLanes';
 import { buildOverlayContentStyle } from '@/lib/previewTextLayout';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 
@@ -25,24 +26,10 @@ function isClipActive(clip: Clip, currentTime: number): boolean {
   return clip.startTime <= currentTime && clip.endTime > currentTime;
 }
 
-function computeLaneIndex(clips: Clip[], targetId: string): number {
-  const sorted = [...clips].sort((a, b) => a.startTime - b.startTime);
-  const lanes: Clip[][] = [];
-  for (const clip of sorted) {
-    let placed = false;
-    for (const lane of lanes) {
-      if (lane[lane.length - 1].endTime <= clip.startTime + 0.001) {
-        lane.push(clip);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) lanes.push([clip]);
-  }
-  for (let i = 0; i < lanes.length; i++) {
-    if (lanes[i].some((c) => c.id === targetId)) return i;
-  }
-  return 0;
+function getLaneIndexForClip(trackType: 'background' | 'overlay', clip: Clip): number {
+  return trackType === 'background'
+    ? getClipBackgroundLane(clip)
+    : getClipOverlayLane(clip);
 }
 
 interface StudioOverlayHitZoneProps {
@@ -79,7 +66,7 @@ function StudioOverlayHitZone({
       className={`pointer-events-auto rounded-sm ${
         isSelected
           ? 'ring-2 ring-cyan-400 ring-offset-0 ring-offset-transparent'
-          : 'hover:ring-1 hover:ring-white/30'
+          : ''
       }`}
       style={{
         position: 'absolute',
@@ -241,7 +228,7 @@ function StudioMediaSelectZone({
       }}
     >
       <div
-        className="relative w-full rounded-sm hover:ring-1 hover:ring-white/25"
+        className="relative w-full rounded-sm"
         style={mediaAspectStyle(clip)}
         aria-hidden
       />
@@ -285,8 +272,8 @@ export function StudioCanvasOverlay({
   );
 
   const isLaneVisible = useCallback(
-    (trackType: string, allTrackClips: Clip[], clipId: string) => {
-      const laneIdx = computeLaneIndex(allTrackClips, clipId);
+    (trackType: 'background' | 'overlay', clip: Clip) => {
+      const laneIdx = getLaneIndexForClip(trackType, clip);
       return !(laneHidden[`${trackType}-${laneIdx}`] ?? false);
     },
     [laneHidden]
@@ -297,7 +284,7 @@ export function StudioCanvasOverlay({
       bgClips.filter(
         (c) =>
           isClipActive(c, currentTime) &&
-          isLaneVisible('background', bgClips, c.id) &&
+          isLaneVisible('background', c) &&
           isDomMediaClip(c)
       ),
     [bgClips, currentTime, isLaneVisible]
@@ -307,25 +294,25 @@ export function StudioCanvasOverlay({
     () =>
       overlayClips.filter(
         (c) =>
-          isClipActive(c, currentTime) && isLaneVisible('overlay', overlayClips, c.id)
+          isClipActive(c, currentTime) && isLaneVisible('overlay', c)
       ),
     [overlayClips, currentTime, isLaneVisible]
   );
 
   const bgLaneLocked = useCallback(
-    (clipId: string) => {
-      const idx = computeLaneIndex(bgClips, clipId);
+    (clip: Clip) => {
+      const idx = getClipBackgroundLane(clip);
       return laneLocked[`background-${idx}`] ?? false;
     },
-    [bgClips, laneLocked]
+    [laneLocked]
   );
 
   const overlayLaneLocked = useCallback(
-    (clipId: string) => {
-      const idx = computeLaneIndex(overlayClips, clipId);
+    (clip: Clip) => {
+      const idx = getClipOverlayLane(clip);
       return laneLocked[`overlay-${idx}`] ?? false;
     },
-    [overlayClips, laneLocked]
+    [laneLocked]
   );
 
   if (!interactive || canvasWidth < 8 || canvasHeight < 8 || !composition) {
@@ -342,7 +329,7 @@ export function StudioCanvasOverlay({
   return (
     <>
       {activeBgClips.map((clip, idx) => {
-        const locked = bgLaneLocked(clip.id);
+        const locked = bgLaneLocked(clip);
         const isSelected = selectedClipId === clip.id;
         const z = 10 + idx;
         const onSelect = () => {
@@ -386,14 +373,14 @@ export function StudioCanvasOverlay({
           canvasHeight={canvasHeight}
           pointerScale={pointerScale}
           isSelected={selectedClipId === clip.id}
-          isLaneLocked={overlayLaneLocked(clip.id)}
+          isLaneLocked={overlayLaneLocked(clip)}
           stackIndex={stackIndex}
           onSelect={() => {
             setSelectedClip(clip.id);
             useEditorUiStore.getState().setKonvaSelectedIds([clip.id]);
             useCompositionStore.getState().requestEditorPanelTab('OV');
           }}
-          onContextMenu={ctx(clip.id, overlayLaneLocked(clip.id))}
+          onContextMenu={ctx(clip.id, overlayLaneLocked(clip))}
           onDragGuide={onDragGuide}
         />
       ))}

@@ -72,9 +72,21 @@ export async function uploadCompositionAsset(
   return res.data;
 }
 
-export async function exportComposition(compositionId: string): Promise<{ jobId: string }> {
+export interface ExportCompositionBody {
+  fileName?: string;
+  resolution?: '480p' | '720p' | '1080p';
+  quality?: 'recommended' | 'high' | 'low';
+  fps?: number;
+  format?: 'mp4';
+}
+
+export async function exportComposition(
+  compositionId: string,
+  settings?: ExportCompositionBody
+): Promise<{ jobId: string }> {
   const res = await api.post<{ jobId: string }>(
-    `${BASE}/${encodeURIComponent(compositionId)}/export`
+    `${BASE}/${encodeURIComponent(compositionId)}/export`,
+    settings ?? {}
   );
   return res.data;
 }

@@ -48,20 +48,44 @@ export function IconSkipForward(p: IconProps) {
   );
 }
 
+/** Annuler — flèche courbe CapCut */
 export function IconUndo(p: IconProps) {
   return (
-    <svg {...base} {...p}>
-      <path d="M9 7H5v4" />
-      <path d="M5 11a7 7 0 1 0 2-5" />
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...p}
+    >
+      <path d="M9 14.5 4.5 10 9 5.5" />
+      <path d="M4.5 10h11a6.5 6.5 0 010 13" />
     </svg>
   );
 }
 
+/** Restaurer — flèche courbe CapCut */
 export function IconRedo(p: IconProps) {
   return (
-    <svg {...base} {...p}>
-      <path d="M15 7h4v4" />
-      <path d="M19 11a7 7 0 1 1-2-5" />
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...p}
+    >
+      <path d="M15 14.5 19.5 10 15 5.5" />
+      <path d="M19.5 10H8.5a6.5 6.5 0 000 13" />
     </svg>
   );
 }
@@ -87,6 +111,22 @@ export function IconZoomIn(p: IconProps) {
   );
 }
 
+/** Outil main / panoramique aperçu (réf. CapCut — silhouette pleine). */
+export function IconHandPan(p: IconProps) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      {...p}
+    >
+      <path d="M9.5 3.25c.83 0 1.5.67 1.5 1.5V10h1.75V6.75c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V10H17V8.25c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5.5c0 4.28-3.47 7.75-7.75 7.75S4.5 17.03 4.5 12.75V8.25c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V10h1.75V4.75c0-.83.67-1.5 1.5-1.5z" />
+    </svg>
+  );
+}
+
 export function IconSnap(p: IconProps) {
   return (
     <svg {...base} {...p}>
@@ -97,22 +137,47 @@ export function IconSnap(p: IconProps) {
   );
 }
 
+/** Haut-parleur + onde (réf. CapCut — piste timeline / volume actif). */
 export function IconVolume(p: IconProps) {
   return (
     <svg {...base} {...p}>
-      <polygon points="11,6 15,10 15,14 11,18 11,6" fill="currentColor" stroke="none" />
-      <path d="M16 9a4 4 0 0 1 0 6" />
-      <path d="M18 7a7 7 0 0 1 0 10" />
+      <path
+        d="M5 9.5h3.5L14 6v12l-5.5-3.5H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z"
+        fill="currentColor"
+        stroke="none"
+      />
+      <path
+        d="M15.5 8.5c2.2 1.5 2.2 5.5 0 7"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        fill="none"
+      />
     </svg>
   );
 }
 
+/** Haut-parleur + × (réf. CapCut — piste muette). */
 export function IconVolumeMute(p: IconProps) {
   return (
     <svg {...base} {...p}>
-      <polygon points="11,6 15,10 15,14 11,18 11,6" fill="currentColor" stroke="none" />
-      <line x1="17" y1="9" x2="21" y2="15" />
-      <line x1="21" y1="9" x2="17" y2="15" />
+      <path
+        d="M5 9.5h3.5L14 6v12l-5.5-3.5H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z"
+        fill="currentColor"
+        stroke="none"
+      />
+      <path
+        d="M15.5 9.5 18.5 14.5"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+      />
+      <path
+        d="M18.5 9.5 15.5 14.5"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -209,6 +274,49 @@ export function IconTrash(p: IconProps) {
       <path d="M14 11v6" />
       <path d="M6 7V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2" />
       <path d="M9 7V4h6v3" />
+    </svg>
+  );
+}
+
+export function IconChevronRight(p: IconProps) {
+  return (
+    <svg {...base} width={12} height={12} strokeWidth={2.2} {...p}>
+      <path d="M9 6l5 6-5 6" />
+    </svg>
+  );
+}
+
+/** Remplacer le clip (CapCut). */
+export function IconReplace(p: IconProps) {
+  return (
+    <svg {...base} width={14} height={14} {...p}>
+      <path d="M4 7h12" />
+      <path d="M8 4l-4 3 4 3" />
+      <path d="M16 17H4" />
+      <path d="M12 14l4 3-4 3" />
+    </svg>
+  );
+}
+
+/** Télécharger (CapCut). */
+export function IconDownload(p: IconProps) {
+  return (
+    <svg {...base} width={14} height={14} {...p}>
+      <path d="M12 3v10" />
+      <path d="M8 11l4 4 4-4" />
+      <path d="M4 19h16" />
+    </svg>
+  );
+}
+
+/** Son séparé (CapCut). */
+export function IconSeparateAudio(p: IconProps) {
+  return (
+    <svg {...base} width={14} height={14} {...p}>
+      <path d="M12 4v8" />
+      <path d="M9 7a3 3 0 0 0 6 0" />
+      <path d="M5 14h3" />
+      <path d="M16 14h3" />
     </svg>
   );
 }
