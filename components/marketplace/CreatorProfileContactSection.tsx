@@ -444,15 +444,18 @@ export function CreatorProfileContactSection({
                       Skills & tools
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {strengths.map((item) => (
-                        <span
-                          key={item}
-                          className="inline-flex items-center gap-2.5 rounded-full border border-neutral-200 bg-neutral-50 py-2 pl-2 pr-3 text-sm font-medium text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-                        >
-                          <CreatorToolLogo label={item} size={28} />
-                          {item}
-                        </span>
-                      ))}
+                      {strengths.map((item) => {
+                        const label = typeof item === 'string' ? item : item.name;
+                        return (
+                          <span
+                            key={label}
+                            className="inline-flex items-center gap-2.5 rounded-full border border-neutral-200 bg-neutral-50 py-2 pl-2 pr-3 text-sm font-medium text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                          >
+                            <CreatorToolLogo label={label} size={28} />
+                            {label}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

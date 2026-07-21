@@ -4,6 +4,7 @@ import type {
   ProfileLink,
   ProfileMediaBlock,
   ProfileServiceItem,
+  ProfileStrengthTool,
 } from '@/types/ecosystem';
 
 export interface MarketplaceCreatorSummary {
@@ -83,7 +84,7 @@ export interface MarketplaceCreatorPublicProfile {
   whyMeBlocks?: ProfileMediaBlock[];
   experienceBlocks?: ProfileMediaBlock[];
   yearsOfExperience?: number | null;
-  strengthsToolsMastered?: string[];
+  strengthsToolsMastered?: ProfileStrengthTool[];
   profileVisits?: number;
   gender?: string | null;
   spokenLanguages?: string[];

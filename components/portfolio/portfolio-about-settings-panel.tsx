@@ -34,8 +34,32 @@ import {
   type PortfolioAboutStyleTarget,
 } from '@/components/portfolio/portfolio-about-settings';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import {
+  LIGHT_HERO_PALETTE,
+  PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS,
+  resolveHeroPaletteColor,
+  type HeroPaletteTokenId,
+} from '@/components/portfolio/portfolio-hero-palette-settings';
+import {
+  ABOUT_STYLE_TARGET_COLOR_SLOT,
+  applyAboutPaletteToSettings,
+  DARK_ABOUT_PALETTE,
+  DEFAULT_ABOUT_COLOR_BINDINGS,
+  DEFAULT_ABOUT_PALETTE,
+  mergeAboutColorBindings,
+  mergeAboutPalette,
+  patchAboutColorBinding,
+  patchAboutColorField,
+  patchAboutPalette,
+  PORTFOLIO_ABOUT_COLOR_SLOT_OPTIONS,
+  type AboutColorSlot,
+} from '@/components/portfolio/portfolio-about-palette-settings';
 import { SectionBackgroundSettingsFields } from '@/components/portfolio/portfolio-section-background-controls';
-import { PortfolioCardFrameSettingsFields } from '@/components/portfolio/portfolio-card-frame-settings-fields';
+import { SectionHeroPaletteToggle } from '@/components/portfolio/SectionHeroPaletteToggle';
+import {
+  PortfolioCardFrameSettingsFields,
+  type PortfolioCardFrameColorFieldKey,
+} from '@/components/portfolio/portfolio-card-frame-settings-fields';
 import { PortfolioElementStyleFields } from '@/components/portfolio/portfolio-element-style-fields';
 import {
   PORTFOLIO_SERVICES_CARD_DECOR_ALTERNATION_OPTIONS,
@@ -43,7 +67,42 @@ import {
   servicesCardDecorShellStyle,
 } from '@/components/portfolio/portfolio-services-card-decor-settings';
 
-type AboutSubSection =
+const ABOUT_BACKGROUND_LABEL_SLOTS: Record<string, AboutColorSlot> = {
+  Color: 'sectionBackground',
+  'Gradient start': 'sectionGradientFrom',
+  'Gradient end': 'sectionGradientTo',
+  'Couleur zone haut': 'sectionSplitA',
+  'Couleur zone gauche': 'sectionSplitA',
+  'Couleur zone bas': 'sectionSplitB',
+  'Couleur zone droite': 'sectionSplitB',
+  'Couleur de la ligne': 'sectionDivider',
+};
+
+const ABOUT_STATS_FRAME_SLOTS: Record<PortfolioCardFrameColorFieldKey, AboutColorSlot> = {
+  cardBorderColor: 'cardBorder',
+  cardBackgroundColor: 'cardBackground',
+  cardBackgroundColorA: 'cardBackgroundA',
+  cardBackgroundColorB: 'cardBackgroundB',
+  cardDividerColor: 'cardDivider',
+};
+
+const ABOUT_SIDE_FRAME_SLOTS: Record<PortfolioCardFrameColorFieldKey, AboutColorSlot> = {
+  cardBorderColor: 'sidePanelBorder',
+  cardBackgroundColor: 'sidePanelBackground',
+  cardBackgroundColorA: 'sidePanelBackgroundA',
+  cardBackgroundColorB: 'sidePanelBackgroundB',
+  cardDividerColor: 'sidePanelDivider',
+};
+
+const ABOUT_WHY_ME_FRAME_SLOTS: Record<PortfolioCardFrameColorFieldKey, AboutColorSlot> = {
+  cardBorderColor: 'whyMeBorder',
+  cardBackgroundColor: 'whyMeBackground',
+  cardBackgroundColorA: 'whyMeBackgroundA',
+  cardBackgroundColorB: 'whyMeBackgroundB',
+  cardDividerColor: 'whyMeDivider',
+};
+
+export type AboutSubSection =
   | 'general'
   | 'header'
   | 'layout'
@@ -51,12 +110,15 @@ type AboutSubSection =
   | 'statsStyle'
   | 'sidePanel'
   | 'whyMe'
-  | 'style'
+  | 'styleSide'
+  | 'styleWhyMe'
   | 'content'
-  | 'background';
+  | 'background'
+  | 'palette';
 
 const ABOUT_SUB_SECTIONS: { id: AboutSubSection; label: string; description: string }[] = [
   { id: 'general', label: 'General', description: 'Section visibility and stats / sidebar toggles.' },
+  { id: 'palette', label: 'Palette', description: 'Eight semantic tokens and color slot bindings.' },
   { id: 'header', label: 'Header', description: 'Title, subtitle, fonts, and colors.' },
   { id: 'layout', label: 'Layout', description: 'Sidebar position and block designs.' },
   { id: 'frame', label: 'Cadre stats', description: 'Bordure, fond X/Y, arrondi et padding des cartes stats.' },
@@ -76,13 +138,37 @@ const ABOUT_SUB_SECTIONS: { id: AboutSubSection; label: string; description: str
     description: 'Designs, cadre, décor géométrique, média et titre Why work with me.',
   },
   {
-    id: 'style',
-    label: 'Style',
-    description: 'Color, font, size, and weight for Why me text and side panel rows.',
+    id: 'styleSide',
+    label: 'Style side panel',
+    description: 'Color, font, size, and weight for profile side panel rows.',
+  },
+  {
+    id: 'styleWhyMe',
+    label: 'Style Why me',
+    description: 'Color, font, size, and weight for Why me body and bullets.',
   },
   { id: 'content', label: 'Content blocks', description: 'Show or hide each about subsection.' },
   { id: 'background', label: 'Background', description: 'Section fill, gradients, and opacity.' },
 ];
+
+/** Legacy saved UI id `style` → first typography subsection. */
+export function normalizeAboutSubSection(value: string | undefined): AboutSubSection {
+  if (value === 'style') return 'styleSide';
+  if (ABOUT_SUB_SECTIONS.some((section) => section.id === value)) return value as AboutSubSection;
+  return 'header';
+}
+
+const ABOUT_SIDE_STYLE_TARGETS = PORTFOLIO_ABOUT_STYLE_TARGET_OPTIONS.filter((option) =>
+  ['sideLabel', 'sideTitle', 'sideSubtitle'].includes(option.value)
+);
+
+const ABOUT_WHY_ME_STYLE_TARGETS = PORTFOLIO_ABOUT_STYLE_TARGET_OPTIONS.filter((option) =>
+  ['whyMeBody', 'whyMeBullet'].includes(option.value)
+);
+
+function asAboutPatch(patch: Record<string, unknown> | object): Partial<PortfolioAboutSectionSettings> {
+  return patch as Partial<PortfolioAboutSectionSettings>;
+}
 
 function AboutToggleRow({
   label,
@@ -127,7 +213,7 @@ function AboutOptionGrid<T extends string>({
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
-      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {options.map((option) => {
           const active = option.value === value;
           return (
@@ -151,7 +237,7 @@ function AboutOptionGrid<T extends string>({
   );
 }
 
-function AboutColorField({
+function AboutManualColorField({
   label,
   value,
   onChange,
@@ -185,20 +271,224 @@ function AboutColorField({
   );
 }
 
-export function AboutSettingsPanel({
+function AboutColorField({
+  about,
+  onChange,
+  slot,
+  label,
+  value,
+}: {
+  about: PortfolioAboutSectionSettings;
+  onChange: (patch: Partial<PortfolioAboutSectionSettings>) => void;
+  slot: AboutColorSlot;
+  label: string;
+  value: string;
+}) {
+  if (about.useHeroPalette === false) {
+    return (
+      <AboutManualColorField
+        label={label}
+        value={value}
+        onChange={(hex) => onChange(asAboutPatch(patchAboutColorField(about, slot, hex)))}
+      />
+    );
+  }
+
+  const palette = mergeAboutPalette(DEFAULT_ABOUT_PALETTE, about.aboutPalette);
+  const bindings = mergeAboutColorBindings(DEFAULT_ABOUT_COLOR_BINDINGS, about.aboutColorBindings);
+  const token = bindings[slot];
+  const resolved = resolveHeroPaletteColor(palette, token);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
+        <span
+          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-neutral-200"
+          style={{ backgroundColor: resolved }}
+          title={resolved}
+          aria-hidden
+        />
+      </div>
+      <select
+        value={token}
+        onChange={(event) =>
+          onChange(
+            asAboutPatch(patchAboutColorBinding(about, slot, event.target.value as HeroPaletteTokenId))
+          )
+        }
+        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 focus:border-neutral-400 focus:outline-none"
+        aria-label={`${label} palette token`}
+      >
+        {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function AboutPalettePanel({
   about,
   onChange,
 }: {
   about: PortfolioAboutSectionSettings;
   onChange: (patch: Partial<PortfolioAboutSectionSettings>) => void;
 }) {
-  const [subSection, setSubSection] = useState<AboutSubSection>('header');
-  const [styleTarget, setStyleTarget] = useState<PortfolioAboutStyleTarget>('whyMeBody');
+  const palette = mergeAboutPalette(DEFAULT_ABOUT_PALETTE, about.aboutPalette);
+  const bindings = mergeAboutColorBindings(DEFAULT_ABOUT_COLOR_BINDINGS, about.aboutColorBindings);
+  const paletteOn = about.useHeroPalette !== false;
+
+  return (
+    <div className="space-y-6">
+      <SectionHeroPaletteToggle
+        enabled={paletteOn}
+        onChange={(useHeroPalette) =>
+          onChange(
+            asAboutPatch(
+              useHeroPalette
+                ? { useHeroPalette, ...applyAboutPaletteToSettings(about) }
+                : { useHeroPalette }
+            )
+          )
+        }
+        title="Use color palette"
+        description="When on, About colors follow these eight tokens. Turn off to edit colors manually in other tabs."
+        enabledHint="Change a token below to restyle everything bound to it — title, stats, side panel, and Why me blocks."
+        disabledHint="Palette tokens are kept, but About uses manual hex colors until you turn this back on."
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() =>
+            onChange(
+              asAboutPatch(
+                paletteOn
+                  ? { ...patchAboutPalette(about, DARK_ABOUT_PALETTE), useHeroPalette: true }
+                  : { aboutPalette: { ...DARK_ABOUT_PALETTE } }
+              )
+            )
+          }
+          className="rounded-2xl border border-neutral-200 bg-neutral-950 px-4 py-3 text-left transition hover:border-neutral-400"
+        >
+          <span className="text-sm font-bold text-white">Dark mode palette</span>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onChange(
+              asAboutPatch(
+                paletteOn
+                  ? { ...patchAboutPalette(about, LIGHT_HERO_PALETTE), useHeroPalette: true }
+                  : { aboutPalette: { ...LIGHT_HERO_PALETTE } }
+              )
+            )
+          }
+          className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left transition hover:border-neutral-400"
+        >
+          <span className="text-sm font-bold text-neutral-900">Light mode palette</span>
+        </button>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((token) => (
+          <AboutManualColorField
+            key={token.value}
+            label={token.label}
+            value={palette[token.value]}
+            onChange={(color) =>
+              onChange(
+                asAboutPatch(
+                  paletteOn
+                    ? patchAboutPalette(about, { [token.value]: color })
+                    : {
+                        aboutPalette: {
+                          ...mergeAboutPalette(DEFAULT_ABOUT_PALETTE, about.aboutPalette),
+                          [token.value]: color,
+                        },
+                      }
+                )
+              )
+            }
+          />
+        ))}
+      </div>
+
+      {paletteOn ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onChange(asAboutPatch(applyAboutPaletteToSettings(about)))}
+            className="inline-flex w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-bold text-neutral-900 transition hover:bg-neutral-50"
+          >
+            Apply palette to all bound colors
+          </button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {PORTFOLIO_ABOUT_COLOR_SLOT_OPTIONS.map((slot) => (
+              <div key={slot.value} className="rounded-2xl border border-neutral-200/80 bg-white px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-neutral-800">{slot.label}</span>
+                  <span
+                    className="h-5 w-5 shrink-0 rounded-full border border-neutral-200"
+                    style={{ backgroundColor: resolveHeroPaletteColor(palette, bindings[slot.value]) }}
+                    aria-hidden
+                  />
+                </div>
+                <select
+                  value={bindings[slot.value]}
+                  onChange={(event) =>
+                    onChange(
+                      asAboutPatch(
+                        patchAboutColorBinding(about, slot.value, event.target.value as HeroPaletteTokenId)
+                      )
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800"
+                >
+                  {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((token) => (
+                    <option key={token.value} value={token.value}>
+                      {token.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-xs text-neutral-500">{slot.description}</p>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function AboutSettingsPanel({
+  about,
+  onChange,
+  subSection: controlledSubSection,
+  onSubSectionChange,
+}: {
+  about: PortfolioAboutSectionSettings;
+  onChange: (patch: Partial<PortfolioAboutSectionSettings>) => void;
+  subSection?: AboutSubSection;
+  onSubSectionChange?: (value: AboutSubSection) => void;
+}) {
+  const [uncontrolledSubSection, setUncontrolledSubSection] = useState<AboutSubSection>('header');
+  const subSection = normalizeAboutSubSection(controlledSubSection ?? uncontrolledSubSection);
+  const setSubSection = (value: AboutSubSection) => {
+    const next = normalizeAboutSubSection(value);
+    onSubSectionChange?.(next);
+    if (controlledSubSection === undefined) setUncontrolledSubSection(next);
+  };
+  const [sideStyleTarget, setSideStyleTarget] = useState<PortfolioAboutStyleTarget>('sideLabel');
+  const [whyMeStyleTarget, setWhyMeStyleTarget] = useState<PortfolioAboutStyleTarget>('whyMeBody');
   const activeMeta = ABOUT_SUB_SECTIONS.find((section) => section.id === subSection) ?? ABOUT_SUB_SECTIONS[0];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">About subsection</p>
           <p className="mt-1 text-sm text-neutral-500">{activeMeta.description}</p>
@@ -206,7 +496,7 @@ export function AboutSettingsPanel({
         <select
           value={subSection}
           onChange={(event) => setSubSection(event.target.value as AboutSubSection)}
-          className="min-w-[12rem] flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-900 sm:max-w-xs"
+          className="w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-900 sm:min-w-[12rem] sm:max-w-xs sm:flex-1"
         >
           {ABOUT_SUB_SECTIONS.map((section) => (
             <option key={section.id} value={section.id}>
@@ -223,6 +513,18 @@ export function AboutSettingsPanel({
             description="Display the about block on your public portfolio."
             checked={about.enabled}
             onChange={(enabled) => onChange({ enabled })}
+          />
+          <SectionHeroPaletteToggle
+            enabled={about.useHeroPalette !== false}
+            onChange={(useHeroPalette) =>
+              onChange(
+                asAboutPatch(
+                  useHeroPalette
+                    ? { useHeroPalette, ...applyAboutPaletteToSettings(about) }
+                    : { useHeroPalette }
+                )
+              )
+            }
           />
           <AboutToggleRow
             label="Afficher la section stats"
@@ -246,9 +548,11 @@ export function AboutSettingsPanel({
             onChange={(showSidePanel) => onChange({ showSidePanel })}
           />
           <AboutColorField
+            about={about}
+            onChange={onChange}
+            slot="accent"
             label="Accent color"
             value={about.accentColor}
-            onChange={(accentColor) => onChange({ accentColor })}
           />
           <p className="rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
             Content is edited in Creator Studio → Information. These settings control visibility and presentation.
@@ -325,11 +629,13 @@ export function AboutSettingsPanel({
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <AboutColorField label="Title color" value={about.titleColor} onChange={(titleColor) => onChange({ titleColor })} />
+            <AboutColorField about={about} onChange={onChange} slot="title" label="Title color" value={about.titleColor} />
             <AboutColorField
+              about={about}
+              onChange={onChange}
+              slot="subtitle"
               label="Subtitle color"
               value={about.subtitleColor}
-              onChange={(subtitleColor) => onChange({ subtitleColor })}
             />
           </div>
 
@@ -477,9 +783,11 @@ export function AboutSettingsPanel({
                   columns={2}
                 />
                 <AboutColorField
+                  about={about}
+                  onChange={onChange}
+                  slot="whyMeHeading"
                   label="Couleur du titre"
                   value={about.whyMeHeadingColor}
-                  onChange={(whyMeHeadingColor) => onChange({ whyMeHeadingColor })}
                 />
                 <AboutToggleRow
                   label="Titre en majuscules"
@@ -495,6 +803,15 @@ export function AboutSettingsPanel({
             onChange={(patch) => onChange(patchAboutWhyMeFromCardFrame(patch))}
             heading="Cadre des blocs"
             description="Bordure, fond uni ou divisé X/Y, arrondi et padding pour chaque bloc Why me."
+            renderColorField={({ field, label, value }) => (
+              <AboutColorField
+                about={about}
+                onChange={onChange}
+                slot={ABOUT_WHY_ME_FRAME_SLOTS[field]}
+                label={label}
+                value={value}
+              />
+            )}
           />
 
           <div className="space-y-4 rounded-2xl border border-neutral-200/80 bg-neutral-50/40 p-4">
@@ -524,9 +841,11 @@ export function AboutSettingsPanel({
                 />
 
                 <AboutColorField
+                  about={about}
+                  onChange={onChange}
+                  slot="whyMeDecor"
                   label="Couleur / teinte"
                   value={about.whyMeDecorColor}
-                  onChange={(whyMeDecorColor) => onChange({ whyMeDecorColor })}
                 />
 
                 <div>
@@ -696,6 +1015,15 @@ export function AboutSettingsPanel({
             onChange={onChange}
             heading="Cadre des stats"
             description="Bordure, fond uni ou divisé X/Y, arrondi et padding pour chaque carte stat."
+            renderColorField={({ field, label, value }) => (
+              <AboutColorField
+                about={about}
+                onChange={onChange}
+                slot={ABOUT_STATS_FRAME_SLOTS[field]}
+                label={label}
+                value={value}
+              />
+            )}
           />
         </div>
       ) : null}
@@ -704,19 +1032,25 @@ export function AboutSettingsPanel({
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <AboutColorField
+              about={about}
+              onChange={onChange}
+              slot="statsValue"
               label="Couleur des chiffres"
               value={about.statsValueColor}
-              onChange={(statsValueColor) => onChange({ statsValueColor })}
             />
             <AboutColorField
+              about={about}
+              onChange={onChange}
+              slot="statsLabel"
               label="Couleur des libellés"
               value={about.statsLabelColor}
-              onChange={(statsLabelColor) => onChange({ statsLabelColor })}
             />
             <AboutColorField
+              about={about}
+              onChange={onChange}
+              slot="statsIcon"
               label="Couleur des icônes"
               value={about.statsIconColor}
-              onChange={(statsIconColor) => onChange({ statsIconColor })}
             />
           </div>
 
@@ -872,19 +1206,76 @@ export function AboutSettingsPanel({
             onChange={(patch) => onChange(patchAboutSidePanelFromCardFrame(patch))}
             heading="Cadre du panneau profil"
             description="Bordure, fond uni ou divisé X/Y, arrondi et padding — même logique que les stats."
+            renderColorField={({ field, label, value }) => (
+              <AboutColorField
+                about={about}
+                onChange={onChange}
+                slot={ABOUT_SIDE_FRAME_SLOTS[field]}
+                label={label}
+                value={value}
+              />
+            )}
           />
         </div>
       ) : null}
 
-      {subSection === 'style' ? (
+      {subSection === 'palette' ? <AboutPalettePanel about={about} onChange={onChange} /> : null}
+
+      {subSection === 'styleSide' ? (
         <PortfolioElementStyleFields
-          targets={PORTFOLIO_ABOUT_STYLE_TARGET_OPTIONS}
-          activeTarget={styleTarget}
-          onTargetChange={(value) => setStyleTarget(value as PortfolioAboutStyleTarget)}
-          style={about.elementStyles[styleTarget]}
-          onStyleChange={(patch) =>
-            onChange({ elementStyles: patchAboutElementStyle(about.elementStyles, styleTarget, patch) })
-          }
+          targets={ABOUT_SIDE_STYLE_TARGETS}
+          activeTarget={sideStyleTarget}
+          onTargetChange={(value) => setSideStyleTarget(value as PortfolioAboutStyleTarget)}
+          style={about.elementStyles[sideStyleTarget]}
+          onStyleChange={(patch) => {
+            const next = patchAboutElementStyle(about.elementStyles, sideStyleTarget, patch);
+            const slot = ABOUT_STYLE_TARGET_COLOR_SLOT[sideStyleTarget];
+            onChange(
+              asAboutPatch(
+                about.useHeroPalette !== false && patch.color
+                  ? { elementStyles: next, ...patchAboutColorField(about, slot, patch.color) }
+                  : { elementStyles: next }
+              )
+            );
+          }}
+          renderColorField={({ label, value }) => (
+            <AboutColorField
+              about={about}
+              onChange={onChange}
+              slot={ABOUT_STYLE_TARGET_COLOR_SLOT[sideStyleTarget]}
+              label={label}
+              value={value}
+            />
+          )}
+        />
+      ) : null}
+
+      {subSection === 'styleWhyMe' ? (
+        <PortfolioElementStyleFields
+          targets={ABOUT_WHY_ME_STYLE_TARGETS}
+          activeTarget={whyMeStyleTarget}
+          onTargetChange={(value) => setWhyMeStyleTarget(value as PortfolioAboutStyleTarget)}
+          style={about.elementStyles[whyMeStyleTarget]}
+          onStyleChange={(patch) => {
+            const next = patchAboutElementStyle(about.elementStyles, whyMeStyleTarget, patch);
+            const slot = ABOUT_STYLE_TARGET_COLOR_SLOT[whyMeStyleTarget];
+            onChange(
+              asAboutPatch(
+                about.useHeroPalette !== false && patch.color
+                  ? { elementStyles: next, ...patchAboutColorField(about, slot, patch.color) }
+                  : { elementStyles: next }
+              )
+            );
+          }}
+          renderColorField={({ label, value }) => (
+            <AboutColorField
+              about={about}
+              onChange={onChange}
+              slot={ABOUT_STYLE_TARGET_COLOR_SLOT[whyMeStyleTarget]}
+              label={label}
+              value={value}
+            />
+          )}
         />
       ) : null}
 
@@ -895,7 +1286,27 @@ export function AboutSettingsPanel({
       ) : null}
 
       {subSection === 'background' ? (
-        <SectionBackgroundSettingsFields settings={about} onChange={onChange} />
+        <SectionBackgroundSettingsFields
+          settings={about}
+          onChange={onChange}
+          renderColorField={({ label, value, onChange: onBgColorChange }) => {
+            const slot = ABOUT_BACKGROUND_LABEL_SLOTS[label];
+            if (!slot) {
+              return (
+                <AboutManualColorField label={label} value={value} onChange={onBgColorChange} />
+              );
+            }
+            return (
+              <AboutColorField
+                about={about}
+                onChange={onChange}
+                slot={slot}
+                label={label}
+                value={value}
+              />
+            );
+          }}
+        />
       ) : null}
     </div>
   );

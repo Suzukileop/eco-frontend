@@ -242,6 +242,49 @@ export function mirrorMotifPointsHorizontally(points: MotifPoint[]): MotifPoint[
   );
 }
 
+/** True when the polygon has a tall edge flush to the left of the panel. */
+export function motifHasLeftVerticalEdge(points: MotifPoint[]): boolean {
+  const leftPts = points.filter((point) => point.x <= 8);
+  if (leftPts.length < 2) return false;
+  const ys = leftPts.map((point) => point.y);
+  return Math.max(...ys) - Math.min(...ys) > 35;
+}
+
+/** True when the polygon has a tall edge flush to the right of the panel. */
+export function motifHasRightVerticalEdge(points: MotifPoint[]): boolean {
+  const rightPts = points.filter((point) => point.x >= 92);
+  if (rightPts.length < 2) return false;
+  const ys = rightPts.map((point) => point.y);
+  return Math.max(...ys) - Math.min(...ys) > 35;
+}
+
+/**
+ * Right-column geometric motifs must hug the right edge (classic editorial slash).
+ * If a flip left a left-edge silhouette on the right, mirror it back.
+ */
+export function ensureRightColumnMotifPoints(points: MotifPoint[]): MotifPoint[] {
+  if (points.length < 3) {
+    return DEFAULT_CUSTOM_MOTIF_POINTS.map((point) => ({ ...point }));
+  }
+  if (motifHasLeftVerticalEdge(points) && !motifHasRightVerticalEdge(points)) {
+    return mirrorMotifPointsHorizontally(points);
+  }
+  return points.map((point) => ({ ...point }));
+}
+
+/**
+ * Left-column geometric motifs (Visual | Copy) hug the left edge.
+ */
+export function ensureLeftColumnMotifPoints(points: MotifPoint[]): MotifPoint[] {
+  if (points.length < 3) {
+    return mirrorMotifPointsHorizontally(DEFAULT_CUSTOM_MOTIF_POINTS);
+  }
+  if (motifHasRightVerticalEdge(points) && !motifHasLeftVerticalEdge(points)) {
+    return mirrorMotifPointsHorizontally(points);
+  }
+  return points.map((point) => ({ ...point }));
+}
+
 export function sanitizeMotifPoints(points: unknown, fallback = DEFAULT_CUSTOM_MOTIF_POINTS): MotifPoint[] {
   if (!Array.isArray(points)) return fallback.map((point) => ({ ...point }));
 

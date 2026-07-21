@@ -8,19 +8,26 @@ import {
   PORTFOLIO_CONTACT_CARD_PLACEMENT_OPTIONS,
   PORTFOLIO_CONTACT_CTA_DESIGN_OPTIONS,
   PORTFOLIO_CONTACT_HEADER_FONT_OPTIONS,
+  PORTFOLIO_CONTACT_STYLE_TARGET_OPTIONS,
   PORTFOLIO_CONTACT_SUBTITLE_PRESET_OPTIONS,
   PORTFOLIO_CONTACT_TITLE_PRESET_OPTIONS,
+  normalizeContactElementStyles,
+  patchContactElementStyle,
   type PortfolioContactSectionSettings,
+  type PortfolioContactStyleTarget,
 } from '@/components/portfolio/portfolio-contact-settings';
+import { PortfolioElementStyleFields } from '@/components/portfolio/portfolio-element-style-fields';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
 import { PortfolioCardFrameSettingsFields } from '@/components/portfolio/portfolio-card-frame-settings-fields';
 import { SectionBackgroundSettingsFields } from '@/components/portfolio/portfolio-section-background-controls';
+import { SectionHeroPaletteToggle } from '@/components/portfolio/SectionHeroPaletteToggle';
 
-type ContactSubSection = 'general' | 'header' | 'frame' | 'content' | 'background';
+export type ContactSubSection = 'general' | 'header' | 'frame' | 'content' | 'style' | 'background';
 
 const CONTACT_SUB_SECTIONS: { id: ContactSubSection; label: string; description: string }[] = [
   { id: 'general', label: 'General', description: 'Section visibility, card design, and CTA styling.' },
   { id: 'header', label: 'Header', description: 'Title, subtitle, fonts, and colors.' },
+  { id: 'style', label: 'Typography', description: 'Colors, fonts, and formatting for card body text.' },
   { id: 'frame', label: 'Card frame', description: 'Border, split background, radius, and inner spacing.' },
   { id: 'content', label: 'Content', description: 'Show or hide contact channels and CTA.' },
   { id: 'background', label: 'Background', description: 'Optional fill behind this section.' },
@@ -69,7 +76,7 @@ function ContactOptionGrid<T extends string>({
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
-      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {options.map((option) => {
           const active = option.value === value;
           return (
@@ -129,12 +136,23 @@ function ContactColorField({
 export function ContactSettingsPanel({
   contact,
   onChange,
+  subSection: controlledSubSection,
+  onSubSectionChange,
 }: {
   contact: PortfolioContactSectionSettings;
   onChange: (patch: Partial<PortfolioContactSectionSettings>) => void;
+  subSection?: ContactSubSection;
+  onSubSectionChange?: (value: ContactSubSection) => void;
 }) {
-  const [subSection, setSubSection] = useState<ContactSubSection>('header');
+  const [uncontrolledSubSection, setUncontrolledSubSection] = useState<ContactSubSection>('header');
+  const [styleTarget, setStyleTarget] = useState<PortfolioContactStyleTarget>('channelValue');
+  const subSection = controlledSubSection ?? uncontrolledSubSection;
+  const setSubSection = (value: ContactSubSection) => {
+    onSubSectionChange?.(value);
+    if (controlledSubSection === undefined) setUncontrolledSubSection(value);
+  };
   const activeMeta = CONTACT_SUB_SECTIONS.find((section) => section.id === subSection) ?? CONTACT_SUB_SECTIONS[0];
+  const elementStyles = normalizeContactElementStyles(contact.elementStyles);
 
   return (
     <div className="space-y-6">
@@ -163,6 +181,10 @@ export function ContactSettingsPanel({
             description="Display the contact block on your public portfolio."
             checked={contact.enabled}
             onChange={(enabled) => onChange({ enabled })}
+          />
+          <SectionHeroPaletteToggle
+            enabled={contact.useHeroPalette}
+            onChange={(useHeroPalette) => onChange({ useHeroPalette })}
           />
           <ContactOptionGrid
             label="Card design"
@@ -312,6 +334,26 @@ export function ContactSettingsPanel({
             columns={2}
           />
         </div>
+      ) : null}
+
+      {subSection === 'style' ? (
+        <PortfolioElementStyleFields
+          targets={PORTFOLIO_CONTACT_STYLE_TARGET_OPTIONS}
+          activeTarget={styleTarget}
+          onTargetChange={(value) => setStyleTarget(value as PortfolioContactStyleTarget)}
+          style={elementStyles[styleTarget]}
+          onStyleChange={(patch) =>
+            onChange({ elementStyles: patchContactElementStyle(elementStyles, styleTarget, patch) })
+          }
+          extra={
+            styleTarget === 'ctaLabel' ? (
+              <p className="rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
+                The <span className="font-semibold text-neutral-700">General</span> tab still controls CTA shape and
+                accent fill color. This panel drives the button label typography.
+              </p>
+            ) : null
+          }
+        />
       ) : null}
 
       {subSection === 'frame' ? (

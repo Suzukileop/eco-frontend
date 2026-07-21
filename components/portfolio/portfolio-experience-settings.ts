@@ -1,5 +1,15 @@
 import type { CSSProperties } from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import { mergeUseHeroPalette } from '@/components/portfolio/portfolio-section-palette';
+import {
+  DEFAULT_EXPERIENCE_COLOR_BINDINGS,
+  DEFAULT_EXPERIENCE_PALETTE,
+  applyExperiencePaletteToSettings,
+  mergeExperienceColorBindings,
+  mergeExperiencePalette,
+  type PortfolioExperienceColorBindings,
+  type PortfolioExperiencePalette,
+} from '@/components/portfolio/portfolio-experience-palette-settings';
 import {
   DEFAULT_SECTION_BACKGROUND,
   mergeSectionBackground,
@@ -205,6 +215,12 @@ export type PortfolioExperiencePresentationSettings = PortfolioSectionBackground
   /** Icons only, or icons with labels. */
   toolsDisplay: PortfolioExperienceToolsDisplay;
   toolsIconSize: PortfolioExperienceToolsIconSize;
+  /** When true, section colors follow the Hero semantic palette. */
+  useHeroPalette: boolean;
+  /** Experience-owned palette copy (same 8 tokens as Hero). */
+  experiencePalette?: PortfolioExperiencePalette;
+  /** Which token each experience color slot uses. */
+  experienceColorBindings?: PortfolioExperienceColorBindings;
   /** Per-element color, font, size, and weight for entry content. */
   elementStyles: PortfolioExperienceElementStyles;
   /** Outer entry background (the gray shell around both columns). */
@@ -448,6 +464,9 @@ export const DEFAULT_EXPERIENCE_PRESENTATION: PortfolioExperiencePresentationSet
   toolsEntrySide: 'left',
   toolsDisplay: 'icons-and-labels',
   toolsIconSize: 'md',
+  useHeroPalette: true,
+  experiencePalette: { ...DEFAULT_EXPERIENCE_PALETTE },
+  experienceColorBindings: { ...DEFAULT_EXPERIENCE_COLOR_BINDINGS },
   elementStyles: DEFAULT_EXPERIENCE_ELEMENT_STYLES,
   entryFrame: createExperienceLayerFrame({
     enabled: false,
@@ -464,6 +483,18 @@ export const DEFAULT_EXPERIENCE_PRESENTATION: PortfolioExperiencePresentationSet
     cardPadding: 'md',
   }),
 };
+
+Object.assign(
+  DEFAULT_EXPERIENCE_PRESENTATION,
+  applyExperiencePaletteToSettings({
+    experiencePalette: DEFAULT_EXPERIENCE_PALETTE,
+    experienceColorBindings: DEFAULT_EXPERIENCE_COLOR_BINDINGS,
+    elementStyles: DEFAULT_EXPERIENCE_ELEMENT_STYLES,
+    entryFrame: DEFAULT_EXPERIENCE_PRESENTATION.entryFrame,
+    storyFrame: DEFAULT_EXPERIENCE_PRESENTATION.storyFrame,
+    detailsFrame: DEFAULT_EXPERIENCE_PRESENTATION.detailsFrame,
+  })
+);
 
 export const PORTFOLIO_EXPERIENCE_TITLE_PRESET_OPTIONS: {
   value: PortfolioExperienceTitlePreset;
@@ -1621,7 +1652,7 @@ export function mergeExperiencePresentation(
     ...(!record.detailsFrame ? legacyCardPatch : {}),
   });
 
-  return {
+  const merged: PortfolioExperiencePresentationSettings = {
     ...background,
     titlePreset: pick(
       record.titlePreset,
@@ -1711,10 +1742,29 @@ export function mergeExperiencePresentation(
       base.toolsDisplay
     ),
     toolsIconSize: pick(record.toolsIconSize, ['sm', 'md', 'lg', 'xl'], base.toolsIconSize),
+    useHeroPalette: mergeUseHeroPalette(base.useHeroPalette, record),
+    experiencePalette: mergeExperiencePalette(
+      mergeExperiencePalette(DEFAULT_EXPERIENCE_PALETTE, base.experiencePalette),
+      record.experiencePalette
+    ),
+    experienceColorBindings: mergeExperienceColorBindings(
+      mergeExperienceColorBindings(DEFAULT_EXPERIENCE_COLOR_BINDINGS, base.experienceColorBindings),
+      record.experienceColorBindings
+    ),
     elementStyles: normalizeExperienceElementStyles(record.elementStyles ?? base.elementStyles),
     entryFrame,
     storyFrame,
     detailsFrame,
+  };
+
+  if (merged.useHeroPalette === false) {
+    return merged;
+  }
+
+  return {
+    ...merged,
+    ...(applyExperiencePaletteToSettings(merged) as Partial<PortfolioExperiencePresentationSettings>),
+    useHeroPalette: true,
   };
 }
 

@@ -21,6 +21,8 @@ import {
 
 export type MotifEditorMode = 'move' | 'shape' | 'resize';
 
+export type MotifCanvasPreviewLayout = 'desktop' | 'mobile';
+
 type PortfolioHeroMotifCanvasEditorProps = {
   side: MotifEditorSide;
   points: MotifPoint[];
@@ -30,6 +32,8 @@ type PortfolioHeroMotifCanvasEditorProps = {
   onChangePoints: (points: MotifPoint[]) => void;
   onChangeTransform: (patch: { position?: MotifPanelPosition; size?: MotifPanelSize }) => void;
   showTemplates?: boolean;
+  /** Wireframe content mockup under the motif for surgical placement. */
+  showLayoutMockup?: boolean;
 };
 
 type DragState =
@@ -50,6 +54,192 @@ function svgToLocalPoint(
   });
 }
 
+/** Approximate editorial gutters (medium @ xl) as % of the hero frame. */
+const DESKTOP_GUTTER = 12;
+const MOBILE_GUTTER = 6;
+
+function MotifCanvasLayoutMockup({ layout }: { layout: MotifCanvasPreviewLayout }) {
+  if (layout === 'mobile') {
+    const x = MOBILE_GUTTER;
+    const w = 100 - MOBILE_GUTTER * 2;
+    return (
+      <g aria-hidden pointerEvents="none">
+        <rect x="0" y="0" width="100" height="100" fill="#fafafa" />
+        <rect
+          x={x}
+          y="0"
+          width={w}
+          height="100"
+          fill="#f3f3f3"
+          stroke="#d4d4d4"
+          strokeWidth="0.35"
+          strokeDasharray="1.2 1.2"
+        />
+        <rect x={x + 2} y="14" width={w * 0.72} height="4.2" rx="0.6" fill="#d4d4d4" />
+        <rect x={x + 2} y="20" width={w * 0.55} height="3.2" rx="0.5" fill="#e5e5e5" />
+        <rect x={x + 2} y="28" width={w * 0.88} height="1.6" rx="0.4" fill="#e5e5e5" />
+        <rect x={x + 2} y="31" width={w * 0.78} height="1.6" rx="0.4" fill="#ebebeb" />
+        <rect x={x + 2} y="34" width={w * 0.62} height="1.6" rx="0.4" fill="#ebebeb" />
+        {[0, 1, 2, 3].map((i) => (
+          <circle
+            key={`tool-${i}`}
+            cx={x + 5 + i * 7}
+            cy="42"
+            r="2.2"
+            fill="#e5e5e5"
+            stroke="#d4d4d4"
+            strokeWidth="0.3"
+          />
+        ))}
+        <rect x={x + 2} y="48" width="22" height="5" rx="2.5" fill="#d4d4d4" />
+        <rect
+          x={x + w * 0.18}
+          y="58"
+          width={w * 0.64}
+          height="22"
+          rx="1.2"
+          fill="#e8e8e8"
+          stroke="#d4d4d4"
+          strokeWidth="0.35"
+        />
+        <text
+          x={x + w * 0.5}
+          y="70"
+          textAnchor="middle"
+          fontSize="2.4"
+          fill="#a3a3a3"
+          fontFamily="system-ui,sans-serif"
+        >
+          Portrait
+        </text>
+        {[0, 1, 2].map((i) => (
+          <rect
+            key={`stat-${i}`}
+            x={x + 2 + i * (w / 3.2)}
+            y="84"
+            width={w / 3.6}
+            height="7"
+            rx="1"
+            fill="#ececec"
+            stroke="#d4d4d4"
+            strokeWidth="0.3"
+          />
+        ))}
+        <text
+          x="50"
+          y="97.5"
+          textAnchor="middle"
+          fontSize="2.1"
+          fill="#a3a3a3"
+          fontFamily="system-ui,sans-serif"
+        >
+          ↓ sections below
+        </text>
+      </g>
+    );
+  }
+
+  const g = DESKTOP_GUTTER;
+  const contentW = 100 - g * 2;
+  const copyW = contentW * 0.42;
+  const portraitX = g + contentW * 0.55;
+  const portraitW = contentW * 0.32;
+
+  return (
+    <g aria-hidden pointerEvents="none">
+      <rect x="0" y="0" width="100" height="100" fill="#fafafa" />
+      <rect x="0" y="0" width={g} height="100" fill="#f0f0f0" />
+      <rect x={100 - g} y="0" width={g} height="100" fill="#f0f0f0" />
+      <rect
+        x={g}
+        y="0"
+        width={contentW}
+        height="100"
+        fill="#f5f5f5"
+        stroke="#d4d4d4"
+        strokeWidth="0.4"
+        strokeDasharray="1.4 1.2"
+      />
+      <line x1={g} y1="0" x2={g} y2="100" stroke="#a3a3a3" strokeWidth="0.35" strokeOpacity="0.7" />
+      <line
+        x1={100 - g}
+        y1="0"
+        x2={100 - g}
+        y2="100"
+        stroke="#a3a3a3"
+        strokeWidth="0.35"
+        strokeOpacity="0.7"
+      />
+      <text x={g + 2} y="14" fontSize="2.2" fill="#a3a3a3" fontFamily="system-ui,sans-serif">
+        Copy
+      </text>
+      <rect x={g + 2} y="18" width={copyW * 0.92} height="5" rx="0.7" fill="#d4d4d4" />
+      <rect x={g + 2} y="25" width={copyW * 0.7} height="3.8" rx="0.6" fill="#e0e0e0" />
+      <rect x={g + 2} y="34" width={copyW * 0.95} height="1.5" rx="0.35" fill="#e5e5e5" />
+      <rect x={g + 2} y="37" width={copyW * 0.88} height="1.5" rx="0.35" fill="#ebebeb" />
+      <rect x={g + 2} y="40" width={copyW * 0.72} height="1.5" rx="0.35" fill="#ebebeb" />
+      {[0, 1, 2, 3, 4].map((i) => (
+        <circle
+          key={`d-tool-${i}`}
+          cx={g + 5 + i * 6.5}
+          cy="48"
+          r="2"
+          fill="#e5e5e5"
+          stroke="#d4d4d4"
+          strokeWidth="0.3"
+        />
+      ))}
+      <rect x={g + 2} y="54" width="20" height="5" rx="2.5" fill="#d4d4d4" />
+      <rect
+        x={portraitX}
+        y="22"
+        width={portraitW}
+        height="42"
+        rx="1.4"
+        fill="#e8e8e8"
+        stroke="#d4d4d4"
+        strokeWidth="0.4"
+      />
+      <text
+        x={portraitX + portraitW / 2}
+        y="44"
+        textAnchor="middle"
+        fontSize="2.4"
+        fill="#a3a3a3"
+        fontFamily="system-ui,sans-serif"
+      >
+        Portrait
+      </text>
+      {[0, 1, 2].map((i) => (
+        <rect
+          key={`d-stat-${i}`}
+          x={portraitX - 4 + i * 12}
+          y="78"
+          width="10"
+          height="9"
+          rx="1"
+          fill="#ececec"
+          stroke="#d4d4d4"
+          strokeWidth="0.3"
+        />
+      ))}
+      <text
+        x={portraitX + 12}
+        y="94"
+        textAnchor="middle"
+        fontSize="2.1"
+        fill="#a3a3a3"
+        fontFamily="system-ui,sans-serif"
+      >
+        Stats
+      </text>
+      <text x="50" y="98.5" textAnchor="middle" fontSize="2" fill="#a3a3a3" fontFamily="system-ui,sans-serif">
+        ↓ next sections
+      </text>
+    </g>
+  );
+}
+
 export function PortfolioHeroMotifCanvasEditor({
   side,
   points,
@@ -59,12 +249,15 @@ export function PortfolioHeroMotifCanvasEditor({
   onChangePoints,
   onChangeTransform,
   showTemplates = true,
+  showLayoutMockup = true,
 }: PortfolioHeroMotifCanvasEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [mode, setMode] = useState<MotifEditorMode>('move');
   const [drag, setDrag] = useState<DragState | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [addPointMode, setAddPointMode] = useState(false);
+  const [previewLayout, setPreviewLayout] = useState<MotifCanvasPreviewLayout>('desktop');
+  const [mockupEnabled, setMockupEnabled] = useState(showLayoutMockup);
   const dragOrigin = useRef<{ position: MotifPanelPosition; size: MotifPanelSize; pointer: MotifPoint } | null>(
     null
   );
@@ -211,6 +404,46 @@ export function PortfolioHeroMotifCanvasEditor({
         </div>
       ) : null}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setMockupEnabled((current) => !current)}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+            mockupEnabled
+              ? 'bg-neutral-900 text-white'
+              : 'border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+          }`}
+        >
+          Layout mockup
+        </button>
+        {mockupEnabled ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setPreviewLayout('desktop')}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                previewLayout === 'desktop'
+                  ? 'bg-orange-600 text-white'
+                  : 'border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+              }`}
+            >
+              Desktop
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewLayout('mobile')}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                previewLayout === 'mobile'
+                  ? 'bg-orange-600 text-white'
+                  : 'border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+              }`}
+            >
+              Mobile
+            </button>
+          </>
+        ) : null}
+      </div>
+
       {mode === 'shape' ? (
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -237,7 +470,9 @@ export function PortfolioHeroMotifCanvasEditor({
       ) : (
         <p className="text-xs text-neutral-500">
           {mode === 'move'
-            ? 'Drag the orange center handle to move the motif freely on the hero.'
+            ? mockupEnabled
+              ? 'Wireframe shows copy, portrait, and stats — align the motif against these guides.'
+              : 'Drag the orange center handle to move the motif freely on the hero.'
             : 'Drag a corner handle to resize the motif panel.'}
         </p>
       )}
@@ -247,7 +482,7 @@ export function PortfolioHeroMotifCanvasEditor({
           ref={svgRef}
           viewBox="0 0 100 100"
           className="h-auto w-full touch-none select-none"
-          style={{ aspectRatio: '16 / 10' }}
+          style={{ aspectRatio: previewLayout === 'mobile' ? '9 / 14' : '16 / 10' }}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
@@ -255,17 +490,29 @@ export function PortfolioHeroMotifCanvasEditor({
           role="img"
           aria-label={`${side} motif canvas editor`}
         >
-          <rect x="0" y="0" width="100" height="100" fill="#ffffff" />
-          <rect x={side === 'left' ? 52 : 0} y="0" width={side === 'left' ? 48 : 52} height="100" fill="#f5f5f5" />
-          <line
-            x1="52"
-            y1="0"
-            x2="52"
-            y2="100"
-            stroke="#e5e5e5"
-            strokeWidth="0.4"
-            strokeDasharray="2 2"
-          />
+          {mockupEnabled ? (
+            <MotifCanvasLayoutMockup layout={previewLayout} />
+          ) : (
+            <>
+              <rect x="0" y="0" width="100" height="100" fill="#ffffff" />
+              <rect
+                x={side === 'left' ? 52 : 0}
+                y="0"
+                width={side === 'left' ? 48 : 52}
+                height="100"
+                fill="#f5f5f5"
+              />
+              <line
+                x1="52"
+                y1="0"
+                x2="52"
+                y2="100"
+                stroke="#e5e5e5"
+                strokeWidth="0.4"
+                strokeDasharray="2 2"
+              />
+            </>
+          )}
 
           <rect
             x={panelLeft}
@@ -280,7 +527,7 @@ export function PortfolioHeroMotifCanvasEditor({
           />
 
           <g transform={`translate(${panelLeft}, ${panelTop})`}>
-            <polygon points={localPolygon} fill={color} opacity="0.95" />
+            <polygon points={localPolygon} fill={color} opacity="0.88" />
             <polygon
               points={localPolygon}
               fill="none"

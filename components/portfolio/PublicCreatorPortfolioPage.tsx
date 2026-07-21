@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { CreatorProfileViewTracker } from '@/components/marketplace/CreatorProfileViewTracker';
-import { formatAvailabilityHours, parseAvailabilityHours } from '@/lib/availabilityHours';
+import { formatAvailabilityHours, formatAvailabilityHoursLines, parseAvailabilityHours } from '@/lib/availabilityHours';
 import {
   SocialPlatformIcon,
   socialPlatformBrandClass,
@@ -17,6 +17,9 @@ import { SOCIAL_PLATFORMS } from '@/types/ecosystem';
 import type { MarketplaceContentItem, MarketplaceCreatorPublicProfile } from '@/types/marketplace';
 import { PortfolioHeroSection } from '@/components/portfolio/PortfolioHeroSection';
 import { PortfolioSectionShell } from '@/components/portfolio/PortfolioSectionShell';
+import {
+  PortfolioSplitScreenFrame,
+} from '@/components/portfolio/portfolio-split-screen';
 import { PortfolioSettingsButton, PortfolioSettingsModal } from '@/components/portfolio/PortfolioSettingsModal';
 import { PortfolioThemeRoot } from '@/components/portfolio/PortfolioThemeRoot';
 import { usePortfolioSettings } from '@/components/portfolio/use-portfolio-settings';
@@ -41,6 +44,7 @@ import {
   PortfolioPerPageNav,
   SIDE_INFO_ICONS,
 } from '@/components/portfolio/portfolio-section-primitives';
+import { PortfolioMotionItem } from '@/components/portfolio/PortfolioMotionItem';
 
 import { pickHeroPresentationSettings, resolveHeroTools } from '@/components/portfolio/portfolio-hero-settings';
 import {
@@ -109,25 +113,47 @@ import {
   contactSubtitleColorStyle,
   contactTitleColorStyle,
 } from '@/components/portfolio/portfolio-contact-settings';
-import { pickFooterPresentationSettings } from '@/components/portfolio/portfolio-footer-settings';
+import { pickFooterPresentationSettings, portfolioFooterNavClearanceClass } from '@/components/portfolio/portfolio-footer-settings';
+import {
+  applyHeroPaletteToAbout,
+  applyHeroPaletteToContact,
+  applyHeroPaletteToExperience,
+  applyHeroPaletteToFaq,
+  applyHeroPaletteToFooter,
+  applyHeroPaletteToServices,
+  applyHeroPaletteToWork,
+  resolveHeroPaletteFromSettings,
+} from '@/components/portfolio/portfolio-section-palette';
 import {
   resolveNavItemLabel,
   type PortfolioNavSectionKey,
   type PortfolioNavIconVariant,
 } from '@/components/portfolio/portfolio-nav-items';
 import {
+  globalBackgroundPatternStyle,
   globalBackgroundStyle,
   globalContentWidthClass,
   globalFixedBackgroundImageStyle,
   globalSectionTitleTopClass,
+  globalSplitContentTopClass,
   hasGlobalPageBackground,
   hasGlobalSolidBackground,
   resolveGlobalSectionSubtitleTypography,
   resolveGlobalSectionTitleChrome,
   resolveGlobalSectionTitleTypography,
+  resolveGlobalSplitTitleFrame,
   resolveSectionHeaderAlign,
   resolveSectionTitleOrientation,
 } from '@/components/portfolio/portfolio-global-settings';
+import {
+  hasOpaqueSectionBackground,
+  sectionBackgroundBlockColor,
+  type PortfolioSectionBackgroundSettings,
+} from '@/components/portfolio/portfolio-section-background-settings';
+import {
+  buildPortfolioNavChromeLinks,
+} from '@/components/portfolio/portfolio-nav-extras';
+import { DEFAULT_PORTFOLIO_NAV_LINK_ICON_SOURCES } from '@/components/portfolio/portfolio-settings-types';
 import { motionProfileEnablesHeroGeomFade } from '@/components/portfolio/portfolio-motion-settings';
 
 type PublicCreatorPortfolioPageProps = {
@@ -326,15 +352,47 @@ export function PublicCreatorPortfolioPage({
     updateNavigation,
     updateGlobal,
     flushPendingSave,
+    persistStatus,
     saveCustomTheme,
     renameCustomTheme,
     duplicateTheme,
     deleteCustomTheme,
+    setColorMode,
+    undoSettings,
+    redoSettings,
+    canUndo,
+    canRedo,
   } =
     usePortfolioSettings(creatorId, {
       initialSettings: profile.portfolioSettings,
       canEdit: isPortfolioOwner,
     });
+
+  useEffect(() => {
+    if (!isPortfolioOwner) return;
+    if (!(settings.global.settingsShortcutEnabled ?? true)) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isComma = event.key === ',' || event.code === 'Comma';
+      if (!isComma || !(event.metaKey || event.ctrlKey)) return;
+
+      event.preventDefault();
+      setSettingsOpen((open) => {
+        if (open) {
+          flushPendingSave();
+          return false;
+        }
+        return true;
+      });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    isPortfolioOwner,
+    settings.global.settingsShortcutEnabled,
+    flushPendingSave,
+  ]);
 
   const workItems = portfolioPosts ?? profile.portfolioPosts ?? [];
   const whyMeBlocks = profile.whyMeBlocks ?? [];
@@ -342,6 +400,10 @@ export function PublicCreatorPortfolioPage({
   const strengths = useMemo(
     () => profile.strengthsToolsMastered ?? [],
     [profile.strengthsToolsMastered]
+  );
+  const strengthNames = useMemo(
+    () => strengths.map((item) => (typeof item === 'string' ? item : item.name)),
+    [strengths]
   );
   const services = profile.profileServices ?? [];
   const faqItems = profile.faqItems ?? [];
@@ -393,6 +455,21 @@ export function PublicCreatorPortfolioPage({
     [profile, displayLinks]
   );
 
+  const navChromeLinks = useMemo(
+    () =>
+      buildPortfolioNavChromeLinks({
+        sources: settings.navigation.linkIconSources ?? DEFAULT_PORTFOLIO_NAV_LINK_ICON_SOURCES,
+        email: profile.contactEmail,
+        socialLinks,
+      }),
+    [settings.navigation.linkIconSources, profile.contactEmail, socialLinks]
+  );
+
+  const usesMonochromeChrome = portfolioUsesMonochromeChrome(
+    settings.themeId,
+    settings.global.monochromeUi
+  );
+
   const showWorkSection = workItems.length > 0 && settings.work.enabled;
   const showServicesSection = hasServicesSection && settings.services.enabled;
   const showAboutSection = hasAboutSection && settings.about.enabled;
@@ -401,17 +478,21 @@ export function PublicCreatorPortfolioPage({
   const showContactSectionResolved = hasContactSection && settings.contact.enabled;
 
   const heroTools = useMemo(
-    () => resolveHeroTools(strengths, settings.hero.selectedTools),
-    [strengths, settings.hero.selectedTools]
+    () => resolveHeroTools(strengthNames, settings.hero.selectedTools),
+    [strengthNames, settings.hero.selectedTools]
   );
 
   const heroPresentation = useMemo(
     () => pickHeroPresentationSettings(settings.hero),
     [settings.hero]
   );
+  const heroPalette = useMemo(
+    () => resolveHeroPaletteFromSettings(heroPresentation.palette),
+    [heroPresentation.palette]
+  );
   const workPresentation = useMemo(
-    () => pickWorkPresentationSettings(settings.work),
-    [settings.work]
+    () => applyHeroPaletteToWork(pickWorkPresentationSettings(settings.work), heroPalette),
+    [settings.work, heroPalette]
   );
   const workSectionTitle = useMemo(
     () => resolveWorkSectionTitle(settings.work),
@@ -422,8 +503,8 @@ export function PublicCreatorPortfolioPage({
     [settings.work]
   );
   const aboutPresentation = useMemo(
-    () => pickAboutPresentationSettings(settings.about),
-    [settings.about]
+    () => applyHeroPaletteToAbout(pickAboutPresentationSettings(settings.about), heroPalette),
+    [settings.about, heroPalette]
   );
   const stats = useMemo(
     () => filterAboutStats(rawAboutStats, aboutPresentation),
@@ -438,8 +519,12 @@ export function PublicCreatorPortfolioPage({
     [settings.about]
   );
   const experiencePresentation = useMemo(
-    () => pickExperiencePresentationSettings(settings.experience),
-    [settings.experience]
+    () =>
+      applyHeroPaletteToExperience(
+        pickExperiencePresentationSettings(settings.experience),
+        heroPalette
+      ),
+    [settings.experience, heroPalette]
   );
   const experienceSectionTitle = useMemo(
     () => resolveExperienceSectionTitle(settings.experience),
@@ -450,8 +535,9 @@ export function PublicCreatorPortfolioPage({
     [settings.experience]
   );
   const servicesPresentation = useMemo(
-    () => pickServicesPresentationSettings(settings.services),
-    [settings.services]
+    () =>
+      applyHeroPaletteToServices(pickServicesPresentationSettings(settings.services), heroPalette),
+    [settings.services, heroPalette]
   );
   const isDistinctServicesOrganization = servicesUsesDistinctSections(
     servicesPresentation.sectionOrganization
@@ -501,12 +587,16 @@ export function PublicCreatorPortfolioPage({
     () => resolveServicesSectionSubtitle(settings.services),
     [settings.services]
   );
-  const faqPresentation = useMemo(() => pickFaqPresentationSettings(settings.faq), [settings.faq]);
+  const faqPresentation = useMemo(
+    () => applyHeroPaletteToFaq(pickFaqPresentationSettings(settings.faq), heroPalette),
+    [settings.faq, heroPalette]
+  );
   const faqSectionTitle = useMemo(() => resolveFaqSectionTitle(settings.faq), [settings.faq]);
   const faqSectionSubtitle = useMemo(() => resolveFaqSectionSubtitle(settings.faq), [settings.faq]);
   const contactPresentation = useMemo(
-    () => pickContactPresentationSettings(settings.contact),
-    [settings.contact]
+    () =>
+      applyHeroPaletteToContact(pickContactPresentationSettings(settings.contact), heroPalette),
+    [settings.contact, heroPalette]
   );
   const contactSectionTitle = useMemo(
     () => resolveContactSectionTitle(settings.contact),
@@ -517,8 +607,21 @@ export function PublicCreatorPortfolioPage({
     [settings.contact, profile.responseTimeLabel]
   );
   const footerPresentation = useMemo(
-    () => pickFooterPresentationSettings(settings.footer),
-    [settings.footer]
+    () =>
+      applyHeroPaletteToFooter(pickFooterPresentationSettings(settings.footer), heroPalette),
+    [settings.footer, heroPalette]
+  );
+  const footerNavClearanceClass = useMemo(
+    () =>
+      portfolioFooterNavClearanceClass(settings.navigation.placement, {
+        navMode: settings.navigation.navMode,
+        enabled: settings.navigation.enabled,
+      }),
+    [
+      settings.navigation.placement,
+      settings.navigation.navMode,
+      settings.navigation.enabled,
+    ]
   );
   const navItems = useMemo(
     () =>
@@ -544,7 +647,7 @@ export function PublicCreatorPortfolioPage({
   const perPageNavItems = useMemo(() => {
     const pages: { id: string; label: string; icon: PortfolioNavIconVariant }[] = [];
     if (settings.hero.enabled) {
-      pages.push({ id: 'hero', label: 'Home', icon: 'grid' });
+      pages.push({ id: 'hero', label: 'Home', icon: 'home' });
     }
     pages.push(...navItems);
     return pages;
@@ -552,6 +655,13 @@ export function PublicCreatorPortfolioPage({
 
   const navMode = settings.navigation.navMode ?? 'default';
   const isPagesMode = navMode === 'pages';
+  /** Large-screen split: title/description left (~40%), content right (~60%) — hero stays full-bleed. */
+  const isSplitMode = navMode === 'split';
+  const sectionContentLayout = isSplitMode ? 'split' : 'stacked';
+  const globalTypographyContext = useMemo(
+    () => ({ splitRail: isSplitMode }),
+    [isSplitMode]
+  );
   const [activePageId, setActivePageId] = useState(() => perPageNavItems[0]?.id ?? 'hero');
 
   useEffect(() => {
@@ -580,19 +690,76 @@ export function PublicCreatorPortfolioPage({
   const contactCtaHref =
     primaryLink?.url ??
     (profile.contactEmail?.trim() ? `mailto:${profile.contactEmail.trim()}` : '#footer');
-  const heroContactHref = '#footer';
+  const pagesContactTarget = sectionVisibility.contact
+    ? 'contact'
+    : lastContentPageId ?? 'contact';
+  const heroContactHref = isPagesMode ? `#${pagesContactTarget}` : '#footer';
+  const navContactHref = isPagesMode
+    ? `#${pagesContactTarget}`
+    : sectionVisibility.contact
+      ? '#contact'
+      : contactCtaHref;
+  const heroWorkHref = '#work';
+  const onNavigateSection = isPagesMode
+    ? (sectionId: string) => {
+        const normalized = sectionId === 'footer' ? pagesContactTarget : sectionId;
+        if (perPageNavItems.some((item) => item.id === normalized)) {
+          setActivePageId(normalized);
+        } else if (lastContentPageId) {
+          setActivePageId(pagesContactTarget);
+        }
+      }
+    : undefined;
 
   const isEditorialLayout = true;
 
   const hasGlobalBg = useMemo(() => hasGlobalPageBackground(settings.global), [settings.global]);
-  /** Only a global solid color suppresses per-section backgrounds (image wallpaper does not). */
-  const suppressSectionBackgrounds = useMemo(
+  /**
+   * Global solid page color: sections without their own fill stay transparent so the
+   * global color shows through. An enabled section background always paints on top
+   * (section wins — e.g. footer fill overrides global on the footer only).
+   * Image wallpaper never suppresses section fills.
+   */
+  const hasGlobalSolid = useMemo(
     () => hasGlobalSolidBackground(settings.global),
     [settings.global]
   );
+  const suppressSectionBackground = (
+    section?: Pick<PortfolioSectionBackgroundSettings, 'sectionBackgroundEnabled'> | null
+  ) => hasGlobalSolid && !section?.sectionBackgroundEnabled;
+
+  const sectionBackgroundByKey = useMemo((): Partial<
+    Record<PortfolioNavSectionKey, PortfolioSectionBackgroundSettings>
+  > => {
+    return {
+      work: workPresentation,
+      skills: servicesPresentation,
+      services: servicesPresentation,
+      about: aboutPresentation,
+      experience: experiencePresentation,
+      faq: faqPresentation,
+      contact: contactPresentation,
+    };
+  }, [
+    workPresentation,
+    servicesPresentation,
+    aboutPresentation,
+    experiencePresentation,
+    faqPresentation,
+    contactPresentation,
+  ]);
+
+  const resolvePageSectionBlocksGlobal = (sectionKey: PortfolioNavSectionKey) => {
+    return hasOpaqueSectionBackground(sectionBackgroundByKey[sectionKey]);
+  };
+  const footerPaintsOwnBackground = Boolean(footerPresentation.sectionBackgroundEnabled);
   const globalBgStyle = useMemo(() => globalBackgroundStyle(settings.global), [settings.global]);
   const globalFixedBgStyle = useMemo(
     () => globalFixedBackgroundImageStyle(settings.global),
+    [settings.global]
+  );
+  const globalPatternStyle = useMemo(
+    () => globalBackgroundPatternStyle(settings.global),
     [settings.global]
   );
   const globalWidthClass = useMemo(
@@ -604,14 +771,26 @@ export function PublicCreatorPortfolioPage({
     [settings.global.contentGutter]
   );
   const titleScrollBehavior = settings.global.titleScroll;
+  const effectiveTitleScroll = isSplitMode ? 'static' : titleScrollBehavior;
   const motionProfile = settings.global.motionProfile;
   const titleChrome = useMemo(
     () => resolveGlobalSectionTitleChrome(settings.global),
     [settings.global]
   );
+  const splitTitleFrame = useMemo(
+    () => resolveGlobalSplitTitleFrame(settings.global),
+    [settings.global]
+  );
   const sectionTopSpacingClass = useMemo(
-    () => globalSectionTitleTopClass(settings.global.sectionTitleTopSpacing),
-    [settings.global.sectionTitleTopSpacing]
+    () =>
+      isSplitMode
+        ? globalSplitContentTopClass(settings.global.splitContentTopSpacing ?? 'compact')
+        : globalSectionTitleTopClass(settings.global.sectionTitleTopSpacing),
+    [
+      isSplitMode,
+      settings.global.splitContentTopSpacing,
+      settings.global.sectionTitleTopSpacing,
+    ]
   );
 
   const workHeaderAlign = useMemo(
@@ -654,148 +833,230 @@ export function PublicCreatorPortfolioPage({
   );
 
   const workHeaderTypography = useMemo(() => {
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
-      fontClass: workHeaderFontClass(settings.work.titleFont, 'title'),
-      fontStyle: workHeaderFontStyle(settings.work.titleFont),
-      colorStyle: workTitleColorStyle(settings.work.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
-      fontClass: workHeaderFontClass(settings.work.subtitleFont, 'subtitle'),
-      fontStyle: workHeaderFontStyle(settings.work.subtitleFont),
-      colorStyle: workSubtitleColorStyle(settings.work.subtitleColor),
-    });
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
+      fontClass: workHeaderFontClass(workPresentation.titleFont, 'title'),
+      fontStyle: workHeaderFontStyle(workPresentation.titleFont),
+      colorStyle: workTitleColorStyle(workPresentation.titleColor),
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
+      fontClass: workHeaderFontClass(workPresentation.subtitleFont, 'subtitle'),
+      fontStyle: workHeaderFontStyle(workPresentation.subtitleFont),
+      colorStyle: workSubtitleColorStyle(workPresentation.subtitleColor),
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.work]);
+  }, [settings.global, workPresentation, globalTypographyContext]);
 
   const servicesHeaderTypography = useMemo(() => {
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
-      fontClass: servicesHeaderFontClass(settings.services.titleFont, 'title'),
-      fontStyle: servicesHeaderFontStyle(settings.services.titleFont),
-      colorStyle: servicesTitleColorStyle(settings.services.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
-      fontClass: servicesHeaderFontClass(settings.services.subtitleFont, 'subtitle'),
-      fontStyle: servicesHeaderFontStyle(settings.services.subtitleFont),
-      colorStyle: servicesSubtitleColorStyle(settings.services.subtitleColor),
-    });
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
+      fontClass: servicesHeaderFontClass(servicesPresentation.titleFont, 'title'),
+      fontStyle: servicesHeaderFontStyle(servicesPresentation.titleFont),
+      colorStyle: servicesTitleColorStyle(servicesPresentation.titleColor),
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
+      fontClass: servicesHeaderFontClass(servicesPresentation.subtitleFont, 'subtitle'),
+      fontStyle: servicesHeaderFontStyle(servicesPresentation.subtitleFont),
+      colorStyle: servicesSubtitleColorStyle(servicesPresentation.subtitleColor),
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.services]);
+  }, [settings.global, servicesPresentation, globalTypographyContext]);
 
   const skillsHeaderTypography = useMemo(() => {
-    const header = settings.services.skillsHeader;
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
+    const header = servicesPresentation.skillsHeader;
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
       fontClass: servicesHeaderFontClass(header.titleFont, 'title'),
       fontStyle: servicesHeaderFontStyle(header.titleFont),
       colorStyle: servicesTitleColorStyle(header.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
       fontClass: servicesHeaderFontClass(header.subtitleFont, 'subtitle'),
       fontStyle: servicesHeaderFontStyle(header.subtitleFont),
       colorStyle: servicesSubtitleColorStyle(header.subtitleColor),
-    });
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.services.skillsHeader]);
+  }, [settings.global, servicesPresentation.skillsHeader, globalTypographyContext]);
 
   const distinctServicesHeaderTypography = useMemo(() => {
-    const header = settings.services.servicesHeader;
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
+    const header = servicesPresentation.servicesHeader;
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
       fontClass: servicesHeaderFontClass(header.titleFont, 'title'),
       fontStyle: servicesHeaderFontStyle(header.titleFont),
       colorStyle: servicesTitleColorStyle(header.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
       fontClass: servicesHeaderFontClass(header.subtitleFont, 'subtitle'),
       fontStyle: servicesHeaderFontStyle(header.subtitleFont),
       colorStyle: servicesSubtitleColorStyle(header.subtitleColor),
-    });
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.services.servicesHeader]);
+  }, [settings.global, servicesPresentation.servicesHeader, globalTypographyContext]);
 
   const aboutHeaderTypography = useMemo(() => {
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
-      fontClass: aboutHeaderFontClass(settings.about.titleFont, 'title'),
-      fontStyle: aboutHeaderFontStyle(settings.about.titleFont, settings.about.subtitleSerif, 'title'),
-      colorStyle: aboutTitleColorStyle(settings.about.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
-      fontClass: aboutHeaderFontClass(settings.about.subtitleFont, 'subtitle'),
-      fontStyle: aboutHeaderFontStyle(settings.about.subtitleFont, settings.about.subtitleSerif, 'subtitle'),
-      colorStyle: aboutSubtitleColorStyle(settings.about.subtitleColor),
-    });
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
+      fontClass: aboutHeaderFontClass(aboutPresentation.titleFont, 'title'),
+      fontStyle: aboutHeaderFontStyle(
+        aboutPresentation.titleFont,
+        aboutPresentation.subtitleSerif,
+        'title'
+      ),
+      colorStyle: aboutTitleColorStyle(aboutPresentation.titleColor),
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
+      fontClass: aboutHeaderFontClass(aboutPresentation.subtitleFont, 'subtitle'),
+      fontStyle: aboutHeaderFontStyle(
+        aboutPresentation.subtitleFont,
+        aboutPresentation.subtitleSerif,
+        'subtitle'
+      ),
+      colorStyle: aboutSubtitleColorStyle(aboutPresentation.subtitleColor),
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.about]);
+  }, [settings.global, aboutPresentation, globalTypographyContext]);
 
   const experienceHeaderTypography = useMemo(() => {
     const titleClass = [
-      experienceHeaderFontClass(settings.experience.titleFont, 'title'),
-      settings.experience.titleUppercase && settings.experience.titleFont !== 'display' ? 'uppercase' : '',
+      experienceHeaderFontClass(experiencePresentation.titleFont, 'title'),
+      experiencePresentation.titleUppercase && experiencePresentation.titleFont !== 'display'
+        ? 'uppercase'
+        : '',
     ]
       .filter(Boolean)
       .join(' ');
     const subtitleClass = [
-      experienceHeaderFontClass(settings.experience.subtitleFont, 'subtitle'),
-      settings.experience.subtitleUppercase && settings.experience.subtitleFont !== 'display' ? 'uppercase' : '',
+      experienceHeaderFontClass(experiencePresentation.subtitleFont, 'subtitle'),
+      experiencePresentation.subtitleUppercase && experiencePresentation.subtitleFont !== 'display'
+        ? 'uppercase'
+        : '',
     ]
       .filter(Boolean)
       .join(' ');
 
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
       fontClass: titleClass,
-      fontStyle: experienceHeaderFontStyle(settings.experience.titleFont),
-      colorStyle: experienceTitleColorStyle(settings.experience.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
+      fontStyle: experienceHeaderFontStyle(experiencePresentation.titleFont),
+      colorStyle: experienceTitleColorStyle(experiencePresentation.titleColor),
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
       fontClass: subtitleClass,
-      fontStyle: experienceHeaderFontStyle(settings.experience.subtitleFont),
-      colorStyle: experienceSubtitleColorStyle(settings.experience.subtitleColor),
-    });
+      fontStyle: experienceHeaderFontStyle(experiencePresentation.subtitleFont),
+      colorStyle: experienceSubtitleColorStyle(experiencePresentation.subtitleColor),
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.experience]);
+  }, [settings.global, experiencePresentation, globalTypographyContext]);
 
   const faqHeaderTypography = useMemo(() => {
     const titleClass = [
-      faqHeaderFontClass(settings.faq.titleFont, 'title'),
-      settings.faq.titleUppercase && settings.faq.titleFont !== 'display' ? 'uppercase' : '',
+      faqHeaderFontClass(faqPresentation.titleFont, 'title'),
+      faqPresentation.titleUppercase && faqPresentation.titleFont !== 'display' ? 'uppercase' : '',
     ]
       .filter(Boolean)
       .join(' ');
     const subtitleClass = [
-      faqHeaderFontClass(settings.faq.subtitleFont, 'subtitle'),
-      settings.faq.subtitleUppercase && settings.faq.subtitleFont !== 'display' ? 'uppercase' : '',
+      faqHeaderFontClass(faqPresentation.subtitleFont, 'subtitle'),
+      faqPresentation.subtitleUppercase && faqPresentation.subtitleFont !== 'display'
+        ? 'uppercase'
+        : '',
     ]
       .filter(Boolean)
       .join(' ');
 
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
       fontClass: titleClass,
-      fontStyle: faqHeaderFontStyle(settings.faq.titleFont),
-      colorStyle: faqTitleColorStyle(settings.faq.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
+      fontStyle: faqHeaderFontStyle(faqPresentation.titleFont),
+      colorStyle: faqTitleColorStyle(faqPresentation.titleColor),
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
       fontClass: subtitleClass,
-      fontStyle: faqHeaderFontStyle(settings.faq.subtitleFont),
-      colorStyle: faqSubtitleColorStyle(settings.faq.subtitleColor),
-    });
+      fontStyle: faqHeaderFontStyle(faqPresentation.subtitleFont),
+      colorStyle: faqSubtitleColorStyle(faqPresentation.subtitleColor),
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.faq]);
+  }, [settings.global, faqPresentation, globalTypographyContext]);
 
   const contactHeaderTypography = useMemo(() => {
-    const title = resolveGlobalSectionTitleTypography(settings.global, {
-      fontClass: contactHeaderFontClass(settings.contact.titleFont, 'title'),
-      fontStyle: contactHeaderFontStyle(settings.contact.titleFont, settings.contact.subtitleSerif, 'title'),
-      colorStyle: contactTitleColorStyle(settings.contact.titleColor),
-    });
-    const subtitle = resolveGlobalSectionSubtitleTypography(settings.global, {
-      fontClass: contactHeaderFontClass(settings.contact.subtitleFont, 'subtitle'),
+    const title = resolveGlobalSectionTitleTypography(
+      settings.global,
+      {
+      fontClass: contactHeaderFontClass(contactPresentation.titleFont, 'title'),
       fontStyle: contactHeaderFontStyle(
-        settings.contact.subtitleFont,
-        settings.contact.subtitleSerif,
+        contactPresentation.titleFont,
+        contactPresentation.subtitleSerif,
+        'title'
+      ),
+      colorStyle: contactTitleColorStyle(contactPresentation.titleColor),
+      },
+      globalTypographyContext
+    );
+    const subtitle = resolveGlobalSectionSubtitleTypography(
+      settings.global,
+      {
+      fontClass: contactHeaderFontClass(contactPresentation.subtitleFont, 'subtitle'),
+      fontStyle: contactHeaderFontStyle(
+        contactPresentation.subtitleFont,
+        contactPresentation.subtitleSerif,
         'subtitle'
       ),
-      colorStyle: contactSubtitleColorStyle(settings.contact.subtitleColor),
-    });
+      colorStyle: contactSubtitleColorStyle(contactPresentation.subtitleColor),
+      },
+      globalTypographyContext
+    );
     return { title, subtitle };
-  }, [settings.global, settings.contact]);
+  }, [settings.global, contactPresentation, globalTypographyContext]);
 
   const aboutSideInfoItems = useMemo(() => {
     const items = [];
@@ -821,6 +1082,7 @@ export function PublicCreatorPortfolioPage({
         icon: SIDE_INFO_ICONS.languages,
         label: 'Languages',
         title: languageList.join(' · '),
+        lines: languageList,
       });
     }
 
@@ -846,11 +1108,18 @@ export function PublicCreatorPortfolioPage({
       (profile.isAvailable === false || availabilityDisplay) &&
       isAboutSideInfoItemVisible('availability', settings.about)
     ) {
+      const availabilityLines =
+        profile.isAvailable === false
+          ? undefined
+          : profile.availabilityHours?.trim()
+            ? formatAvailabilityHoursLines(parseAvailabilityHours(profile.availabilityHours))
+            : undefined;
       items.push({
         id: 'availability',
         icon: SIDE_INFO_ICONS.availability,
         label: 'Availability',
         title: profile.isAvailable === false ? 'Currently unavailable' : (availabilityDisplay ?? ''),
+        lines: availabilityLines,
         subtitle:
           profile.isAvailable !== false &&
           profile.responseTimeLabel?.trim() &&
@@ -867,6 +1136,7 @@ export function PublicCreatorPortfolioPage({
     languageList,
     locationLabel,
     memberSinceLabel,
+    profile.availabilityHours,
     profile.gender,
     profile.isAvailable,
     profile.responseTimeLabel,
@@ -883,15 +1153,21 @@ export function PublicCreatorPortfolioPage({
           <PortfolioSectionShell
             id="work"
             background={workPresentation}
-            suppressBackground={suppressSectionBackgrounds}
+            fitContent
+            fillAvailableHeight={isPagesMode}
+            suppressBackground={suppressSectionBackground(workPresentation)}
             topSpacingClass={sectionTopSpacingClass}
+            contentLayout={sectionContentLayout}
             header={
               <EditorialSectionStickyHeader
                 title={workSectionTitle}
                 subtitle={workSectionSubtitle || undefined}
                 trailing={
                   settings.work.showMarketplaceLink ? (
-                    <MarketplaceProfileLink creatorId={creatorId} />
+                    <MarketplaceProfileLink
+                      creatorId={creatorId}
+                      color={workPresentation.titleColor}
+                    />
                   ) : null
                 }
                 editorialLayout={isEditorialLayout}
@@ -908,12 +1184,17 @@ export function PublicCreatorPortfolioPage({
                 subtitleTypographyStyle={workHeaderTypography.subtitle.style}
                 subtitleDecorationStyle={workHeaderTypography.subtitle.decorationStyle}
                 customSubtitleSizing={workHeaderTypography.subtitle.customSizing}
-                scrollBehavior={titleScrollBehavior}
-                orientation={resolveSectionTitleOrientation(settings.global, 'work')}
+                scrollBehavior={effectiveTitleScroll}
+                orientation={isSplitMode ? 'horizontal' : resolveSectionTitleOrientation(settings.global, 'work')}
               />
             }
           >
-            <EditorialWorkGallery items={workItems} presentation={workPresentation} motionProfile={motionProfile} />
+            <EditorialWorkGallery
+              items={workItems}
+              presentation={workPresentation}
+              motionProfile={motionProfile}
+              forceSingleColumn={isSplitMode}
+            />
           </PortfolioSectionShell>
         );
       case 'skills':
@@ -921,8 +1202,11 @@ export function PublicCreatorPortfolioPage({
           <PortfolioSectionShell
             id="skills"
             background={servicesPresentation}
-            suppressBackground={suppressSectionBackgrounds}
+            fitContent
+            fillAvailableHeight={isPagesMode}
+            suppressBackground={suppressSectionBackground(servicesPresentation)}
             topSpacingClass={sectionTopSpacingClass}
+            contentLayout={sectionContentLayout}
             header={
               <EditorialSectionStickyHeader
                 title={resolveDistinctBlockSectionTitle(settings.services, 'skills')}
@@ -941,8 +1225,8 @@ export function PublicCreatorPortfolioPage({
                 subtitleTypographyStyle={skillsHeaderTypography.subtitle.style}
                 subtitleDecorationStyle={skillsHeaderTypography.subtitle.decorationStyle}
                 customSubtitleSizing={skillsHeaderTypography.subtitle.customSizing}
-                scrollBehavior={titleScrollBehavior}
-                orientation={resolveSectionTitleOrientation(settings.global, 'skills')}
+                scrollBehavior={effectiveTitleScroll}
+                orientation={isSplitMode ? 'horizontal' : resolveSectionTitleOrientation(settings.global, 'skills')}
               />
             }
           >
@@ -958,8 +1242,11 @@ export function PublicCreatorPortfolioPage({
           <PortfolioSectionShell
             id="services"
             background={servicesPresentation}
-            suppressBackground={suppressSectionBackgrounds}
+            fitContent
+            fillAvailableHeight={isPagesMode}
+            suppressBackground={suppressSectionBackground(servicesPresentation)}
             topSpacingClass={sectionTopSpacingClass}
+            contentLayout={sectionContentLayout}
             header={
               <EditorialSectionStickyHeader
                 title={
@@ -1047,8 +1334,8 @@ export function PublicCreatorPortfolioPage({
                     : servicesHeaderTypography
                   ).subtitle.customSizing
                 }
-                scrollBehavior={titleScrollBehavior}
-                orientation={resolveSectionTitleOrientation(settings.global, 'services')}
+                scrollBehavior={effectiveTitleScroll}
+                orientation={isSplitMode ? 'horizontal' : resolveSectionTitleOrientation(settings.global, 'services')}
               />
             }
           >
@@ -1088,8 +1375,11 @@ export function PublicCreatorPortfolioPage({
           <PortfolioSectionShell
             id="about"
             background={aboutPresentation}
-            suppressBackground={suppressSectionBackgrounds}
+            fitContent
+            fillAvailableHeight={isPagesMode}
+            suppressBackground={suppressSectionBackground(aboutPresentation)}
             topSpacingClass={sectionTopSpacingClass}
+            contentLayout={sectionContentLayout}
             header={
               <EditorialSectionStickyHeader
                 title={aboutSectionTitle}
@@ -1109,36 +1399,63 @@ export function PublicCreatorPortfolioPage({
                 subtitleTypographyStyle={aboutHeaderTypography.subtitle.style}
                 subtitleDecorationStyle={aboutHeaderTypography.subtitle.decorationStyle}
                 customSubtitleSizing={aboutHeaderTypography.subtitle.customSizing}
-                scrollBehavior={titleScrollBehavior}
-                orientation={resolveSectionTitleOrientation(settings.global, 'about')}
+                scrollBehavior={effectiveTitleScroll}
+                orientation={isSplitMode ? 'horizontal' : resolveSectionTitleOrientation(settings.global, 'about')}
               />
             }
           >
             {(() => {
               const showPanel = settings.about.showSidePanel && aboutSideInfoItems.length > 0;
-              const isFullWidth = settings.about.layoutMode === 'full-width';
+              // Split nav: profile as a full-width frame directly above Why Me (not a narrow sidebar).
+              const splitProfileBand = isSplitMode && showPanel;
+              const isFullWidth = splitProfileBand || settings.about.layoutMode === 'full-width';
               const hasSidebar = showPanel && !isFullWidth;
-              const gridClass = aboutMainGridClass(settings.about.layoutMode, hasSidebar);
-              const panelPlacement = settings.about.fullWidthPanelPlacement;
+              const layoutMode = splitProfileBand ? 'full-width' : settings.about.layoutMode;
+              const gridClass = aboutMainGridClass(layoutMode, hasSidebar);
+              const panelPlacement = splitProfileBand
+                ? 'below-stats'
+                : settings.about.fullWidthPanelPlacement;
               const statsBlockSpacing = settings.about.showStats && stats.length > 0 ? 'mt-14' : 'mt-10';
+              const whyMePresentation = isSplitMode
+                ? {
+                    ...aboutPresentation,
+                    whyMeMediaPlacement:
+                      aboutPresentation.whyMeMediaPlacement === 'text-only'
+                        ? aboutPresentation.whyMeMediaPlacement
+                        : ('media-top' as const),
+                  }
+                : aboutPresentation;
+              const sidePanelPresentation = splitProfileBand
+                ? {
+                    ...aboutPresentation,
+                    sidePanelDesign: 'framed' as const,
+                    sidePanelFullWidthLayout: 'profile-frame' as const,
+                    sidePanelAutoCenter: false,
+                  }
+                : aboutPresentation;
 
               const mainColumn = (
                 <div className="space-y-12">
                   {settings.about.showWhyMe && whyMeBlocks.length > 0 ? (
                     <div>
-                      <EditorialWhyMeHeading presentation={aboutPresentation} />
-                      <EditorialWhyMeList blocks={whyMeBlocks} presentation={aboutPresentation} />
+                      <EditorialWhyMeHeading presentation={whyMePresentation} />
+                      <EditorialWhyMeList
+                        blocks={whyMeBlocks}
+                        presentation={whyMePresentation}
+                        motionProfile={motionProfile}
+                        forceStack={isSplitMode}
+                      />
                     </div>
                   ) : null}
                 </div>
               );
 
               const sidePanelColumn = showPanel ? (
-                <aside className={hasSidebar ? 'lg:sticky lg:top-24 lg:self-start xl:top-24' : undefined}>
+                <aside className={hasSidebar ? 'lg:sticky lg:top-32 lg:self-start xl:top-28' : undefined}>
                   <EditorialSideInfoPanel
                     items={aboutSideInfoItems}
-                    presentation={aboutPresentation}
-                    layoutMode={settings.about.layoutMode}
+                    presentation={sidePanelPresentation}
+                    layoutMode={layoutMode}
                   />
                 </aside>
               ) : null;
@@ -1172,8 +1489,8 @@ export function PublicCreatorPortfolioPage({
                   {settings.about.showStats && stats.length > 0 ? (
                     <EditorialStatGrid stats={stats} presentation={aboutPresentation} motionProfile={motionProfile} />
                   ) : null}
-                  <div className={`grid gap-10 ${gridClass}${statsBlockSpacing ? ` ${statsBlockSpacing}` : ''}`}>
-                    {settings.about.layoutMode === 'sidebar-left' ? (
+                  <div className={`grid gap-8 sm:gap-10 ${gridClass}${statsBlockSpacing ? ` ${statsBlockSpacing}` : ''}`}>
+                    {layoutMode === 'sidebar-left' ? (
                       <>
                         {sidePanelColumn}
                         {mainColumn}
@@ -1196,8 +1513,10 @@ export function PublicCreatorPortfolioPage({
             id="experience"
             background={experiencePresentation}
             fitContent
-            suppressBackground={suppressSectionBackgrounds}
+            fillAvailableHeight={isPagesMode}
+            suppressBackground={suppressSectionBackground(experiencePresentation)}
             topSpacingClass={sectionTopSpacingClass}
+            contentLayout={sectionContentLayout}
             header={
               <EditorialSectionStickyHeader
                 title={experienceSectionTitle}
@@ -1217,17 +1536,24 @@ export function PublicCreatorPortfolioPage({
                 subtitleTypographyStyle={experienceHeaderTypography.subtitle.style}
                 subtitleDecorationStyle={experienceHeaderTypography.subtitle.decorationStyle}
                 customSubtitleSizing={experienceHeaderTypography.subtitle.customSizing}
-                scrollBehavior={titleScrollBehavior}
-                orientation={resolveSectionTitleOrientation(settings.global, 'experience')}
+                scrollBehavior={effectiveTitleScroll}
+                orientation={isSplitMode ? 'horizontal' : resolveSectionTitleOrientation(settings.global, 'experience')}
               />
             }
           >
             {settings.experience.showYears &&
             profile.yearsOfExperience != null &&
             profile.yearsOfExperience > 0 ? (
-              <EditorialExperienceYears years={profile.yearsOfExperience} presentation={experiencePresentation} />
+              <PortfolioMotionItem profile={motionProfile} index={0}>
+                <EditorialExperienceYears years={profile.yearsOfExperience} presentation={experiencePresentation} />
+              </PortfolioMotionItem>
             ) : null}
-            <EditorialExperienceList blocks={experienceBlocks} presentation={experiencePresentation} />
+            <EditorialExperienceList
+              blocks={experienceBlocks}
+              presentation={experiencePresentation}
+              motionProfile={motionProfile}
+              forceSingleColumn={isSplitMode}
+            />
           </PortfolioSectionShell>
         );
       case 'faq':
@@ -1236,8 +1562,11 @@ export function PublicCreatorPortfolioPage({
             id="faq"
             background={faqPresentation}
             fitContent
-            suppressBackground={suppressSectionBackgrounds}
+            fillAvailableHeight={isPagesMode}
+            className={navMode === 'per-page' ? 'pb-28 sm:pb-24' : undefined}
+            suppressBackground={suppressSectionBackground(faqPresentation)}
             topSpacingClass={sectionTopSpacingClass}
+            contentLayout={sectionContentLayout}
             header={
               <EditorialSectionStickyHeader
                 title={faqSectionTitle}
@@ -1257,8 +1586,8 @@ export function PublicCreatorPortfolioPage({
                 subtitleTypographyStyle={faqHeaderTypography.subtitle.style}
                 subtitleDecorationStyle={faqHeaderTypography.subtitle.decorationStyle}
                 customSubtitleSizing={faqHeaderTypography.subtitle.customSizing}
-                scrollBehavior={titleScrollBehavior}
-                orientation={resolveSectionTitleOrientation(settings.global, 'faq')}
+                scrollBehavior={effectiveTitleScroll}
+                orientation={isSplitMode ? 'horizontal' : resolveSectionTitleOrientation(settings.global, 'faq')}
               />
             }
           >
@@ -1285,6 +1614,7 @@ export function PublicCreatorPortfolioPage({
             presentation={contactPresentation}
             motionProfile={motionProfile}
             topSpacingClass={sectionTopSpacingClass}
+            contentLayout={sectionContentLayout}
             titleTypographyClass={contactHeaderTypography.title.className}
             titleTypographyStyle={contactHeaderTypography.title.style}
             titleDecorationStyle={contactHeaderTypography.title.decorationStyle}
@@ -1298,9 +1628,9 @@ export function PublicCreatorPortfolioPage({
             centered={contactHeaderAlign.centered}
             alignRight={contactHeaderAlign.alignRight}
             alwaysCentered={contactHeaderAlign.alwaysCentered}
-            suppressBackground={suppressSectionBackgrounds}
-            scrollBehavior={titleScrollBehavior}
-            orientation={resolveSectionTitleOrientation(settings.global, 'contact')}
+            suppressBackground={suppressSectionBackground(contactPresentation)}
+            scrollBehavior={effectiveTitleScroll}
+            orientation={isSplitMode ? 'horizontal' : resolveSectionTitleOrientation(settings.global, 'contact')}
             renderSocialIcon={(platform, className) => (
               <SocialPlatformIcon platform={platform} className={className} />
             )}
@@ -1335,29 +1665,45 @@ export function PublicCreatorPortfolioPage({
       themeId={settings.themeId}
       customThemes={settings.customThemes}
       monochromeUi={settings.global.monochromeUi}
+      bodyFont={settings.global.bodyFont}
       globalStyle={globalBgStyle}
       fixedBackgroundStyle={globalFixedBgStyle}
+      patternBackgroundStyle={globalPatternStyle}
       suppressDefaultBackground={hasGlobalBg}
     >
       <CreatorProfileViewTracker creatorId={creatorId} onVisitRecorded={setProfileVisits} />
       {navMode === 'per-page' ? (
         <PortfolioPerPageNav items={perPageNavItems} settings={settings.navigation} />
       ) : (
-        <PortfolioFloatingNav
-          items={isPagesMode ? perPageNavItems : navItems}
-          settings={settings.navigation}
-          activeId={isPagesMode ? activePageId : undefined}
-          onNavigate={isPagesMode ? setActivePageId : undefined}
-        />
+        <>
+          <PortfolioFloatingNav
+            items={isPagesMode ? perPageNavItems : navItems}
+            settings={settings.navigation}
+            activeId={isPagesMode ? activePageId : undefined}
+            onNavigate={
+              isPagesMode
+                ? (id) => setActivePageId(id === 'contact' ? pagesContactTarget : id)
+                : undefined
+            }
+            chromeLinks={navChromeLinks}
+            monochrome={usesMonochromeChrome}
+            contactHref={navContactHref}
+            onContactNavigate={
+              isPagesMode ? () => setActivePageId(pagesContactTarget) : undefined
+            }
+          />
+        </>
       )}
 
-      <div className="pointer-events-none fixed right-4 top-4 z-[60] sm:right-6 sm:top-5">
-        {isPortfolioOwner ? (
-          <div className="pointer-events-auto">
-            <PortfolioSettingsButton onClick={() => setSettingsOpen(true)} />
-          </div>
-        ) : null}
-      </div>
+      {isPortfolioOwner ? (
+        <PortfolioSettingsButton
+          onClick={() => setSettingsOpen(true)}
+          storageKey={`portfolio-settings-btn:${creatorId}`}
+          shortcutHint={
+            settings.global.settingsShortcutEnabled ?? true ? 'Ctrl+,' : null
+          }
+        />
+      ) : null}
 
       {isPortfolioOwner ? (
         <PortfolioSettingsModal
@@ -1367,28 +1713,32 @@ export function PublicCreatorPortfolioPage({
             setSettingsOpen(false);
           }}
           settings={settings}
+          persistStatus={persistStatus}
           onChange={updateSection}
           onThemeChange={setThemeId}
           onNavigationChange={updateNavigation}
           onGlobalChange={updateGlobal}
+          onColorModeChange={setColorMode}
           onSaveCustomTheme={saveCustomTheme}
           onRenameCustomTheme={renameCustomTheme}
           onDuplicateTheme={duplicateTheme}
           onResetBuiltinTheme={resetBuiltinTheme}
           onDeleteCustomTheme={deleteCustomTheme}
           onReset={resetSettings}
-          availableTools={strengths}
+          onUndo={undoSettings}
+          onRedo={redoSettings}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          availableTools={strengthNames}
         />
       ) : null}
 
       {isPagesMode ? (
-        <div className="relative h-[100dvh] overflow-hidden">
-          {settings.hero.enabled ? (
+        <div className="relative flex h-[100dvh] flex-col overflow-hidden">
+          {settings.hero.enabled && activePageId === 'hero' ? (
             <div
-              className={`h-full overflow-y-auto overscroll-contain ${
-                activePageId === 'hero' ? '' : 'hidden'
-              }`}
-              aria-hidden={activePageId !== 'hero'}
+              key="hero-page"
+              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
             >
               <PortfolioHeroSection
                 creatorId={creatorId}
@@ -1408,69 +1758,97 @@ export function PublicCreatorPortfolioPage({
                 socialLinks={socialLinks}
                 tools={settings.hero.showTools ? heroTools : []}
                 contactHref={heroContactHref}
+                workHref={heroWorkHref}
+                onNavigateSection={onNavigateSection}
                 showWorkCta={showWorkSection}
                 showContactCta={settings.hero.showContactCta}
                 navItems={navItems}
                 presentation={heroPresentation}
-                suppressBackground={suppressSectionBackgrounds}
+                suppressBackground={hasGlobalSolid}
                 globalBackgroundStyle={globalBgStyle}
                 geomFadeEnabled={motionProfileEnablesHeroGeomFade(motionProfile)}
+                motionProfile={motionProfile}
                 contentGutter={settings.global.contentGutter}
+                contentWidthClass={globalWidthClass}
               />
             </div>
           ) : null}
 
           {contentSectionOrder.map((sectionKey) => {
             if (!sectionVisibility[sectionKey]) return null;
-            const active = activePageId === sectionKey;
+            if (activePageId !== sectionKey) return null;
+            const showFooter = shouldShowFooterOnPage(sectionKey);
+            const sectionBlocksGlobal = resolvePageSectionBlocksGlobal(sectionKey);
+            const sectionBg = sectionBackgroundByKey[sectionKey];
+            const pageFillColor =
+              sectionBlocksGlobal && sectionBg
+                ? sectionBackgroundBlockColor(sectionBg)
+                : undefined;
             return (
               <div
                 key={sectionKey}
-                className={`h-full overflow-y-auto overscroll-contain ${active ? '' : 'hidden'}`}
-                aria-hidden={!active}
+                className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
               >
-                <main
-                  className={`${editorialShellClass} mx-auto w-full space-y-0 pb-16 sm:pb-20 ${
-                    hasGlobalBg ? '' : 'bg-white'
-                  } ${globalWidthClass ?? ''}`}
+                {/*
+                  Fill the scrollport height so short pages pin the footer to the bottom
+                  (no white void under the footer).
+                  When this page section has an opaque background, paint the page column
+                  with that fill so the fixed global wallpaper cannot show in empty space.
+                */}
+                <div
+                  className={`flex min-h-full w-full flex-col overflow-x-clip ${
+                    !hasGlobalBg && !sectionBlocksGlobal ? 'bg-white' : ''
+                  }`}
+                  style={{
+                    minHeight: '100%',
+                    ...(pageFillColor ? { backgroundColor: pageFillColor } : null),
+                  }}
                 >
-                  {renderContentSection(sectionKey)}
-                </main>
-                {shouldShowFooterOnPage(sectionKey) ? (
-                  <EditorialPortfolioFooter
-                    creatorName={profile.fullName}
-                    creatorId={creatorId}
-                    avatarUrl={profile.avatarUrl}
-                    bio={profile.bio}
-                    whyMeText={whyMeBlocks[0]?.text ?? null}
-                    email={profile.contactEmail}
-                    phone={profile.phone}
-                    locationLabel={locationLabel}
-                    hoursLabel={availabilityDisplay}
-                    profileVisits={profileVisits}
-                    links={uniqueContactLinks}
-                    contentClassName={editorialShellClass}
-                    presentation={footerPresentation}
-                    transparentBase={hasGlobalBg}
-                    isAvailable={profile.isAvailable}
-                    responseTimeLabel={profile.responseTimeLabel}
-                    contactHref={
-                      profile.contactEmail?.trim()
-                        ? `mailto:${profile.contactEmail.trim()}`
-                        : heroContactHref
-                    }
-                    stackOnContact={
-                      hasGlobalBg ||
-                      (showContactSectionResolved && contactPresentation.sectionBackgroundEnabled)
-                    }
-                  />
-                ) : null}
+                  <main
+                    className={`mx-auto flex w-full flex-1 grow flex-col ${editorialShellClass} ${globalWidthClass} ${
+                      showFooter ? 'pb-0' : 'pb-24 sm:pb-28'
+                    }`}
+                  >
+                    {renderContentSection(sectionKey)}
+                  </main>
+                  {showFooter ? (
+                    <div className="mt-auto w-full shrink-0">
+                      <EditorialPortfolioFooter
+                        creatorName={profile.fullName}
+                        creatorId={creatorId}
+                        avatarUrl={profile.avatarUrl}
+                        bio={profile.bio}
+                        whyMeText={whyMeBlocks[0]?.text ?? null}
+                        email={profile.contactEmail}
+                        phone={profile.phone}
+                        locationLabel={locationLabel}
+                        hoursLabel={availabilityDisplay}
+                        profileVisits={profileVisits}
+                        links={uniqueContactLinks}
+                        contentClassName={editorialShellClass}
+                        presentation={footerPresentation}
+                        transparentBase={hasGlobalBg && !footerPaintsOwnBackground}
+                        isAvailable={profile.isAvailable}
+                        responseTimeLabel={profile.responseTimeLabel}
+                        contactHref={
+                          profile.contactEmail?.trim()
+                            ? `mailto:${profile.contactEmail.trim()}`
+                            : heroContactHref
+                        }
+                        motionProfile={motionProfile}
+                        bottomClearanceClass={footerNavClearanceClass}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
             );
           })}
         </div>
       ) : (
-        <>
+        <div className={`flex min-h-[100dvh] min-h-screen max-w-full flex-col ${
+          isSplitMode ? '' : 'overflow-x-clip'
+        }`}>
           {settings.hero.enabled ? (
             <PortfolioHeroSection
               creatorId={creatorId}
@@ -1490,57 +1868,72 @@ export function PublicCreatorPortfolioPage({
               socialLinks={socialLinks}
               tools={settings.hero.showTools ? heroTools : []}
               contactHref={heroContactHref}
+              workHref={heroWorkHref}
+              onNavigateSection={onNavigateSection}
               showWorkCta={showWorkSection}
               showContactCta={settings.hero.showContactCta}
               navItems={navItems}
               presentation={heroPresentation}
-              suppressBackground={suppressSectionBackgrounds}
+              suppressBackground={hasGlobalSolid}
               globalBackgroundStyle={globalBgStyle}
               geomFadeEnabled={motionProfileEnablesHeroGeomFade(motionProfile)}
+              motionProfile={motionProfile}
               contentGutter={settings.global.contentGutter}
+              contentWidthClass={globalWidthClass}
             />
           ) : null}
 
           <main
-            className={`${editorialShellClass} mx-auto w-full space-y-0 pb-16 sm:pb-20 ${
-              hasGlobalBg ? '' : 'bg-white'
-            } ${globalWidthClass ?? ''}`}
+            className={`mx-auto w-full flex-1 grow space-y-0 ${editorialShellClass} ${globalWidthClass} ${
+              settings.footer.enabled ? 'pb-0' : 'pb-24 sm:pb-28 xl:pb-20'
+            } ${hasGlobalBg ? '' : 'bg-white'}`}
           >
-            {contentSectionOrder.map((sectionKey) => (
-              <Fragment key={sectionKey}>{renderContentSection(sectionKey)}</Fragment>
-            ))}
+            {isSplitMode ? (
+              <PortfolioSplitScreenFrame
+                titleMotion={settings.global.splitTitleMotion ?? 'fade-up'}
+                titleFrame={splitTitleFrame}
+              >
+                {contentSectionOrder.map((sectionKey) => (
+                  <Fragment key={sectionKey}>{renderContentSection(sectionKey)}</Fragment>
+                ))}
+              </PortfolioSplitScreenFrame>
+            ) : (
+              contentSectionOrder.map((sectionKey) => (
+                <Fragment key={sectionKey}>{renderContentSection(sectionKey)}</Fragment>
+              ))
+            )}
           </main>
 
           {settings.footer.enabled ? (
-            <EditorialPortfolioFooter
-              creatorName={profile.fullName}
-              creatorId={creatorId}
-              avatarUrl={profile.avatarUrl}
-              bio={profile.bio}
-              whyMeText={whyMeBlocks[0]?.text ?? null}
-              email={profile.contactEmail}
-              phone={profile.phone}
-              locationLabel={locationLabel}
-              hoursLabel={availabilityDisplay}
-              profileVisits={profileVisits}
-              links={uniqueContactLinks}
-              contentClassName={editorialShellClass}
-              presentation={footerPresentation}
-              transparentBase={hasGlobalBg}
-              isAvailable={profile.isAvailable}
-              responseTimeLabel={profile.responseTimeLabel}
-              contactHref={
-                profile.contactEmail?.trim()
-                  ? `mailto:${profile.contactEmail.trim()}`
-                  : heroContactHref
-              }
-              stackOnContact={
-                hasGlobalBg ||
-                (showContactSectionResolved && contactPresentation.sectionBackgroundEnabled)
-              }
-            />
+            <div className="mt-auto w-full shrink-0">
+              <EditorialPortfolioFooter
+                creatorName={profile.fullName}
+                creatorId={creatorId}
+                avatarUrl={profile.avatarUrl}
+                bio={profile.bio}
+                whyMeText={whyMeBlocks[0]?.text ?? null}
+                email={profile.contactEmail}
+                phone={profile.phone}
+                locationLabel={locationLabel}
+                hoursLabel={availabilityDisplay}
+                profileVisits={profileVisits}
+                links={uniqueContactLinks}
+                contentClassName={editorialShellClass}
+                presentation={footerPresentation}
+                transparentBase={hasGlobalBg && !footerPaintsOwnBackground}
+                isAvailable={profile.isAvailable}
+                responseTimeLabel={profile.responseTimeLabel}
+                contactHref={
+                  profile.contactEmail?.trim()
+                    ? `mailto:${profile.contactEmail.trim()}`
+                    : heroContactHref
+                }
+                motionProfile={motionProfile}
+                bottomClearanceClass={footerNavClearanceClass}
+              />
+            </div>
           ) : null}
-        </>
+        </div>
       )}
     </PortfolioThemeRoot>
   );

@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { PortfolioContentGutter } from '@/components/portfolio/portfolio-editorial-layout';
 import type { PortfolioHeroPresentationSettings } from '@/components/portfolio/portfolio-hero-settings';
+import type { PortfolioGlobalMotionProfile } from '@/components/portfolio/portfolio-motion-settings';
 
 export type HeroStat = { value: string; label: string };
 
@@ -38,6 +39,14 @@ export type PortfolioHeroData = {
   globalBackgroundStyle?: CSSProperties;
   /** Fade geometric hero motif on scroll (cinematic / editorial motion profiles). */
   geomFadeEnabled?: boolean;
+  /** Global motion profile — gates CSS hero enter animations. */
+  motionProfile?: PortfolioGlobalMotionProfile;
+  /** When set (pages mode), in-page hash CTAs switch the active page instead of scrolling. */
+  onNavigateSection?: (sectionId: string) => void;
+  /** Primary work CTA target — default `#work`. */
+  workHref?: string;
   /** Global left/right gutters for hero copy + absolute layers. */
   contentGutter?: PortfolioContentGutter;
+  /** Max-width class from Global → Content width (standard / wide / full). */
+  contentWidthClass?: string;
 };

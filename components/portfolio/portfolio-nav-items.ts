@@ -20,6 +20,7 @@ export type PortfolioNavItemIcons = {
 export type PortfolioNavItemLabels = Record<PortfolioNavSectionKey, string>;
 
 export type PortfolioNavIconVariant =
+  | 'home'
   | PortfolioNavWorkIcon
   | PortfolioNavServicesIcon
   | PortfolioNavAboutIcon

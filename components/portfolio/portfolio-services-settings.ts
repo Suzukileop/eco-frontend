@@ -19,6 +19,16 @@ import {
   type PortfolioToolsIconSize,
 } from '@/components/portfolio/portfolio-element-text-style';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import { mergeUseHeroPalette } from '@/components/portfolio/portfolio-section-palette';
+import {
+  DEFAULT_SERVICES_COLOR_BINDINGS,
+  DEFAULT_SERVICES_PALETTE,
+  applyServicesPaletteToSettings,
+  mergeServicesColorBindings,
+  mergeServicesPalette,
+  type PortfolioServicesColorBindings,
+  type PortfolioServicesPalette,
+} from '@/components/portfolio/portfolio-services-palette-settings';
 import {
   DEFAULT_SECTION_BACKGROUND,
   mergeSectionBackground,
@@ -64,6 +74,7 @@ export type PortfolioServicesBlockSettings = PortfolioServicesCardBackgroundSett
   cardDesignTints: PortfolioServicesCardDesignTints;
   cardAccentColor: string;
   stageDesign: PortfolioServicesStageDesign;
+} & PortfolioServicesStageChromeSettings & {
   cardBorder: PortfolioServicesCardBorder;
   cardBorderColor: string;
   cardBackgroundEnabled: boolean;
@@ -96,6 +107,28 @@ export type PortfolioServicesCardDesignIntensities = Record<PortfolioServicesCar
 export type PortfolioServicesCardDesignTints = Record<PortfolioServicesCardDesign, number>;
 
 export type PortfolioServicesStageDesign = 'framed' | 'open' | 'soft' | 'none';
+
+export type PortfolioServicesStageBorder = 'none' | 'soft' | 'solid';
+
+export type PortfolioServicesStageRadius = 'none' | 'sm' | 'md' | 'lg' | 'xl';
+
+export type PortfolioServicesStagePadding = 'none' | 'sm' | 'md' | 'lg';
+
+export type PortfolioServicesStagePattern = 'none' | 'dots' | 'grid' | 'diagonal';
+
+/** Chrome controls for the outer stage wrapper (framed / soft). */
+export type PortfolioServicesStageChromeSettings = {
+  stageBackgroundEnabled: boolean;
+  stageBackgroundColor: string;
+  stageBackgroundOpacity: number;
+  stageBorder: PortfolioServicesStageBorder;
+  stageBorderColor: string;
+  stageBorderRadius: PortfolioServicesStageRadius;
+  stagePadding: PortfolioServicesStagePadding;
+  stagePattern: PortfolioServicesStagePattern;
+  stagePatternColor: string;
+  stagePatternOpacity: number;
+};
 
 export type PortfolioServicesStackOrder = 'skills-first' | 'services-first';
 
@@ -158,6 +191,16 @@ export type PortfolioServicesPresentationSettings = PortfolioSectionBackgroundSe
   cardBorderRadius: PortfolioServicesCardRadius;
   cardPadding: PortfolioServicesCardPadding;
   cardBackgroundAlternation: PortfolioServicesCardBackgroundAlternation;
+  stageBackgroundEnabled: boolean;
+  stageBackgroundColor: string;
+  stageBackgroundOpacity: number;
+  stageBorder: PortfolioServicesStageBorder;
+  stageBorderColor: string;
+  stageBorderRadius: PortfolioServicesStageRadius;
+  stagePadding: PortfolioServicesStagePadding;
+  stagePattern: PortfolioServicesStagePattern;
+  stagePatternColor: string;
+  stagePatternOpacity: number;
   servicesColumns: PortfolioServicesCardColumns;
   skillsColumns: PortfolioServicesCardColumns;
   servicesContentAlignment: PortfolioServicesContentAlignment;
@@ -181,6 +224,12 @@ export type PortfolioServicesPresentationSettings = PortfolioSectionBackgroundSe
   servicesSubheadingLabel: string;
   /** Tool / skill icon size — independent from the card design typography. */
   skillsIconSize: PortfolioToolsIconSize;
+  /** When true, section colors follow the Hero semantic palette. */
+  useHeroPalette: boolean;
+  /** Services-owned palette copy (same 8 tokens as Hero). */
+  servicesPalette?: PortfolioServicesPalette;
+  /** Which token each services color slot uses. */
+  servicesColorBindings?: PortfolioServicesColorBindings;
   /** Per-element color, font, size, and weight for card text. */
   elementStyles: PortfolioServicesElementStyles;
   skillsBlock: PortfolioServicesBlockSettings;
@@ -195,6 +244,68 @@ export const DEFAULT_SERVICES_TITLE_COLOR = '#0a0a0a';
 export const DEFAULT_SERVICES_SUBTITLE_COLOR = '#737373';
 export const DEFAULT_SERVICES_ACCENT_COLOR = '#f97316';
 export const DEFAULT_SERVICES_CARD_BORDER_COLOR = '#e5e5e5';
+export const DEFAULT_SERVICES_STAGE_BACKGROUND_COLOR = '#fafafa';
+export const DEFAULT_SERVICES_STAGE_BORDER_COLOR = '#e5e5e5';
+export const DEFAULT_SERVICES_STAGE_PATTERN_COLOR = '#a3a3a3';
+
+/** Defaults matching the previous hardcoded framed stage shell. */
+export const DEFAULT_SERVICES_STAGE_CHROME: PortfolioServicesStageChromeSettings = {
+  stageBackgroundEnabled: false,
+  stageBackgroundColor: DEFAULT_SERVICES_STAGE_BACKGROUND_COLOR,
+  stageBackgroundOpacity: 80,
+  stageBorder: 'soft',
+  stageBorderColor: DEFAULT_SERVICES_STAGE_BORDER_COLOR,
+  stageBorderRadius: 'xl',
+  stagePadding: 'md',
+  stagePattern: 'none',
+  stagePatternColor: DEFAULT_SERVICES_STAGE_PATTERN_COLOR,
+  stagePatternOpacity: 18,
+};
+
+/** Apply stage-design presets so Soft / Framed keep expected looks when switching. */
+export function stageChromePresetForDesign(
+  design: PortfolioServicesStageDesign
+): Partial<PortfolioServicesStageChromeSettings> {
+  switch (design) {
+    case 'soft':
+      return {
+        stageBackgroundEnabled: true,
+        stageBackgroundColor: DEFAULT_SERVICES_STAGE_BACKGROUND_COLOR,
+        stageBackgroundOpacity: 80,
+        stageBorder: 'none',
+        stageBorderRadius: 'xl',
+        stagePadding: 'md',
+        stagePattern: 'none',
+      };
+    case 'framed':
+      return {
+        stageBackgroundEnabled: false,
+        stageBorder: 'soft',
+        stageBorderColor: DEFAULT_SERVICES_STAGE_BORDER_COLOR,
+        stageBorderRadius: 'xl',
+        stagePadding: 'md',
+        stagePattern: 'none',
+      };
+    case 'open':
+    case 'none':
+      return {
+        stageBackgroundEnabled: false,
+        stageBorder: 'none',
+        stagePadding: 'none',
+        stagePattern: 'none',
+        stageBorderRadius: 'none',
+      };
+  }
+}
+
+export function servicesStageChromeIsActive(chrome: PortfolioServicesStageChromeSettings): boolean {
+  return (
+    chrome.stageBackgroundEnabled ||
+    chrome.stageBorder !== 'none' ||
+    chrome.stagePattern !== 'none' ||
+    chrome.stagePadding !== 'none'
+  );
+}
 export const DEFAULT_SERVICES_CARD_BACKGROUND_COLOR = '#ffffff';
 export const DEFAULT_SERVICES_BODY_COLOR = '#737373';
 export const DEFAULT_SERVICES_SUBHEADING_COLOR = '#a3a3a3';
@@ -332,6 +443,16 @@ function createDefaultServicesBlockSettings(
     | 'cardDesignTints'
     | 'cardAccentColor'
     | 'stageDesign'
+    | 'stageBackgroundEnabled'
+    | 'stageBackgroundColor'
+    | 'stageBackgroundOpacity'
+    | 'stageBorder'
+    | 'stageBorderColor'
+    | 'stageBorderRadius'
+    | 'stagePadding'
+    | 'stagePattern'
+    | 'stagePatternColor'
+    | 'stagePatternOpacity'
     | 'cardBorder'
     | 'cardBorderColor'
     | 'cardBackgroundEnabled'
@@ -388,6 +509,16 @@ function createDefaultServicesBlockSettings(
     cardDesignTints: { ...source.cardDesignTints },
     cardAccentColor: source.cardAccentColor,
     stageDesign: source.stageDesign,
+    stageBackgroundEnabled: source.stageBackgroundEnabled,
+    stageBackgroundColor: source.stageBackgroundColor,
+    stageBackgroundOpacity: source.stageBackgroundOpacity,
+    stageBorder: source.stageBorder,
+    stageBorderColor: source.stageBorderColor,
+    stageBorderRadius: source.stageBorderRadius,
+    stagePadding: source.stagePadding,
+    stagePattern: source.stagePattern,
+    stagePatternColor: source.stagePatternColor,
+    stagePatternOpacity: source.stagePatternOpacity,
     cardBorder: source.cardBorder,
     cardBorderColor: source.cardBorderColor,
     cardBackgroundEnabled: source.cardBackgroundEnabled,
@@ -532,6 +663,7 @@ const DEFAULT_SERVICES_PRESENTATION_BASE = {
   cardDesignIntensities: { ...DEFAULT_SERVICES_CARD_DESIGN_INTENSITIES },
   cardDesignTints: { ...DEFAULT_SERVICES_CARD_DESIGN_TINTS },
   stageDesign: 'framed' as const,
+  ...DEFAULT_SERVICES_STAGE_CHROME,
   cardAccentColor: DEFAULT_SERVICES_ACCENT_COLOR,
   cardBorder: 'soft' as const,
   cardBorderColor: DEFAULT_SERVICES_CARD_BORDER_COLOR,
@@ -575,8 +707,21 @@ export const DEFAULT_SERVICES_PRESENTATION: PortfolioServicesPresentationSetting
   }),
   skillsHeader: createDefaultDistinctHeaderSettings('skills'),
   servicesHeader: createDefaultDistinctHeaderSettings('services'),
+  useHeroPalette: true,
+  servicesPalette: { ...DEFAULT_SERVICES_PALETTE },
+  servicesColorBindings: { ...DEFAULT_SERVICES_COLOR_BINDINGS },
   elementStyles: DEFAULT_SERVICES_ELEMENT_STYLES,
 };
+
+// Sync hex fields from the default palette without circular init.
+Object.assign(
+  DEFAULT_SERVICES_PRESENTATION,
+  applyServicesPaletteToSettings({
+    servicesPalette: DEFAULT_SERVICES_PALETTE,
+    servicesColorBindings: DEFAULT_SERVICES_COLOR_BINDINGS,
+    elementStyles: DEFAULT_SERVICES_ELEMENT_STYLES,
+  })
+);
 
 export const PORTFOLIO_SERVICES_TITLE_PRESET_OPTIONS: {
   value: PortfolioServicesTitlePreset;
@@ -924,6 +1069,50 @@ export const PORTFOLIO_SERVICES_STAGE_DESIGN_OPTIONS: {
   { value: 'none', label: 'None', description: 'Same as open — maximum air.' },
 ];
 
+export const PORTFOLIO_SERVICES_STAGE_BORDER_OPTIONS: {
+  value: PortfolioServicesStageBorder;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'Aucune', description: 'Sans bordure autour du stage.' },
+  { value: 'soft', label: 'Douce', description: 'Liseré fin autour du panneau.' },
+  { value: 'solid', label: 'Solide', description: 'Bordure nette configurable.' },
+];
+
+export const PORTFOLIO_SERVICES_STAGE_RADIUS_OPTIONS: {
+  value: PortfolioServicesStageRadius;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'Aucun', description: 'Coins droits.' },
+  { value: 'sm', label: 'S', description: 'Léger arrondi.' },
+  { value: 'md', label: 'M', description: 'Arrondi moyen.' },
+  { value: 'lg', label: 'L', description: 'Arrondi généreux.' },
+  { value: 'xl', label: 'XL', description: 'Très arrondi (défaut Soft / Framed).' },
+];
+
+export const PORTFOLIO_SERVICES_STAGE_PADDING_OPTIONS: {
+  value: PortfolioServicesStagePadding;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'Aucun', description: 'Contenu collé au bord du stage.' },
+  { value: 'sm', label: 'S', description: 'Padding serré.' },
+  { value: 'md', label: 'M', description: 'Padding équilibré (défaut).' },
+  { value: 'lg', label: 'L', description: 'Padding généreux.' },
+];
+
+export const PORTFOLIO_SERVICES_STAGE_PATTERN_OPTIONS: {
+  value: PortfolioServicesStagePattern;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'Aucun', description: 'Fond uni uniquement.' },
+  { value: 'dots', label: 'Points', description: 'Trame de points discrète.' },
+  { value: 'grid', label: 'Grille', description: 'Quadrillage léger sur le fond.' },
+  { value: 'diagonal', label: 'Diagonale', description: 'Hachures diagonales.' },
+];
+
 const SUBTITLE_PRESET_COPY: Record<
   Exclude<PortfolioServicesSubtitlePreset, 'default' | 'custom' | 'minimal'>,
   string
@@ -1183,38 +1372,219 @@ export function servicesSubtitleColorStyle(color: string): CSSProperties {
   return { color: sanitizeHex(color, DEFAULT_SERVICES_SUBTITLE_COLOR) };
 }
 
-export function servicesStageShellClass(design: PortfolioServicesStageDesign): string {
-  switch (design) {
-    case 'soft':
-      return 'rounded-[1.75rem] bg-neutral-50/80 px-2 py-4 sm:rounded-[2rem] sm:px-4 sm:py-5 lg:px-5 lg:py-6 dark:bg-neutral-900/40';
-    case 'open':
+function servicesStageRadiusClass(radius: PortfolioServicesStageRadius): string {
+  switch (radius) {
+    case 'none':
+      return 'rounded-none';
+    case 'sm':
+      return 'rounded-xl sm:rounded-2xl';
+    case 'md':
+      return 'rounded-2xl sm:rounded-[1.5rem]';
+    case 'lg':
+      return 'rounded-[1.5rem] sm:rounded-[1.75rem]';
+    default:
+      return 'rounded-[1.75rem] sm:rounded-[2rem]';
+  }
+}
+
+function servicesStagePaddingClass(padding: PortfolioServicesStagePadding): string {
+  switch (padding) {
     case 'none':
       return '';
+    case 'sm':
+      return 'px-1.5 py-2 sm:px-2 sm:py-3';
+    case 'lg':
+      return 'px-3 py-5 sm:px-5 sm:py-6 lg:px-6 lg:py-8';
     default:
-      return 'overflow-hidden rounded-[1.75rem] border border-neutral-200 px-2 py-4 sm:rounded-[2rem] sm:px-4 sm:py-5 lg:px-5 lg:py-6 dark:border-neutral-800';
+      return 'px-2 py-4 sm:px-4 sm:py-5 lg:px-5 lg:py-6';
   }
+}
+
+function servicesStageBorderWidthClass(border: PortfolioServicesStageBorder): string {
+  switch (border) {
+    case 'soft':
+      return 'border';
+    case 'solid':
+      return 'border-2';
+    default:
+      return 'border-0';
+  }
+}
+
+function servicesStagePatternImage(
+  pattern: PortfolioServicesStagePattern,
+  color: string,
+  opacity: number
+): string | undefined {
+  if (pattern === 'none') return undefined;
+  const { r, g, b } = hexToRgb(sanitizeHex(color, DEFAULT_SERVICES_STAGE_PATTERN_COLOR));
+  const a = Math.min(1, Math.max(0, opacity / 100));
+  const ink = `rgba(${r}, ${g}, ${b}, ${a})`;
+  switch (pattern) {
+    case 'dots':
+      return `radial-gradient(circle at 1px 1px, ${ink} 1px, transparent 0)`;
+    case 'grid':
+      return `linear-gradient(to right, ${ink} 1px, transparent 1px), linear-gradient(to bottom, ${ink} 1px, transparent 1px)`;
+    case 'diagonal':
+      return `repeating-linear-gradient(135deg, ${ink} 0 1px, transparent 1px 10px)`;
+    default:
+      return undefined;
+  }
+}
+
+function servicesStagePatternSize(pattern: PortfolioServicesStagePattern): string | undefined {
+  switch (pattern) {
+    case 'dots':
+      return '14px 14px';
+    case 'grid':
+      return '18px 18px, 18px 18px';
+    case 'diagonal':
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+/** Whether the stage needs a DOM wrapper for the chosen design + chrome. */
+export function servicesStageNeedsShell(
+  design: PortfolioServicesStageDesign,
+  chrome: PortfolioServicesStageChromeSettings = DEFAULT_SERVICES_STAGE_CHROME
+): boolean {
+  if (design === 'soft' || design === 'framed') return true;
+  return servicesStageChromeIsActive(chrome);
+}
+
+export function servicesStageShellClass(
+  design: PortfolioServicesStageDesign,
+  chrome: PortfolioServicesStageChromeSettings = DEFAULT_SERVICES_STAGE_CHROME
+): string {
+  if (!servicesStageNeedsShell(design, chrome)) return '';
+
+  const parts = [
+    'relative overflow-hidden',
+    servicesStageRadiusClass(chrome.stageBorderRadius),
+    servicesStagePaddingClass(chrome.stagePadding),
+  ];
+  if (chrome.stageBorder !== 'none') {
+    parts.push(servicesStageBorderWidthClass(chrome.stageBorder));
+  }
+  return parts.filter(Boolean).join(' ');
+}
+
+export function servicesStageShellStyle(
+  chrome: PortfolioServicesStageChromeSettings = DEFAULT_SERVICES_STAGE_CHROME
+): CSSProperties {
+  const style: CSSProperties = {};
+
+  if (chrome.stageBackgroundEnabled) {
+    style.backgroundColor = hexWithAlpha(
+      sanitizeHex(chrome.stageBackgroundColor, DEFAULT_SERVICES_STAGE_BACKGROUND_COLOR),
+      chrome.stageBackgroundOpacity / 100
+    );
+  }
+
+  if (chrome.stageBorder !== 'none') {
+    style.borderStyle = 'solid';
+    style.borderColor = sanitizeHex(chrome.stageBorderColor, DEFAULT_SERVICES_STAGE_BORDER_COLOR);
+  }
+
+  const patternImage = servicesStagePatternImage(
+    chrome.stagePattern,
+    chrome.stagePatternColor,
+    chrome.stagePatternOpacity
+  );
+  if (patternImage) {
+    style.backgroundImage = patternImage;
+    const size = servicesStagePatternSize(chrome.stagePattern);
+    if (size) style.backgroundSize = size;
+  }
+
+  return style;
+}
+
+export function pickServicesStageChrome(
+  source: PortfolioServicesStageChromeSettings
+): PortfolioServicesStageChromeSettings {
+  return {
+    stageBackgroundEnabled: source.stageBackgroundEnabled,
+    stageBackgroundColor: source.stageBackgroundColor,
+    stageBackgroundOpacity: source.stageBackgroundOpacity,
+    stageBorder: source.stageBorder,
+    stageBorderColor: source.stageBorderColor,
+    stageBorderRadius: source.stageBorderRadius,
+    stagePadding: source.stagePadding,
+    stagePattern: source.stagePattern,
+    stagePatternColor: source.stagePatternColor,
+    stagePatternOpacity: source.stagePatternOpacity,
+  };
+}
+
+function mergeServicesStageChrome(
+  base: PortfolioServicesStageChromeSettings,
+  record: Record<string, unknown>
+): PortfolioServicesStageChromeSettings {
+  const pickStage = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
+    typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+
+  return {
+    stageBackgroundEnabled:
+      typeof record.stageBackgroundEnabled === 'boolean'
+        ? record.stageBackgroundEnabled
+        : base.stageBackgroundEnabled,
+    stageBackgroundColor: sanitizeHex(record.stageBackgroundColor, base.stageBackgroundColor),
+    stageBackgroundOpacity: clampCardDesignIntensity(
+      record.stageBackgroundOpacity,
+      base.stageBackgroundOpacity
+    ),
+    stageBorder: pickStage(record.stageBorder, ['none', 'soft', 'solid'] as const, base.stageBorder),
+    stageBorderColor: sanitizeHex(record.stageBorderColor, base.stageBorderColor),
+    stageBorderRadius: pickStage(
+      record.stageBorderRadius,
+      ['none', 'sm', 'md', 'lg', 'xl'] as const,
+      base.stageBorderRadius
+    ),
+    stagePadding: pickStage(
+      record.stagePadding,
+      ['none', 'sm', 'md', 'lg'] as const,
+      base.stagePadding
+    ),
+    stagePattern: pickStage(
+      record.stagePattern,
+      ['none', 'dots', 'grid', 'diagonal'] as const,
+      base.stagePattern
+    ),
+    stagePatternColor: sanitizeHex(record.stagePatternColor, base.stagePatternColor),
+    stagePatternOpacity: clampCardDesignIntensity(
+      record.stagePatternOpacity,
+      base.stagePatternOpacity
+    ),
+  };
 }
 
 export function servicesCardDesignShellClass(
   design: PortfolioServicesCardDesign,
   tone: 'light' | 'muted' = 'light',
-  options?: { applyMutedClass?: boolean }
+  options?: { applyMutedClass?: boolean; omitDefaultFill?: boolean }
 ): string {
   const base = 'pf-services-card group relative h-full overflow-hidden transition';
   const applyMuted = options?.applyMutedClass !== false && tone === 'muted';
   const muted = applyMuted ? 'pf-muted-card-gradient' : '';
+  const omitFill = options?.omitDefaultFill === true;
+  // Default Tailwind fills fight palette / custom hex — omit when surface style owns the fill.
+  const lightFill = omitFill ? '' : 'bg-white';
+  const darkFill = omitFill ? '' : 'dark:bg-neutral-900';
   switch (design) {
     case 'minimal':
-      return `${base} bg-white shadow-none dark:bg-neutral-900 ${muted}`;
+      return `${base} ${lightFill} shadow-none ${darkFill} ${muted}`.trim();
     case 'compact':
-      return `${base} dark:bg-neutral-900/80 ${muted}`;
+      return `${base} ${omitFill ? '' : 'dark:bg-neutral-900/80'} ${muted}`.trim();
     case 'glass':
     case 'frost':
       return `${base} ${muted}`.trim();
     case 'accent':
-      return `${base} bg-white shadow-none dark:bg-neutral-900 ${muted}`;
+      return `${base} ${lightFill} shadow-none ${darkFill} ${muted}`.trim();
     default:
-      return `${base} bg-white dark:bg-neutral-900 hover:border-orange-200/80 ${muted}`;
+      return `${base} ${lightFill} ${darkFill} hover:border-orange-200/80 ${muted}`.trim();
   }
 }
 
@@ -1385,11 +1755,19 @@ export function servicesCardShellClass(
   tone: 'light' | 'muted',
   presentation?: Pick<
     PortfolioServicesPresentationSettings,
-    'cardDesign' | 'cardBackgroundFill' | 'cardBackgroundEnabled' | 'cardBackgroundAlternation'
+    | 'cardDesign'
+    | 'cardBackgroundFill'
+    | 'cardBackgroundEnabled'
+    | 'cardBackgroundAlternation'
+    | 'useHeroPalette'
   >
 ): string {
   const custom = presentation ? servicesCardHasCustomFill(presentation) : false;
-  return `${servicesCardDesignShellClass(design, tone, { applyMutedClass: !custom })} flex flex-col`;
+  const omitDefaultFill = custom || presentation?.useHeroPalette !== false;
+  return `${servicesCardDesignShellClass(design, tone, {
+    applyMutedClass: !custom,
+    omitDefaultFill,
+  })} flex flex-col`;
 }
 
 export function servicesServiceCardMinHeight(design: PortfolioServicesCardDesign): string {
@@ -1422,11 +1800,12 @@ function servicesColumnsGridClass(columns: PortfolioServicesCardColumns, gapClas
     case 1:
       return `mx-auto flex w-full max-w-2xl flex-col ${gapClass}`;
     case 2:
-      return `grid items-stretch ${gapClass} sm:grid-cols-2`;
+      return `grid items-stretch ${gapClass} grid-cols-1 sm:grid-cols-2`;
     case 4:
-      return `grid items-stretch ${gapClass} sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`;
+      return `grid items-stretch ${gapClass} grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`;
     default:
-      return `grid items-stretch ${gapClass} sm:grid-cols-2 xl:grid-cols-3`;
+      // 3 columns: single on phone, 2 on tablet, 3 from lg (not only xl).
+      return `grid items-stretch ${gapClass} grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`;
   }
 }
 
@@ -1613,11 +1992,19 @@ export function servicesListRowShellClass(
   tone: 'light' | 'muted' = 'light',
   presentation?: Pick<
     PortfolioServicesPresentationSettings,
-    'cardDesign' | 'cardBackgroundFill' | 'cardBackgroundEnabled' | 'cardBackgroundAlternation'
+    | 'cardDesign'
+    | 'cardBackgroundFill'
+    | 'cardBackgroundEnabled'
+    | 'cardBackgroundAlternation'
+    | 'useHeroPalette'
   >
 ): string {
   const custom = presentation ? servicesCardHasCustomFill(presentation) : false;
-  return servicesCardDesignShellClass(design, tone, { applyMutedClass: !custom });
+  const omitDefaultFill = custom || presentation?.useHeroPalette !== false;
+  return servicesCardDesignShellClass(design, tone, {
+    applyMutedClass: !custom,
+    omitDefaultFill,
+  });
 }
 
 export function servicesAccordionShellClass(
@@ -1625,7 +2012,11 @@ export function servicesAccordionShellClass(
   tone: 'light' | 'muted' = 'light',
   presentation?: Pick<
     PortfolioServicesPresentationSettings,
-    'cardDesign' | 'cardBackgroundFill' | 'cardBackgroundEnabled' | 'cardBackgroundAlternation'
+    | 'cardDesign'
+    | 'cardBackgroundFill'
+    | 'cardBackgroundEnabled'
+    | 'cardBackgroundAlternation'
+    | 'useHeroPalette'
   >
 ): string {
   return `${servicesListRowShellClass(design, tone, presentation)} overflow-hidden`;
@@ -1636,7 +2027,11 @@ export function servicesPricingHeroShellClass(
   tone: 'light' | 'muted' = 'light',
   presentation?: Pick<
     PortfolioServicesPresentationSettings,
-    'cardDesign' | 'cardBackgroundFill' | 'cardBackgroundEnabled' | 'cardBackgroundAlternation'
+    | 'cardDesign'
+    | 'cardBackgroundFill'
+    | 'cardBackgroundEnabled'
+    | 'cardBackgroundAlternation'
+    | 'useHeroPalette'
   >
 ): string {
   return `${servicesListRowShellClass(design, tone, presentation)} flex flex-col`;
@@ -1739,6 +2134,7 @@ export function mergeServicesPresentation(
     cardDesignIntensities: mergeCardDesignIntensities(base.cardDesignIntensities, record.cardDesignIntensities),
     cardDesignTints: mergeCardDesignTints(base.cardDesignTints, record.cardDesignTints),
     stageDesign: pick(record.stageDesign, ['framed', 'open', 'soft', 'none'], base.stageDesign),
+    ...mergeServicesStageChrome(base, record),
     cardAccentColor: sanitizeHex(record.cardAccentColor, base.cardAccentColor),
     cardBorder: pick(record.cardBorder, ['none', 'soft', 'solid', 'accent'], base.cardBorder),
     cardBorderColor: sanitizeHex(record.cardBorderColor, base.cardBorderColor),
@@ -1802,6 +2198,15 @@ export function mergeServicesPresentation(
         ? record.servicesSubheadingLabel
         : base.servicesSubheadingLabel,
     skillsIconSize: pick(record.skillsIconSize, ['sm', 'md', 'lg', 'xl'], base.skillsIconSize),
+    useHeroPalette: mergeUseHeroPalette(base.useHeroPalette, record),
+    servicesPalette: mergeServicesPalette(
+      mergeServicesPalette(DEFAULT_SERVICES_PALETTE, base.servicesPalette),
+      record.servicesPalette
+    ),
+    servicesColorBindings: mergeServicesColorBindings(
+      mergeServicesColorBindings(DEFAULT_SERVICES_COLOR_BINDINGS, base.servicesColorBindings),
+      record.servicesColorBindings
+    ),
     elementStyles: normalizeServicesElementStyles(record.elementStyles ?? base.elementStyles),
   } satisfies Omit<
     PortfolioServicesPresentationSettings,
@@ -1878,7 +2283,7 @@ export function mergeServicesPresentation(
     };
   };
 
-  return {
+  const merged: PortfolioServicesPresentationSettings = {
     ...mergedPresentation,
     skillsBlock: mergeBlock(base.skillsBlock, record.skillsBlock, 'skills'),
     servicesBlock: mergeBlock(base.servicesBlock, record.servicesBlock, 'services'),
@@ -1890,5 +2295,15 @@ export function mergeServicesPresentation(
       base.servicesHeader ?? createDefaultDistinctHeaderSettings('services'),
       record.servicesHeader
     ),
+  };
+
+  if (merged.useHeroPalette === false) {
+    return merged;
+  }
+
+  return {
+    ...merged,
+    ...(applyServicesPaletteToSettings(merged) as Partial<PortfolioServicesPresentationSettings>),
+    useHeroPalette: true,
   };
 }

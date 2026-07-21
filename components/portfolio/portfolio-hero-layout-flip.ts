@@ -66,6 +66,29 @@ export function flipHeroLayoutPresentation(
   const rightMotifSize = clampMotifPanelSize(settings.motifPanelSize, 'right');
   const leftMotifSize = clampMotifPanelSize(settings.leftMotifSize, 'left');
 
+  const heroMotifs = (settings.heroMotifs ?? []).map((motif) => {
+    const size = clampMotifPanelSize(
+      motif.size,
+      motif.kind === 'geometric' ? 'right' : 'left'
+    );
+    const shouldMirrorPoints =
+      motif.kind === 'geometric' || motif.pattern === 'custom';
+    return {
+      ...motif,
+      position: mirrorMotifPanelPosition(
+        motif.position,
+        motif.kind === 'geometric' ? 'right' : 'left',
+        size
+      ),
+      size,
+      points: shouldMirrorPoints
+        ? mirrorMotifPointsHorizontally(motif.points)
+        : motif.points.map((point) => ({ ...point })),
+      shape: motif.kind === 'geometric' ? ('custom' as const) : motif.shape,
+      pattern: motif.kind === 'pattern' && motif.pattern === 'custom' ? 'custom' : motif.pattern,
+    };
+  });
+
   return {
     ...settings,
     heroLayoutFlipped: !settings.heroLayoutFlipped,
@@ -80,5 +103,6 @@ export function flipHeroLayoutPresentation(
       settings.leftMotifPattern === 'custom'
         ? mirrorMotifPointsHorizontally(settings.leftCustomMotifPoints)
         : settings.leftCustomMotifPoints,
+    heroMotifs,
   };
 }

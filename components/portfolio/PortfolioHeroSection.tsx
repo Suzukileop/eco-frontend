@@ -7,29 +7,44 @@ import {
   portfolioEditorialShellClass,
 } from '@/components/portfolio/portfolio-editorial-layout';
 import {
-  PortfolioHeroGeometricBackground,
-  PortfolioHeroGeometricOverlay,
-} from '@/components/portfolio/portfolio-hero-geometric';
+  PortfolioHeroMotifsLayer,
+  PortfolioHeroPrimaryMotifOverlay,
+} from '@/components/portfolio/PortfolioHeroMotifsLayer';
 import { usePortfolioHeroGeomFade } from '@/components/portfolio/use-portfolio-hero-geom-fade';
 import {
   PortfolioHeroEditorialMetaLayer,
   PortfolioHeroEditorialPortraitLayer,
 } from '@/components/portfolio/portfolio-hero-shared';
-import { PortfolioHeroLeftMotif } from '@/components/portfolio/PortfolioHeroLeftMotif';
 import { PortfolioHeroEditorialCopyLayer } from '@/components/portfolio/portfolio-hero-editorial-copy';
 import { heroSectionBackgroundStyle } from '@/components/portfolio/portfolio-hero-background-settings';
+import { portfolioHeroTopClearancePaddingClass } from '@/components/portfolio/portfolio-nav-top-clearance';
+import {
+  isVerticalHeroDivision,
+  resolveHeroLayoutDivision,
+} from '@/components/portfolio/portfolio-hero-layout-division';
 
 export function PortfolioHeroSection(heroData: PortfolioHeroData) {
   const { sectionRef, opacity: geomOpacity } = usePortfolioHeroGeomFade(
     heroData.geomFadeEnabled ?? false
   );
-  const { motifShape, motifColor, motifLayout, customMotifPoints, motifPosition, motifPanelSize } =
-    heroData.presentation;
+  const { motifLayout, heroMotifs } = heroData.presentation;
   const contentGutter = heroData.contentGutter ?? DEFAULT_CONTENT_GUTTER;
+  const contentWidthClass = heroData.contentWidthClass ?? 'max-w-[90rem]';
+  const layoutDivision = resolveHeroLayoutDivision(heroData.presentation);
+  const verticalDivision = isVerticalHeroDivision(layoutDivision);
+  const visualEdge =
+    layoutDivision === 'horizontal-copy-right' ? 'left' : 'right';
 
-  const backgroundStyle = heroData.suppressBackground
-    ? heroData.globalBackgroundStyle
-    : heroSectionBackgroundStyle(heroData.presentation);
+  // Section wins: an explicit hero fill always paints on top of the global solid
+  // color (same rule as the other sections). Fill "none" = show the Global page fill.
+  // Fill "transparent" = paint strictly nothing, so the global color AND pattern
+  // layers (below the section) stay visible through the hero.
+  const transparentFill = heroData.presentation.heroSectionBackgroundFill === 'transparent';
+  const ownBackgroundStyle = heroSectionBackgroundStyle(heroData.presentation);
+  const backgroundStyle = transparentFill
+    ? undefined
+    : ownBackgroundStyle ??
+      (heroData.suppressBackground ? heroData.globalBackgroundStyle : undefined);
 
   return (
     <section
@@ -38,54 +53,74 @@ export function PortfolioHeroSection(heroData: PortfolioHeroData) {
       className="relative isolate min-h-[100dvh] min-h-screen overflow-x-clip"
     >
       {backgroundStyle ? (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 left-1/2 -z-10 w-screen -translate-x-1/2"
-          style={backgroundStyle}
-        />
+        <>
+          {(heroData.presentation.heroSectionBackgroundOpacity ?? 100) >= 100 &&
+          heroData.presentation.heroSectionBackgroundFill !== 'none' ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 left-1/2 z-0 w-screen -translate-x-1/2 bg-white"
+            />
+          ) : null}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 left-1/2 z-0 w-screen -translate-x-1/2"
+            style={backgroundStyle}
+          />
+        </>
       ) : null}
-      <PortfolioHeroLeftMotif settings={heroData.presentation} />
-      <PortfolioHeroEditorialCopyLayer data={heroData} />
-      <PortfolioHeroGeometricBackground
+      <PortfolioHeroMotifsLayer
+        motifs={heroMotifs ?? []}
         fadeOpacity={geomOpacity}
-        motifShape={motifShape}
-        motifColor={motifColor}
-        customMotifPoints={customMotifPoints}
-        motifPosition={motifPosition}
-        motifPanelSize={motifPanelSize}
         background={heroData.presentation}
         contentGutter={contentGutter}
+        contentWidthClass={contentWidthClass}
+        visualEdge={visualEdge}
       />
+      {/* Free copy is section-wide only for horizontal; vertical keeps copy inside its frame. */}
+      {!verticalDivision ? <PortfolioHeroEditorialCopyLayer data={heroData} /> : null}
       <div
-        className={`relative ${portfolioEditorialShellClass(contentGutter)} pb-10 pt-20 sm:pb-12 sm:pt-24 lg:pb-0 lg:pt-28`}
+        className={`relative z-[1] mx-auto ${contentWidthClass} ${portfolioEditorialShellClass(contentGutter)} pb-[max(7rem,calc(env(safe-area-inset-bottom,0px)+5.5rem))] sm:pb-32 xl:pb-0 ${portfolioHeroTopClearancePaddingClass()}`}
       >
         <PortfolioHeroEditorial data={heroData} />
       </div>
-      <PortfolioHeroGeometricOverlay
-        fadeOpacity={geomOpacity}
-        motifShape={motifShape}
-        customMotifPoints={customMotifPoints}
-        motifPosition={motifPosition}
-        motifPanelSize={motifPanelSize}
-        contentGutter={contentGutter}
-      />
-      <PortfolioHeroEditorialPortraitLayer
-        fullName={heroData.fullName}
-        avatarUrl={heroData.avatarUrl}
-        fadeOpacity={geomOpacity}
-        motifLayout={motifLayout}
-        profile={heroData.presentation}
-        contentGutter={contentGutter}
-      />
-      <PortfolioHeroEditorialMetaLayer
-        yearsOfExperience={heroData.yearsOfExperience}
-        workCount={heroData.workCount}
-        locationLabel={heroData.locationLabel}
-        fadeOpacity={geomOpacity}
-        motifLayout={motifLayout}
-        meta={heroData.presentation}
-        contentGutter={contentGutter}
-      />
+      {!verticalDivision ? (
+        <PortfolioHeroPrimaryMotifOverlay
+          motifs={heroMotifs ?? []}
+          fadeOpacity={geomOpacity}
+          contentGutter={contentGutter}
+          contentWidthClass={contentWidthClass}
+          visualEdge={visualEdge}
+        />
+      ) : null}
+      {/* Horizontal only: absolute portrait/stats. Vertical: placed inside visual frame. */}
+      {!verticalDivision && heroData.presentation.showPortrait ? (
+        <PortfolioHeroEditorialPortraitLayer
+          fullName={heroData.fullName}
+          avatarUrl={heroData.avatarUrl}
+          specialite={heroData.specialite}
+          fadeOpacity={geomOpacity}
+          motifLayout={motifLayout}
+          profile={heroData.presentation}
+          contentGutter={contentGutter}
+          contentWidthClass={contentWidthClass}
+          verticalDivision={false}
+          layoutDivision={layoutDivision}
+        />
+      ) : null}
+      {!verticalDivision ? (
+        <PortfolioHeroEditorialMetaLayer
+          yearsOfExperience={heroData.yearsOfExperience}
+          workCount={heroData.workCount}
+          locationLabel={heroData.locationLabel}
+          fadeOpacity={geomOpacity}
+          motifLayout={motifLayout}
+          meta={heroData.presentation}
+          contentGutter={contentGutter}
+          contentWidthClass={contentWidthClass}
+          verticalDivision={false}
+          layoutDivision={layoutDivision}
+        />
+      ) : null}
     </section>
   );
 }

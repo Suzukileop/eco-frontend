@@ -11,7 +11,10 @@ export type MotifPanelTransform = {
 
 export const DEFAULT_RIGHT_MOTIF_POSITION: MotifPanelPosition = { x: 75, y: 50 };
 
-/** Wide enough that center at 75% places the right edge flush with the content frame. */
+/**
+ * Wide enough that center at 75% places the right edge flush with the content frame
+ * (start of the right side margin / content-width bound).
+ */
 export const DEFAULT_RIGHT_MOTIF_SIZE: MotifPanelSize = { width: 50, height: 76 };
 
 export const DEFAULT_RIGHT_MOTIF_TRANSFORM: MotifPanelTransform = {
@@ -50,13 +53,13 @@ export function clampMotifPanelPosition(
 export function clampMotifPanelSize(size: MotifPanelSize, side: 'left' | 'right'): MotifPanelSize {
   if (side === 'left') {
     return {
-      width: clamp(size.width, 10, 70),
-      height: clamp(size.height, 10, 70),
+      width: clamp(size.width, 10, 100),
+      height: clamp(size.height, 10, 100),
     };
   }
   return {
-    width: clamp(size.width, 14, 68),
-    height: clamp(size.height, 14, 96),
+    width: clamp(size.width, 14, 100),
+    height: clamp(size.height, 14, 100),
   };
 }
 
@@ -93,20 +96,19 @@ export function motifPanelContainerStyle(
   horizontalUnit: 'vw' | '%' = 'vw'
 ): CSSProperties {
   if (horizontalUnit === '%') {
-    // Keep the panel inside the content frame and prefer hugging the right edge when
-    // the configured center would leave a large empty gutter on the right.
     const halfW = size.width / 2;
     const minX = halfW;
     const maxX = 100 - halfW;
     const centerX = Math.min(Math.max(position.x, minX), maxX);
+    // right: 0 when center is at maxX → flush with content-frame right edge (side-margin start).
     const rightOffset = Math.max(0, 100 - centerX - halfW);
 
     return {
       right: `${rightOffset}%`,
       left: 'auto',
-      top: `${position.y}vh`,
+      top: `${position.y}%`,
       width: `${size.width}%`,
-      height: `${size.height}vh`,
+      height: `${size.height}%`,
       transform: 'translateY(-50%)',
       ...(opacity >= 1 ? {} : { opacity, willChange: 'opacity' }),
     };
@@ -147,24 +149,40 @@ export function getMotifPanelDefaultsForLayout(
 }
 
 /**
- * Legacy hero positions used full-viewport vw. After switching to an inset content
- * frame, the same numbers can leave a thick right gutter — nudge only when the
- * panel clearly falls short of the content frame's right edge.
+ * Keep a motif inside the content frame. Soft-snap flush to the given edge when
+ * already near that margin (copy Contact edge / visual portrait edge).
  */
+export function normalizeMotifPositionForContentFrame(
+  position: MotifPanelPosition,
+  size: MotifPanelSize,
+  edge: 'left' | 'right' = 'right'
+): MotifPanelPosition {
+  const halfW = size.width / 2;
+  const minX = halfW;
+  const maxX = 100 - halfW;
+  const x = Math.min(Math.max(position.x, minX), maxX);
+
+  if (edge === 'left') {
+    const leftEdge = x - halfW;
+    // Near the left margin → snap flush to content-frame left (side-margin start).
+    if (leftEdge >= -0.5 && leftEdge < 12) {
+      return { x: minX, y: position.y };
+    }
+    return { x, y: position.y };
+  }
+
+  const rightEdge = x + halfW;
+  // Near the right margin → snap flush to content-frame right (Contact / copy edge).
+  if (rightEdge > 88 && rightEdge <= 100.5) {
+    return { x: maxX, y: position.y };
+  }
+  return { x, y: position.y };
+}
+
+/** @deprecated Prefer normalizeMotifPositionForContentFrame(..., 'right') */
 export function normalizeRightMotifPositionForContentFrame(
   position: MotifPanelPosition,
   size: MotifPanelSize
 ): MotifPanelPosition {
-  const halfW = size.width / 2;
-  const maxX = 100 - halfW;
-  const rightEdge = position.x + halfW;
-
-  if (rightEdge < 92) {
-    return { x: maxX, y: position.y };
-  }
-
-  return {
-    x: Math.min(Math.max(position.x, halfW), maxX),
-    y: position.y,
-  };
+  return normalizeMotifPositionForContentFrame(position, size, 'right');
 }

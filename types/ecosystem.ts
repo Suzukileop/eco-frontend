@@ -315,6 +315,13 @@ export interface ProfileServiceItem {
   deadline: string | null;
 }
 
+/** Skill / tool listed under Creator Studio → Skills & tools. */
+export interface ProfileStrengthTool {
+  name: string;
+  /** Optional card blurb; empty/null → auto-generated portfolio description. */
+  description?: string | null;
+}
+
 export interface FaqItem {
   id: string;
   sortOrder: number;
@@ -366,7 +373,7 @@ export interface CreatorProfileDto {
   whyMeBlocks?: ProfileMediaBlock[];
   experienceBlocks?: ProfileMediaBlock[];
   yearsOfExperience?: number | null;
-  strengthsToolsMastered?: string[];
+  strengthsToolsMastered?: ProfileStrengthTool[];
   reputation?: CreatorReputationDto | null;
   profileVisits?: number;
   gender?: string | null;
@@ -410,7 +417,7 @@ export interface CreatorProfileUpdateBody {
   whyMeBlocks?: ProfileMediaBlock[];
   experienceBlocks?: ProfileMediaBlock[];
   yearsOfExperience?: number | null;
-  strengthsToolsMastered?: string[];
+  strengthsToolsMastered?: ProfileStrengthTool[];
 }
 
 export const SOCIAL_PLATFORMS = [

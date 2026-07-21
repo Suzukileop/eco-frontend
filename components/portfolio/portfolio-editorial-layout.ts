@@ -10,18 +10,20 @@ export const DEFAULT_CONTENT_GUTTER: PortfolioContentGutter = 'medium';
 const GUTTER_PADDING_X: Record<PortfolioContentGutter, string> = {
   none: 'px-0',
   /** Slightly less inset than medium — content feels a bit wider. */
-  wide: 'px-14 sm:px-16 lg:px-28 xl:px-32',
-  /** Current editorial gutters. */
-  medium: 'px-24 sm:px-28 lg:px-40 xl:px-48',
+  wide: 'px-5 sm:px-8 lg:px-16 xl:px-28 2xl:px-32',
+  /** Current editorial gutters from xl up; phone/tablet-safe floor below. */
+  medium: 'px-5 sm:px-10 md:px-16 lg:px-20 xl:px-40 2xl:px-48',
   /** Slightly more inset than medium — content feels a bit narrower. */
-  narrow: 'px-32 sm:px-36 lg:px-52 xl:px-64',
+  narrow: 'px-6 sm:px-12 md:px-20 lg:px-28 xl:px-52 2xl:px-64',
 };
 
 const GUTTER_LAYER_INSET: Record<PortfolioContentGutter, string> = {
   none: 'left-0 right-0',
-  wide: 'left-14 right-14 sm:left-16 sm:right-16 lg:left-28 lg:right-28 xl:left-32 xl:right-32',
-  medium: 'left-24 right-24 sm:left-28 sm:right-28 lg:left-40 lg:right-40 xl:left-48 xl:right-48',
-  narrow: 'left-32 right-32 sm:left-36 sm:right-36 lg:left-52 lg:right-52 xl:left-64 xl:right-64',
+  wide: 'left-5 right-5 sm:left-8 sm:right-8 lg:left-16 lg:right-16 xl:left-28 xl:right-28 2xl:left-32 2xl:right-32',
+  medium:
+    'left-5 right-5 sm:left-10 sm:right-10 md:left-16 md:right-16 lg:left-20 lg:right-20 xl:left-40 xl:right-40 2xl:left-48 2xl:right-48',
+  narrow:
+    'left-6 right-6 sm:left-12 sm:right-12 md:left-20 md:right-20 lg:left-28 lg:right-28 xl:left-52 xl:right-52 2xl:left-64 2xl:right-64',
 };
 
 export function portfolioEditorialGutterX(

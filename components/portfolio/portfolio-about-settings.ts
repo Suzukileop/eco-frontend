@@ -1,5 +1,15 @@
 import type { CSSProperties } from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import { mergeUseHeroPalette } from '@/components/portfolio/portfolio-section-palette';
+import {
+  DEFAULT_ABOUT_COLOR_BINDINGS,
+  DEFAULT_ABOUT_PALETTE,
+  applyAboutPaletteToSettings,
+  mergeAboutColorBindings,
+  mergeAboutPalette,
+  type PortfolioAboutColorBindings,
+  type PortfolioAboutPalette,
+} from '@/components/portfolio/portfolio-about-palette-settings';
 import {
   DEFAULT_SOLID_CARD_BACKGROUND_SETTINGS,
   mergeServicesCardBackgroundSettings,
@@ -55,7 +65,8 @@ export type PortfolioAboutSidePanelFullWidthLayout =
   | 'grid-2'
   | 'grid-3'
   | 'horizontal'
-  | 'inline-band';
+  | 'inline-band'
+  | 'profile-frame';
 
 export type PortfolioAboutWhyMeDesign = 'editorial' | 'compact' | 'minimal' | 'grid' | 'stacked';
 
@@ -221,6 +232,12 @@ export type PortfolioAboutPresentationSettings = PortfolioSectionBackgroundSetti
   showWhyMe: boolean;
   showWhyMeHeading: boolean;
   whyMeHeading: string;
+  /** When true, section colors follow the Hero semantic palette. */
+  useHeroPalette: boolean;
+  /** About-owned palette copy (same 8 tokens as Hero). */
+  aboutPalette?: PortfolioAboutPalette;
+  /** Which token each about color slot uses. */
+  aboutColorBindings?: PortfolioAboutColorBindings;
   /** Per-element color, font, size, and weight for Why me text and side panel rows. */
   elementStyles: PortfolioAboutElementStyles;
 };
@@ -583,8 +600,20 @@ export const DEFAULT_ABOUT_PRESENTATION: PortfolioAboutPresentationSettings = {
   showWhyMe: true,
   showWhyMeHeading: true,
   whyMeHeading: 'Why work with me',
+  useHeroPalette: true,
+  aboutPalette: { ...DEFAULT_ABOUT_PALETTE },
+  aboutColorBindings: { ...DEFAULT_ABOUT_COLOR_BINDINGS },
   elementStyles: DEFAULT_ABOUT_ELEMENT_STYLES,
 };
+
+Object.assign(
+  DEFAULT_ABOUT_PRESENTATION,
+  applyAboutPaletteToSettings({
+    aboutPalette: DEFAULT_ABOUT_PALETTE,
+    aboutColorBindings: DEFAULT_ABOUT_COLOR_BINDINGS,
+    elementStyles: DEFAULT_ABOUT_ELEMENT_STYLES,
+  })
+);
 
 export const PORTFOLIO_ABOUT_TITLE_PRESET_OPTIONS: {
   value: PortfolioAboutTitlePreset;
@@ -791,6 +820,12 @@ export const PORTFOLIO_ABOUT_SIDE_PANEL_FULL_WIDTH_LAYOUT_OPTIONS: {
     label: 'Bande horizontale',
     description: 'Une seule ligne avec séparateurs verticaux entre items.',
   },
+  {
+    value: 'profile-frame',
+    label: 'Cadre profil',
+    description:
+      'Grand écran : location à gauche (~40%), grille 2×2 des autres infos à droite — idéal au-dessus de Why me.',
+  },
 ];
 
 export const PORTFOLIO_ABOUT_WHY_ME_DESIGN_OPTIONS: {
@@ -975,9 +1010,9 @@ export function aboutMainGridClass(
 ): string {
   if (!hasSidebar || layoutMode === 'full-width') return '';
   if (layoutMode === 'sidebar-left') {
-    return 'lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[22rem_minmax(0,1fr)] xl:gap-14';
+    return 'lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-10 xl:grid-cols-[22rem_minmax(0,1fr)] xl:gap-14';
   }
-  return 'lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem] xl:gap-14';
+  return 'lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-10 xl:grid-cols-[minmax(0,1fr)_22rem] xl:gap-14';
 }
 
 export function aboutStatEditorialSuffix(label: string): string {
@@ -1351,7 +1386,9 @@ export function aboutSidePanelFullWidthLayoutClass(
     case 'horizontal':
       return 'flex flex-wrap gap-x-10 gap-y-6';
     case 'inline-band':
-      return 'flex flex-col divide-neutral-200/80 sm:flex-row sm:divide-x sm:divide-y-0';
+      return 'flex flex-col divide-y divide-neutral-200/80 sm:flex-row sm:items-stretch sm:divide-x sm:divide-y-0';
+    case 'profile-frame':
+      return 'flex flex-col divide-y divide-neutral-200/80';
     default:
       return 'flex flex-col';
   }
@@ -1362,7 +1399,10 @@ export function aboutSidePanelItemCellClass(
   design: PortfolioAboutSidePanelDesign
 ): string {
   if (layout === 'inline-band') {
-    return 'px-5 py-4 sm:flex-1 sm:px-6 sm:py-5';
+    return 'flex items-center px-5 py-4 sm:flex-1 sm:px-6 sm:py-5';
+  }
+  if (layout === 'profile-frame') {
+    return 'min-w-0 px-4 py-3.5 sm:px-5 sm:py-4';
   }
   if (layout !== 'stacked' && design !== 'minimal') {
     return 'min-w-0';
@@ -1887,7 +1927,7 @@ export function mergeAboutPresentation(
     sidePanelDesign: pick(record.sidePanelDesign, ['framed', 'cards', 'minimal'], base.sidePanelDesign),
     sidePanelFullWidthLayout: pick(
       record.sidePanelFullWidthLayout,
-      ['stacked', 'grid-2', 'grid-3', 'horizontal', 'inline-band'],
+      ['stacked', 'grid-2', 'grid-3', 'horizontal', 'inline-band', 'profile-frame'],
       base.sidePanelFullWidthLayout
     ),
     sidePanelBorder: pick(record.sidePanelBorder, ['none', 'soft', 'solid', 'accent'], base.sidePanelBorder),
@@ -1987,6 +2027,15 @@ export function mergeAboutPresentation(
       typeof record.whyMeHeading === 'string' && record.whyMeHeading.trim()
         ? record.whyMeHeading.trim()
         : base.whyMeHeading,
+    useHeroPalette: mergeUseHeroPalette(base.useHeroPalette, record),
+    aboutPalette: mergeAboutPalette(
+      mergeAboutPalette(DEFAULT_ABOUT_PALETTE, base.aboutPalette),
+      record.aboutPalette
+    ),
+    aboutColorBindings: mergeAboutColorBindings(
+      mergeAboutColorBindings(DEFAULT_ABOUT_COLOR_BINDINGS, base.aboutColorBindings),
+      record.aboutColorBindings
+    ),
     elementStyles: normalizeElementStylesRecord(
       record.elementStyles ?? base.elementStyles,
       DEFAULT_ABOUT_ELEMENT_STYLES,
@@ -2023,5 +2072,13 @@ export function mergeAboutPresentation(
     };
   }
 
-  return next;
+  if (next.useHeroPalette === false) {
+    return next;
+  }
+
+  return {
+    ...next,
+    ...(applyAboutPaletteToSettings(next) as Partial<PortfolioAboutPresentationSettings>),
+    useHeroPalette: true,
+  };
 }

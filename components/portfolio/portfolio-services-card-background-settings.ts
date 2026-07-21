@@ -115,7 +115,7 @@ export const PORTFOLIO_SERVICES_CARD_DIVIDER_SHAPE_OPTIONS: {
   description: string;
 }[] = [
   { value: 'straight', label: 'Droite', description: 'Ligne droite horizontale ou verticale.' },
-  { value: 'diagonal', label: 'Diagonale', description: 'Séparation inclinée — angle réglable.' },
+  { value: 'diagonal', label: 'Diagonale', description: 'Séparation inclinée — angle et position réglables.' },
   { value: 'curve', label: 'Courbe', description: 'Arc doux entre les deux zones.' },
   { value: 'wave', label: 'Vague', description: 'Ligne ondulée pour un rendu organique.' },
 ];
@@ -162,14 +162,97 @@ type ZonePaths = {
   dividerPath: string;
 };
 
+function fmt(n: number): string {
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+function polygonPath(points: Array<[number, number]>): string {
+  if (points.length < 3) return '';
+  return `${points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${fmt(x)} ${fmt(y)}`).join(' ')} Z`;
+}
+
+/**
+ * Split the 100×100 viewBox with a line: `angle` = line direction in degrees
+ * (0° horizontal, 90° vertical, 135° classic corner slash), `position` shifts
+ * the cut along the normal (50 = through center).
+ */
+function buildDiagonalZonePaths(angleDeg: number, positionPercent: number): ZonePaths {
+  const angle = (clampAngle(angleDeg, 135) * Math.PI) / 180;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const nx = -dy;
+  const ny = dx;
+  const t = (clampPercent(positionPercent, 50) - 50) / 50;
+  const maxOffset = 70;
+  const cx = 50 + nx * t * maxOffset;
+  const cy = 50 + ny * t * maxOffset;
+
+  const corners: Array<[number, number]> = [
+    [0, 0],
+    [100, 0],
+    [100, 100],
+    [0, 100],
+  ];
+
+  const sideOf = (x: number, y: number) => (x - cx) * nx + (y - cy) * ny;
+
+  const clipHalf = (keepPositive: boolean): Array<[number, number]> => {
+    const result: Array<[number, number]> = [];
+    for (let i = 0; i < corners.length; i += 1) {
+      const a = corners[i];
+      const b = corners[(i + 1) % corners.length];
+      const sa = sideOf(a[0], a[1]);
+      const sb = sideOf(b[0], b[1]);
+      const aIn = keepPositive ? sa >= -1e-6 : sa <= 1e-6;
+      const bIn = keepPositive ? sb >= -1e-6 : sb <= 1e-6;
+
+      if (aIn) result.push(a);
+      if (aIn !== bIn) {
+        const denom = sa - sb;
+        const u = Math.abs(denom) < 1e-9 ? 0 : sa / denom;
+        result.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]);
+      }
+    }
+    return result;
+  };
+
+  const polyA = clipHalf(true);
+  const polyB = clipHalf(false);
+
+  // Divider segment = the two intersection points on the square boundary.
+  const edgeHits: Array<[number, number]> = [];
+  for (let i = 0; i < corners.length; i += 1) {
+    const a = corners[i];
+    const b = corners[(i + 1) % corners.length];
+    const sa = sideOf(a[0], a[1]);
+    const sb = sideOf(b[0], b[1]);
+    if ((sa >= 0 && sb < 0) || (sa < 0 && sb >= 0)) {
+      const denom = sa - sb;
+      const u = Math.abs(denom) < 1e-9 ? 0 : sa / denom;
+      edgeHits.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]);
+    }
+  }
+
+  const dividerPath =
+    edgeHits.length >= 2
+      ? `M ${fmt(edgeHits[0][0])} ${fmt(edgeHits[0][1])} L ${fmt(edgeHits[1][0])} ${fmt(edgeHits[1][1])}`
+      : `M ${fmt(cx - dx * 100)} ${fmt(cy - dy * 100)} L ${fmt(cx + dx * 100)} ${fmt(cy + dy * 100)}`;
+
+  return {
+    pathA: polygonPath(polyA.length >= 3 ? polyA : corners),
+    pathB: polygonPath(polyB.length >= 3 ? polyB : []),
+    dividerPath,
+  };
+}
+
 function buildZonePaths(settings: PortfolioServicesCardBackgroundSettings): ZonePaths | null {
-  const pos = clampPercent(settings.cardBackgroundSplitPosition, 58);
+  const pos = clampPercent(settings.cardBackgroundSplitPosition, 50);
   const depth = clampCurveDepth(settings.cardDividerCurveDepth, 14);
   const axis = settings.cardBackgroundSplitAxis;
   const shape = settings.cardDividerShape;
 
   if (shape === 'diagonal') {
-    return null;
+    return buildDiagonalZonePaths(settings.cardDividerAngle, pos);
   }
 
   if (axis === 'y') {
@@ -234,7 +317,7 @@ export function buildCardSplitBackgroundSvg(settings: PortfolioServicesCardBackg
   const colorB = sanitizeHex(settings.cardBackgroundColorB, DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_B);
   const paths = buildZonePaths(settings);
 
-  if (!paths) {
+  if (!paths || !paths.pathA) {
     return null;
   }
 
@@ -245,7 +328,11 @@ export function buildCardSplitBackgroundSvg(settings: PortfolioServicesCardBackg
     ? `<path d="${paths.dividerPath}" fill="none" stroke="${dividerColor}" stroke-width="${thickness}" stroke-opacity="${opacity}" vector-effect="non-scaling-stroke" stroke-linecap="round"/>`
     : '';
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="${paths.pathA}" fill="${colorA}"/><path d="${paths.pathB}" fill="${colorB}"/>${dividerStroke}</svg>`;
+  const pathB = paths.pathB
+    ? `<path d="${paths.pathB}" fill="${colorB}"/>`
+    : '';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="${paths.pathA}" fill="${colorA}"/>${pathB}${dividerStroke}</svg>`;
 }
 
 export function servicesCardSplitBackgroundLayerStyle(
@@ -253,20 +340,6 @@ export function servicesCardSplitBackgroundLayerStyle(
 ): CSSProperties | undefined {
   if (!shouldRenderCardSplitBackground(settings)) {
     return undefined;
-  }
-
-  const colorA = sanitizeHex(settings.cardBackgroundColorA, DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_A);
-  const colorB = sanitizeHex(settings.cardBackgroundColorB, DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_B);
-
-  if (settings.cardDividerShape === 'diagonal') {
-    // Corner-to-corner split (bottom-left ↔ top-right) so both extremities meet on any aspect ratio.
-    // colorA = top-left (white), colorB = bottom-right (gray).
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="0,0 100,0 0,100" fill="${colorA}"/><polygon points="100,0 100,100 0,100" fill="${colorB}"/></svg>`;
-    return {
-      backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
-      backgroundSize: '100% 100%',
-      backgroundRepeat: 'no-repeat',
-    };
   }
 
   const svg = buildCardSplitBackgroundSvg(settings);

@@ -303,7 +303,10 @@ export function CreatorStudioProfileTab({ onProfileUpdated }: CreatorStudioProfi
         whyMeBlocks: serializeProfileBlocks(parsed.whyMeBlocks),
         experienceBlocks: serializeProfileBlocks(parsed.experienceBlocks),
         yearsOfExperience: parsed.yearsOfExperience,
-        strengthsToolsMastered: parsed.strengthsTools.map((item) => item.value.trim()),
+        strengthsToolsMastered: parsed.strengthsTools.map((item) => ({
+          name: item.value.trim(),
+          description: item.description?.trim() ? item.description.trim() : null,
+        })),
       });
 
       await loadProfile({ silent: true });
@@ -705,7 +708,7 @@ export function CreatorStudioProfileTab({ onProfileUpdated }: CreatorStudioProfi
               control={form.control}
               setValue={form.setValue}
               readOnly
-              values={values.strengthsTools.map((item) => item.value).filter(Boolean)}
+              values={values.strengthsTools}
             />
           );
         }

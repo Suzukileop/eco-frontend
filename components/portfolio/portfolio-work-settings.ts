@@ -1,6 +1,15 @@
 import type { CSSProperties } from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
 import {
+  applyWorkPaletteToSettings,
+  DEFAULT_WORK_COLOR_BINDINGS,
+  DEFAULT_WORK_PALETTE,
+  mergeWorkColorBindings,
+  mergeWorkPalette,
+  type PortfolioWorkColorBindings,
+  type PortfolioWorkPalette,
+} from '@/components/portfolio/portfolio-work-palette-settings';
+import {
   DEFAULT_SECTION_BACKGROUND,
   mergeSectionBackground,
   type PortfolioSectionBackgroundSettings,
@@ -24,6 +33,9 @@ export type PortfolioWorkHeaderAlignment = 'left' | 'center';
 
 export type PortfolioWorkContentPlacement = 'side' | 'side-reverse' | 'bottom';
 
+/** How info (title, desc, tools, CTA) is laid out when media is hidden. */
+export type PortfolioWorkNoMediaInfoLayout = 'fill' | 'readable' | 'centered';
+
 export type PortfolioWorkCardDesign =
   | 'editorial'
   | 'minimal'
@@ -39,6 +51,9 @@ export type PortfolioWorkGalleryLayout = 'stack' | 'grid' | 'list' | 'overlay' |
 /** How many project cards per row (stack / grid / overlay). Mobile always collapses. */
 export type PortfolioWorkItemsPerRow = 1 | 2 | 3 | 4;
 
+/** Cap individual card width so they stay portrait / readable instead of stretching full column. */
+export type PortfolioWorkCardMaxWidth = 'full' | 'xl' | 'lg' | 'md' | 'sm';
+
 export type PortfolioWorkCardRadius = 'none' | 'sm' | 'md' | 'lg' | 'xl';
 
 export type PortfolioWorkCardPadding = 'none' | 'sm' | 'md' | 'lg';
@@ -46,6 +61,198 @@ export type PortfolioWorkCardPadding = 'none' | 'sm' | 'md' | 'lg';
 export type PortfolioWorkCardGap = 'sm' | 'md' | 'lg' | 'xl';
 
 export type PortfolioWorkCardContentAlignment = 'left' | 'center' | 'right';
+
+/** Position of the card frame inside its column (independent from text inside). */
+export type PortfolioWorkCardAlignment = PortfolioWorkCardContentAlignment;
+
+/**
+ * Free placement of overlay card elements on large screens (lg+).
+ * Mobile / tablet keep the classic bottom stack for readability.
+ */
+export type PortfolioWorkOverlayLayoutMode = 'stack' | 'free';
+
+export type PortfolioWorkOverlayElementId =
+  | 'category'
+  | 'title'
+  | 'description'
+  | 'tools'
+  | 'cta';
+
+export type PortfolioWorkOverlayCellPlacement =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center-left'
+  | 'center'
+  | 'center-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
+
+export type PortfolioWorkOverlayElementPlacements = Record<
+  PortfolioWorkOverlayElementId,
+  PortfolioWorkOverlayCellPlacement
+>;
+
+export const PORTFOLIO_WORK_OVERLAY_ELEMENT_IDS: PortfolioWorkOverlayElementId[] = [
+  'category',
+  'title',
+  'description',
+  'tools',
+  'cta',
+];
+
+export const PORTFOLIO_WORK_OVERLAY_LAYOUT_MODE_OPTIONS: {
+  value: PortfolioWorkOverlayLayoutMode;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'stack',
+    label: 'Pile basse',
+    description: 'Texte empilé en bas de la carte (tous écrans).',
+  },
+  {
+    value: 'free',
+    label: 'Libre (grand écran)',
+    description: 'Place chaque élément dans une cellule 3×3 — desktop seulement.',
+  },
+];
+
+export const PORTFOLIO_WORK_OVERLAY_CELL_OPTIONS: {
+  value: PortfolioWorkOverlayCellPlacement;
+  label: string;
+  row: 'top' | 'center' | 'bottom';
+  col: 'left' | 'center' | 'right';
+}[] = [
+  { value: 'top-left', label: 'Haut gauche', row: 'top', col: 'left' },
+  { value: 'top-center', label: 'Haut centre', row: 'top', col: 'center' },
+  { value: 'top-right', label: 'Haut droite', row: 'top', col: 'right' },
+  { value: 'center-left', label: 'Milieu gauche', row: 'center', col: 'left' },
+  { value: 'center', label: 'Centre', row: 'center', col: 'center' },
+  { value: 'center-right', label: 'Milieu droite', row: 'center', col: 'right' },
+  { value: 'bottom-left', label: 'Bas gauche', row: 'bottom', col: 'left' },
+  { value: 'bottom-center', label: 'Bas centre', row: 'bottom', col: 'center' },
+  { value: 'bottom-right', label: 'Bas droite', row: 'bottom', col: 'right' },
+];
+
+export const PORTFOLIO_WORK_OVERLAY_ELEMENT_OPTIONS: {
+  value: PortfolioWorkOverlayElementId;
+  label: string;
+}[] = [
+  { value: 'category', label: 'Catégorie' },
+  { value: 'title', label: 'Titre' },
+  { value: 'description', label: 'Description' },
+  { value: 'tools', label: 'Outils' },
+  { value: 'cta', label: 'Bouton CTA' },
+];
+
+export const DEFAULT_WORK_OVERLAY_ELEMENT_PLACEMENTS: PortfolioWorkOverlayElementPlacements = {
+  category: 'top-left',
+  title: 'bottom-left',
+  description: 'center-left',
+  tools: 'bottom-center',
+  cta: 'bottom-right',
+};
+
+const OVERLAY_CELL_X: Record<'left' | 'center' | 'right', number> = {
+  left: 4,
+  center: 50,
+  right: 96,
+};
+
+const OVERLAY_CELL_Y: Record<'top' | 'center' | 'bottom', number> = {
+  top: 4,
+  center: 50,
+  bottom: 96,
+};
+
+function overlayCellMeta(cell: PortfolioWorkOverlayCellPlacement) {
+  return (
+    PORTFOLIO_WORK_OVERLAY_CELL_OPTIONS.find((option) => option.value === cell) ??
+    PORTFOLIO_WORK_OVERLAY_CELL_OPTIONS[6]
+  );
+}
+
+export function sanitizeWorkOverlayCellPlacement(
+  value: unknown,
+  fallback: PortfolioWorkOverlayCellPlacement
+): PortfolioWorkOverlayCellPlacement {
+  if (
+    value === 'top-left' ||
+    value === 'top-center' ||
+    value === 'top-right' ||
+    value === 'center-left' ||
+    value === 'center' ||
+    value === 'center-right' ||
+    value === 'bottom-left' ||
+    value === 'bottom-center' ||
+    value === 'bottom-right'
+  ) {
+    return value;
+  }
+  return fallback;
+}
+
+export function mergeWorkOverlayElementPlacements(
+  base: PortfolioWorkOverlayElementPlacements,
+  patch: unknown
+): PortfolioWorkOverlayElementPlacements {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { ...base };
+  const record = patch as Record<string, unknown>;
+  const next = { ...base };
+  for (const id of PORTFOLIO_WORK_OVERLAY_ELEMENT_IDS) {
+    next[id] = sanitizeWorkOverlayCellPlacement(record[id], base[id]);
+  }
+  return next;
+}
+
+/** Absolute position inside the overlay card for a free-placement cell. */
+export function workOverlayCellAbsoluteStyle(
+  cell: PortfolioWorkOverlayCellPlacement
+): CSSProperties {
+  const meta = overlayCellMeta(cell);
+  const left = OVERLAY_CELL_X[meta.col];
+  const top = OVERLAY_CELL_Y[meta.row];
+  const transform =
+    meta.row === 'top'
+      ? meta.col === 'left'
+        ? 'translate(0%, 0%)'
+        : meta.col === 'right'
+          ? 'translate(-100%, 0%)'
+          : 'translate(-50%, 0%)'
+      : meta.row === 'bottom'
+        ? meta.col === 'left'
+          ? 'translate(0%, -100%)'
+          : meta.col === 'right'
+            ? 'translate(-100%, -100%)'
+            : 'translate(-50%, -100%)'
+        : meta.col === 'left'
+          ? 'translate(0%, -50%)'
+          : meta.col === 'right'
+            ? 'translate(-100%, -50%)'
+            : 'translate(-50%, -50%)';
+  return {
+    left: `${left}%`,
+    top: `${top}%`,
+    transform,
+    textAlign: meta.col === 'left' ? 'left' : meta.col === 'right' ? 'right' : 'center',
+  };
+}
+
+export function workOverlayCellAlignClass(cell: PortfolioWorkOverlayCellPlacement): string {
+  const col = overlayCellMeta(cell).col;
+  if (col === 'left') return 'items-start text-left';
+  if (col === 'right') return 'items-end text-right';
+  return 'items-center text-center';
+}
+
+export function workOverlayCellRowAlignClass(cell: PortfolioWorkOverlayCellPlacement): string {
+  const col = overlayCellMeta(cell).col;
+  if (col === 'left') return 'justify-start';
+  if (col === 'right') return 'justify-end';
+  return 'justify-center';
+}
 
 export type PortfolioWorkCtaAlignment = 'left' | 'center' | 'right';
 
@@ -56,6 +263,10 @@ export type PortfolioWorkCtaDesign =
   | 'pill-accent'
   | 'text-arrow'
   | 'circle-icon';
+
+export type PortfolioWorkCtaBorderWidth = 'none' | 'thin' | 'medium' | 'thick';
+
+export type PortfolioWorkCtaBorderRadius = 'none' | 'sm' | 'md' | 'lg' | 'full';
 
 /** How categories appear above the work gallery. */
 export type PortfolioWorkCategoryDesign = 'pills' | 'underline' | 'tabs' | 'minimal';
@@ -89,7 +300,7 @@ export const DEFAULT_WORK_ELEMENT_STYLES: PortfolioWorkElementStyles = {
   toolsLabel: createElementTextStyle({ color: '#a3a3a3', size: 'sm', bold: true, uppercase: true }),
   toolsList: createElementTextStyle({ color: '#404040', size: 'md', bold: true }),
   categoryOnCard: createElementTextStyle({ color: '#0a0a0a', size: 'sm', bold: true, uppercase: true }),
-  cta: createElementTextStyle({ color: '#ea580c', size: 'md', bold: true, uppercase: true }),
+  cta: createElementTextStyle({ color: '#f4f3ef', size: 'md', bold: true, uppercase: true }),
 };
 
 export const PORTFOLIO_WORK_STYLE_TARGET_OPTIONS: {
@@ -117,6 +328,182 @@ export function patchWorkElementStyle(
   return patchElementStylesRecord(styles, target, patch, DEFAULT_WORK_ELEMENT_STYLES, WORK_STYLE_TARGET_IDS);
 }
 
+/** Per-element surface chrome (category, title, description, tools block). */
+export type PortfolioWorkElementChromeId =
+  | 'categoryOnCard'
+  | 'cardTitle'
+  | 'cardDescription'
+  | 'tools';
+
+export type PortfolioWorkElementChromeSettings = {
+  enabled: boolean;
+  backgroundEnabled: boolean;
+  backgroundColor: string;
+  border: PortfolioWorkCardBorder;
+  borderColor: string;
+  borderRadius: PortfolioWorkCardRadius;
+  padding: PortfolioWorkCardPadding;
+  /** Outer spacing around the element — not tied to content-frame vertical gap. */
+  margin: PortfolioWorkCardPadding;
+};
+
+export type PortfolioWorkElementChromes = Record<
+  PortfolioWorkElementChromeId,
+  PortfolioWorkElementChromeSettings
+>;
+
+export const WORK_ELEMENT_CHROME_IDS: PortfolioWorkElementChromeId[] = [
+  'categoryOnCard',
+  'cardTitle',
+  'cardDescription',
+  'tools',
+];
+
+export const DEFAULT_WORK_ELEMENT_CHROME: PortfolioWorkElementChromeSettings = {
+  enabled: false,
+  backgroundEnabled: true,
+  backgroundColor: '#fafafa',
+  border: 'none',
+  borderColor: '#e5e5e5',
+  borderRadius: 'md',
+  padding: 'sm',
+  margin: 'none',
+};
+
+export const DEFAULT_WORK_ELEMENT_CHROMES: PortfolioWorkElementChromes = {
+  categoryOnCard: { ...DEFAULT_WORK_ELEMENT_CHROME },
+  cardTitle: { ...DEFAULT_WORK_ELEMENT_CHROME },
+  cardDescription: { ...DEFAULT_WORK_ELEMENT_CHROME },
+  tools: { ...DEFAULT_WORK_ELEMENT_CHROME },
+};
+
+export function mergeWorkElementChrome(
+  base: PortfolioWorkElementChromeSettings,
+  patch: unknown
+): PortfolioWorkElementChromeSettings {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { ...base };
+  const record = patch as Record<string, unknown>;
+  return {
+    enabled: typeof record.enabled === 'boolean' ? record.enabled : base.enabled,
+    backgroundEnabled:
+      typeof record.backgroundEnabled === 'boolean' ? record.backgroundEnabled : base.backgroundEnabled,
+    backgroundColor: sanitizeHex(record.backgroundColor, base.backgroundColor),
+    border:
+      record.border === 'none' ||
+      record.border === 'soft' ||
+      record.border === 'solid' ||
+      record.border === 'accent'
+        ? record.border
+        : base.border,
+    borderColor: sanitizeHex(record.borderColor, base.borderColor),
+    borderRadius:
+      record.borderRadius === 'none' ||
+      record.borderRadius === 'sm' ||
+      record.borderRadius === 'md' ||
+      record.borderRadius === 'lg' ||
+      record.borderRadius === 'xl'
+        ? record.borderRadius
+        : base.borderRadius,
+    padding:
+      record.padding === 'none' ||
+      record.padding === 'sm' ||
+      record.padding === 'md' ||
+      record.padding === 'lg'
+        ? record.padding
+        : base.padding,
+    margin:
+      record.margin === 'none' ||
+      record.margin === 'sm' ||
+      record.margin === 'md' ||
+      record.margin === 'lg'
+        ? record.margin
+        : base.margin,
+  };
+}
+
+export function mergeWorkElementChromes(
+  base: PortfolioWorkElementChromes,
+  patch: unknown
+): PortfolioWorkElementChromes {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    return {
+      categoryOnCard: { ...base.categoryOnCard },
+      cardTitle: { ...base.cardTitle },
+      cardDescription: { ...base.cardDescription },
+      tools: { ...base.tools },
+    };
+  }
+  const record = patch as Record<string, unknown>;
+  return {
+    categoryOnCard: mergeWorkElementChrome(base.categoryOnCard, record.categoryOnCard),
+    cardTitle: mergeWorkElementChrome(base.cardTitle, record.cardTitle),
+    cardDescription: mergeWorkElementChrome(base.cardDescription, record.cardDescription),
+    tools: mergeWorkElementChrome(base.tools, record.tools),
+  };
+}
+
+export function patchWorkElementChrome(
+  chromes: PortfolioWorkElementChromes,
+  id: PortfolioWorkElementChromeId,
+  patch: Partial<PortfolioWorkElementChromeSettings>
+): PortfolioWorkElementChromes {
+  return {
+    ...chromes,
+    [id]: mergeWorkElementChrome(chromes[id] ?? DEFAULT_WORK_ELEMENT_CHROME, {
+      ...(chromes[id] ?? DEFAULT_WORK_ELEMENT_CHROME),
+      ...patch,
+    }),
+  };
+}
+
+function workElementChromeMarginClass(margin: PortfolioWorkCardPadding): string {
+  switch (margin) {
+    case 'sm':
+      return 'my-1';
+    case 'md':
+      return 'my-2';
+    case 'lg':
+      return 'my-3';
+    default:
+      return '';
+  }
+}
+
+/** Class names for a per-element chrome surface (when enabled). */
+export function workElementChromeClass(chrome: PortfolioWorkElementChromeSettings | undefined): string {
+  if (!chrome?.enabled) return '';
+  const parts = [
+    'w-full min-w-0',
+    workCardRadiusClass(chrome.borderRadius),
+    workCardPaddingClass(chrome.padding),
+    workElementChromeMarginClass(chrome.margin),
+  ];
+  if (chrome.border !== 'none') {
+    parts.push(workCardBorderWidthClass(chrome.border));
+    if (chrome.border === 'soft') parts.push('shadow-sm');
+  }
+  return parts.filter(Boolean).join(' ');
+}
+
+export function workElementChromeStyle(
+  chrome: PortfolioWorkElementChromeSettings | undefined,
+  accentColor?: string
+): CSSProperties | undefined {
+  if (!chrome?.enabled) return undefined;
+  const style: CSSProperties = {};
+  if (chrome.backgroundEnabled) {
+    style.backgroundColor = sanitizeHex(chrome.backgroundColor, DEFAULT_WORK_CARD_BACKGROUND_COLOR);
+  }
+  if (chrome.border === 'accent') {
+    style.borderStyle = 'solid';
+    style.borderColor = sanitizeHex(accentColor, DEFAULT_WORK_CTA_COLOR);
+  } else if (chrome.border !== 'none') {
+    style.borderStyle = 'solid';
+    style.borderColor = sanitizeHex(chrome.borderColor, DEFAULT_WORK_CARD_BORDER_COLOR);
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
 export type PortfolioWorkPresentationSettings = PortfolioSectionBackgroundSettings & {
   titlePreset: PortfolioWorkTitlePreset;
   titleCustom: string;
@@ -131,6 +518,8 @@ export type PortfolioWorkPresentationSettings = PortfolioSectionBackgroundSettin
   galleryLayout: PortfolioWorkGalleryLayout;
   /** Cards per row on large screens (stack / grid / overlay). */
   itemsPerRow: PortfolioWorkItemsPerRow;
+  /** Max width of each project card (full = stretch to column). */
+  cardMaxWidth: PortfolioWorkCardMaxWidth;
   cardDesign: PortfolioWorkCardDesign;
   cardBorder: PortfolioWorkCardBorder;
   cardBorderColor: string;
@@ -139,10 +528,44 @@ export type PortfolioWorkPresentationSettings = PortfolioSectionBackgroundSettin
   cardBorderRadius: PortfolioWorkCardRadius;
   cardPadding: PortfolioWorkCardPadding;
   cardGap: PortfolioWorkCardGap;
+  /** Where the card frame sits in the column when width is capped. */
+  cardAlignment: PortfolioWorkCardAlignment;
+  /** Alignment of title / description / tools inside the card. */
   cardContentAlignment: PortfolioWorkCardContentAlignment;
+  /** Inner frame around title / description / tools / CTA (beside or below media). */
+  contentFrameEnabled: boolean;
+  contentFrameBorder: PortfolioWorkCardBorder;
+  contentFrameBorderColor: string;
+  contentFrameBackgroundEnabled: boolean;
+  contentFrameBackgroundColor: string;
+  /** Manual hex override — palette sync skipped until the token binding changes. */
+  contentFrameBorderManual: boolean;
+  contentFrameBackgroundManual: boolean;
+  contentFrameBorderRadius: PortfolioWorkCardRadius;
+  contentFramePadding: PortfolioWorkCardPadding;
+  /** Vertical gap between info blocks inside the frame. */
+  contentFrameGap: PortfolioWorkCardGap;
+  /** Optional surface behind category / title / description / tools (padding, margin, border, fill). */
+  elementChromes: PortfolioWorkElementChromes;
+  /**
+   * Overlay immersive only: classic bottom stack, or free 3×3 placement on lg+.
+   * Below lg, free mode still uses the bottom stack.
+   */
+  overlayLayoutMode: PortfolioWorkOverlayLayoutMode;
+  /** Per-element cell when overlayLayoutMode is `free` (desktop). */
+  overlayElementPlacements: PortfolioWorkOverlayElementPlacements;
   ctaAlignment: PortfolioWorkCtaAlignment;
   mediaRatio: number;
   showMarketplaceLink: boolean;
+  /** When false, project media / thumbnails are hidden on all gallery layouts. */
+  showCardMedia: boolean;
+  /**
+   * Info placement when media is off:
+   * - fill: full card width
+   * - readable: constrained text column (max-width)
+   * - centered: constrained + horizontally centered
+   */
+  noMediaInfoLayout: PortfolioWorkNoMediaInfoLayout;
   showCardTitle: boolean;
   showCardDescription: boolean;
   showCardTools: boolean;
@@ -156,6 +579,24 @@ export type PortfolioWorkPresentationSettings = PortfolioSectionBackgroundSettin
   ctaDesign: PortfolioWorkCtaDesign;
   ctaLabel: string;
   ctaColor: string;
+  /** CTA outline — bound to the same palette token as Hero `ctaBorder`. */
+  ctaBorderColor: string;
+  /** Border thickness on pill / circle CTA. */
+  ctaBorderWidth: PortfolioWorkCtaBorderWidth;
+  /** Corner radius on pill CTAs (circle icon shell stays round). */
+  ctaBorderRadius: PortfolioWorkCtaBorderRadius;
+  /** Hover fill — palette `ctaHoverBackground`. */
+  ctaHoverBackgroundColor: string;
+  /** Hover label / icon ink — palette `ctaHoverText`. */
+  ctaHoverTextColor: string;
+  /** Hover outline — palette `ctaHoverBorder`. */
+  ctaHoverBorderColor: string;
+  /** When false, CTA keeps resting colors on hover. */
+  ctaHoverEnabled: boolean;
+  /** Tool icon chip fill — bound to Hero `toolsIconBackground`. */
+  toolsIconBackgroundColor: string;
+  /** Tool icon chip outline — bound to Hero `toolsIconBorder`. */
+  toolsIconBorderColor: string;
   toolsDisplay: PortfolioWorkToolsDisplay;
   maxToolsShown: number;
   /** Category (content `genre`) filter / grouping. */
@@ -166,6 +607,12 @@ export type PortfolioWorkPresentationSettings = PortfolioSectionBackgroundSettin
   categoryUncategorizedLabel: string;
   categoryActiveColor: string;
   categoryMutedColor: string;
+  /** When true, section colors follow the semantic palette tokens. */
+  useHeroPalette: boolean;
+  /** Work-owned palette copy (same 8 tokens as Hero). */
+  workPalette?: PortfolioWorkPalette;
+  /** Which token each work color slot uses. */
+  workColorBindings?: PortfolioWorkColorBindings;
   /** Per-element color, font, size, and weight for card text. */
   elementStyles: PortfolioWorkElementStyles;
 };
@@ -196,6 +643,7 @@ export const DEFAULT_WORK_PRESENTATION: PortfolioWorkPresentationSettings = {
   contentPlacement: 'side',
   galleryLayout: 'stack',
   itemsPerRow: 1,
+  cardMaxWidth: 'full',
   cardDesign: 'editorial',
   cardBorder: 'none',
   cardBorderColor: DEFAULT_WORK_CARD_BORDER_COLOR,
@@ -204,10 +652,31 @@ export const DEFAULT_WORK_PRESENTATION: PortfolioWorkPresentationSettings = {
   cardBorderRadius: 'lg',
   cardPadding: 'md',
   cardGap: 'lg',
+  cardAlignment: 'left',
   cardContentAlignment: 'left',
+  contentFrameEnabled: false,
+  contentFrameBorder: 'soft',
+  contentFrameBorderColor: DEFAULT_WORK_CARD_BORDER_COLOR,
+  contentFrameBackgroundEnabled: true,
+  contentFrameBackgroundColor: DEFAULT_WORK_CARD_BACKGROUND_COLOR,
+  contentFrameBorderManual: false,
+  contentFrameBackgroundManual: false,
+  contentFrameBorderRadius: 'md',
+  contentFramePadding: 'md',
+  contentFrameGap: 'md',
+  elementChromes: {
+    categoryOnCard: { ...DEFAULT_WORK_ELEMENT_CHROME },
+    cardTitle: { ...DEFAULT_WORK_ELEMENT_CHROME },
+    cardDescription: { ...DEFAULT_WORK_ELEMENT_CHROME },
+    tools: { ...DEFAULT_WORK_ELEMENT_CHROME },
+  },
+  overlayLayoutMode: 'stack',
+  overlayElementPlacements: { ...DEFAULT_WORK_OVERLAY_ELEMENT_PLACEMENTS },
   ctaAlignment: 'left',
   mediaRatio: 53,
   showMarketplaceLink: true,
+  showCardMedia: true,
+  noMediaInfoLayout: 'fill',
   showCardTitle: true,
   showCardDescription: true,
   showCardTools: true,
@@ -220,6 +689,15 @@ export const DEFAULT_WORK_PRESENTATION: PortfolioWorkPresentationSettings = {
   ctaDesign: 'circle-icon',
   ctaLabel: 'View project',
   ctaColor: DEFAULT_WORK_CTA_COLOR,
+  ctaBorderColor: DEFAULT_WORK_CARD_BORDER_COLOR,
+  ctaBorderWidth: 'thin',
+  ctaBorderRadius: 'full',
+  ctaHoverBackgroundColor: DEFAULT_WORK_CTA_COLOR,
+  ctaHoverTextColor: '#0b0b0d',
+  ctaHoverBorderColor: DEFAULT_WORK_CTA_COLOR,
+  ctaHoverEnabled: true,
+  toolsIconBackgroundColor: DEFAULT_WORK_CARD_BACKGROUND_COLOR,
+  toolsIconBorderColor: DEFAULT_WORK_CARD_BORDER_COLOR,
   toolsDisplay: 'both',
   maxToolsShown: 12,
   categoryMode: 'filter',
@@ -229,8 +707,22 @@ export const DEFAULT_WORK_PRESENTATION: PortfolioWorkPresentationSettings = {
   categoryUncategorizedLabel: DEFAULT_WORK_CATEGORY_UNCATEGORIZED_LABEL,
   categoryActiveColor: DEFAULT_WORK_CATEGORY_ACTIVE_COLOR,
   categoryMutedColor: DEFAULT_WORK_CATEGORY_MUTED_COLOR,
+  useHeroPalette: true,
+  workPalette: { ...DEFAULT_WORK_PALETTE },
+  workColorBindings: { ...DEFAULT_WORK_COLOR_BINDINGS },
   elementStyles: DEFAULT_WORK_ELEMENT_STYLES,
 };
+
+// Sync hex fields from the default palette without circular init (palette module owns tokens).
+Object.assign(
+  DEFAULT_WORK_PRESENTATION,
+  applyWorkPaletteToSettings({
+    workPalette: DEFAULT_WORK_PALETTE,
+    workColorBindings: DEFAULT_WORK_COLOR_BINDINGS,
+    elementStyles: DEFAULT_WORK_ELEMENT_STYLES,
+    elementChromes: DEFAULT_WORK_ELEMENT_CHROMES,
+  })
+);
 
 export const PORTFOLIO_WORK_TITLE_PRESET_OPTIONS: {
   value: PortfolioWorkTitlePreset;
@@ -280,9 +772,9 @@ export const PORTFOLIO_WORK_GALLERY_LAYOUT_OPTIONS: {
   label: string;
   description: string;
 }[] = [
-  { value: 'stack', label: 'Grille portfolio', description: 'Grandes cartes — colonnes réglables ci-dessous.' },
-  { value: 'grid', label: 'Grille compacte', description: 'Cartes compactes, media au-dessus — colonnes réglables.' },
-  { value: 'list', label: 'Liste compacte', description: 'Lignes fines avec vignette, titre et flèche.' },
+  { value: 'stack', label: 'Grille portfolio', description: 'Grandes cartes éditoriales — colonnes réglables, design libre.' },
+  { value: 'grid', label: 'Grille compacte', description: 'Tuiles denses : média bas, texte serré — colonnes réglables.' },
+  { value: 'list', label: 'Liste compacte', description: 'Lignes fines avec vignette, titre, tools et flèche.' },
   { value: 'overlay', label: 'Overlay immersif', description: 'Media plein avec texte superposé — colonnes réglables.' },
   { value: 'accordion', label: 'Accordéon', description: 'Lignes dépliables révélant les détails du projet.' },
 ];
@@ -296,6 +788,18 @@ export const PORTFOLIO_WORK_ITEMS_PER_ROW_OPTIONS: {
   { value: '2', label: '2 par ligne', description: '2 colonnes dès tablette (md).' },
   { value: '3', label: '3 par ligne', description: '2 dès sm, 3 dès xl — dense sur grand écran.' },
   { value: '4', label: '4 par ligne', description: 'Jusqu’à 4 sur très grand écran — très compact.' },
+];
+
+export const PORTFOLIO_WORK_CARD_MAX_WIDTH_OPTIONS: {
+  value: PortfolioWorkCardMaxWidth;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'full', label: 'Pleine largeur', description: 'La carte remplit toute la colonne (comportement actuel).' },
+  { value: 'xl', label: 'Large', description: 'Max ~42rem — encore confortable, moins étirée.' },
+  { value: 'lg', label: 'Carte portrait', description: 'Max ~36rem — forme verticale type référence.' },
+  { value: 'md', label: 'Moyenne', description: 'Max ~32rem — carte plus compacte.' },
+  { value: 'sm', label: 'Compacte', description: 'Max ~28rem — tuile étroite.' },
 ];
 
 export const PORTFOLIO_WORK_CATEGORY_MODE_OPTIONS: {
@@ -358,14 +862,35 @@ export const PORTFOLIO_WORK_CARD_GAP_OPTIONS: {
   { value: 'xl', label: 'Très large', description: 'Espacement maximal entre les projets.' },
 ];
 
+export const PORTFOLIO_WORK_CONTENT_FRAME_GAP_OPTIONS: {
+  value: PortfolioWorkCardGap;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'sm', label: 'Serré', description: 'Peu d’espace entre catégorie, titre, outils…' },
+  { value: 'md', label: 'Moyen', description: 'Espacement modéré entre les blocs d’info.' },
+  { value: 'lg', label: 'Large', description: 'Espacement généreux entre les blocs.' },
+  { value: 'xl', label: 'Très large', description: 'Espacement maximal entre les blocs.' },
+];
+
+export const PORTFOLIO_WORK_CARD_ALIGNMENT_OPTIONS: {
+  value: PortfolioWorkCardAlignment;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'left', label: 'Gauche', description: 'Place le cadre de la carte à gauche de la colonne.' },
+  { value: 'center', label: 'Centre', description: 'Centre le cadre de la carte dans la colonne.' },
+  { value: 'right', label: 'Droite', description: 'Place le cadre de la carte à droite de la colonne.' },
+];
+
 export const PORTFOLIO_WORK_CARD_CONTENT_ALIGNMENT_OPTIONS: {
   value: PortfolioWorkCardContentAlignment;
   label: string;
   description: string;
 }[] = [
-  { value: 'left', label: 'Gauche', description: 'Titre, texte et outils alignés à gauche.' },
-  { value: 'center', label: 'Centre', description: 'Contenu centré dans la carte.' },
-  { value: 'right', label: 'Droite', description: 'Contenu aligné à droite.' },
+  { value: 'left', label: 'Gauche', description: 'Titre, texte et outils à l’intérieur de la carte — gauche.' },
+  { value: 'center', label: 'Centre', description: 'Éléments à l’intérieur de la carte — centrés.' },
+  { value: 'right', label: 'Droite', description: 'Éléments à l’intérieur de la carte — droite.' },
 ];
 
 export const PORTFOLIO_WORK_CTA_ALIGNMENT_OPTIONS: {
@@ -388,7 +913,7 @@ export const PORTFOLIO_WORK_CARD_DESIGN_OPTIONS: {
   { value: 'compact', label: 'Compact', description: 'Smaller preview and tighter content stack.' },
   { value: 'stacked', label: 'Stacked', description: 'Full-width media with content underneath.' },
   { value: 'overlay', label: 'Overlay', description: 'Text layered over media with a dark gradient.' },
-  { value: 'framed', label: 'Framed', description: 'Bordered panel wrapping media and content.' },
+  { value: 'framed', label: 'Framed', description: 'Denser spacing and shadow — borders are set in Cadre & espacement.' },
 ];
 
 export const PORTFOLIO_WORK_CONTENT_PLACEMENT_OPTIONS: {
@@ -401,15 +926,58 @@ export const PORTFOLIO_WORK_CONTENT_PLACEMENT_OPTIONS: {
   { value: 'bottom', label: 'Content below', description: 'Media on top, text and CTA underneath.' },
 ];
 
+export const PORTFOLIO_WORK_NO_MEDIA_INFO_LAYOUT_OPTIONS: {
+  value: PortfolioWorkNoMediaInfoLayout;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'fill',
+    label: 'Pleine largeur',
+    description: 'Le texte et les infos occupent toute la largeur de la carte.',
+  },
+  {
+    value: 'readable',
+    label: 'Colonne lisible',
+    description: 'Largeur limitée (comme à côté du média) pour une lecture confortable.',
+  },
+  {
+    value: 'centered',
+    label: 'Centré',
+    description: 'Bloc d’infos centré avec largeur limitée.',
+  },
+];
+
+/** Effective placement: when media is hidden, always stack content full-width. */
+export function workEffectiveContentPlacement(
+  presentation: Pick<PortfolioWorkPresentationSettings, 'showCardMedia' | 'contentPlacement'>
+): PortfolioWorkContentPlacement {
+  if (presentation.showCardMedia === false) return 'bottom';
+  return presentation.contentPlacement;
+}
+
+export function workNoMediaInfoWidthClass(
+  layout: PortfolioWorkNoMediaInfoLayout | undefined
+): string {
+  switch (layout) {
+    case 'readable':
+      return 'w-full max-w-xl';
+    case 'centered':
+      return 'w-full max-w-xl mx-auto';
+    default:
+      return 'w-full max-w-full';
+  }
+}
+
 export const PORTFOLIO_WORK_CARD_BORDER_OPTIONS: {
   value: PortfolioWorkCardBorder;
   label: string;
   description: string;
 }[] = [
-  { value: 'none', label: 'None', description: 'No frame around the whole card.' },
-  { value: 'soft', label: 'Soft', description: 'Light hairline border with padding.' },
-  { value: 'solid', label: 'Solid', description: 'Bold dark border around the card.' },
-  { value: 'accent', label: 'Accent', description: 'Border tinted with your accent color.' },
+  { value: 'none', label: 'Aucune', description: 'Pas de bordure — les coins restent réglables ci-dessous.' },
+  { value: 'soft', label: 'Fine', description: 'Contour léger autour du média ou de la carte.' },
+  { value: 'solid', label: 'Pleine', description: 'Bordure marquée autour du média ou de la carte.' },
+  { value: 'accent', label: 'Accent', description: 'Bordure teintée avec la couleur d’accent.' },
 ];
 
 export const PORTFOLIO_WORK_CTA_DESIGN_OPTIONS: {
@@ -417,11 +985,54 @@ export const PORTFOLIO_WORK_CTA_DESIGN_OPTIONS: {
   label: string;
   description: string;
 }[] = [
-  { value: 'circle-icon', label: 'Circle icon', description: 'Orange text with circular arrow button.' },
-  { value: 'pill-dark', label: 'Dark pill', description: 'Solid black capsule CTA.' },
-  { value: 'pill-outline', label: 'Outline pill', description: 'Bordered capsule on white.' },
-  { value: 'pill-accent', label: 'Accent pill', description: 'Filled accent capsule.' },
-  { value: 'text-arrow', label: 'Text + arrow', description: 'Minimal linked text with arrow.' },
+  {
+    value: 'circle-icon',
+    label: 'Circle icon',
+    description: 'Label + cercle flèche — bordure et hover sur l’icône.',
+  },
+  {
+    value: 'pill-dark',
+    label: 'Dark pill',
+    description: 'Capsule remplie (accent) — bordure et hover configurables.',
+  },
+  {
+    value: 'pill-outline',
+    label: 'Outline pill',
+    description: 'Capsule à contour — au survol, fond hover + texte.',
+  },
+  {
+    value: 'pill-accent',
+    label: 'Accent pill',
+    description: 'Capsule accent vive — bordure fine + swap de couleurs au survol.',
+  },
+  {
+    value: 'text-arrow',
+    label: 'Text + arrow',
+    description: 'Lien minimal — soulignement et couleurs au survol.',
+  },
+];
+
+export const PORTFOLIO_WORK_CTA_BORDER_WIDTH_OPTIONS: {
+  value: PortfolioWorkCtaBorderWidth;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'Aucune', description: 'Pas de contour sur le bouton.' },
+  { value: 'thin', label: 'Fine', description: 'Contour léger (1px).' },
+  { value: 'medium', label: 'Moyenne', description: 'Contour marqué (2px).' },
+  { value: 'thick', label: 'Épaisse', description: 'Contour fort (3px).' },
+];
+
+export const PORTFOLIO_WORK_CTA_BORDER_RADIUS_OPTIONS: {
+  value: PortfolioWorkCtaBorderRadius;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'Carré', description: 'Coins droits.' },
+  { value: 'sm', label: 'Léger', description: 'Arrondi subtil.' },
+  { value: 'md', label: 'Moyen', description: 'Arrondi équilibré.' },
+  { value: 'lg', label: 'Large', description: 'Coins bien arrondis.' },
+  { value: 'full', label: 'Pilule', description: 'Capsule complètement ronde (défaut).' },
 ];
 
 export const PORTFOLIO_WORK_TOOLS_DISPLAY_OPTIONS: {
@@ -535,7 +1146,11 @@ export function workCardMediaFr(mediaRatio: number): number {
 }
 
 export function workCardShellClass(design: PortfolioWorkCardDesign, placement: PortfolioWorkContentPlacement): string {
-  if (workCardIsStacked(design, placement)) return 'group flex flex-col gap-6 sm:gap-8';
+  if (workCardIsStacked(design, placement)) {
+    // Media sits flush above the info block — no empty band between them.
+    // Vertical rhythm lives inside the info / content-frame gap, not here.
+    return 'group flex h-full flex-col gap-0';
+  }
   const gapClass =
     design === 'compact'
       ? 'gap-5 lg:gap-8'
@@ -620,6 +1235,57 @@ export function workGallerySupportsItemsPerRow(layout: PortfolioWorkGalleryLayou
   return layout === 'stack' || layout === 'grid' || layout === 'overlay';
 }
 
+/**
+ * When the gallery disposition changes, keep stored cardDesign / placement in sync
+ * so settings match what the public page actually renders.
+ */
+export function workGalleryLayoutSettingsPatch(
+  galleryLayout: PortfolioWorkGalleryLayout
+): Partial<PortfolioWorkPresentationSettings> {
+  switch (galleryLayout) {
+    case 'grid':
+      return {
+        galleryLayout,
+        cardDesign: 'compact',
+        contentPlacement: 'bottom',
+      };
+    case 'overlay':
+      return {
+        galleryLayout,
+        cardDesign: 'overlay',
+        contentPlacement: 'bottom',
+        overlayLayoutMode: 'free',
+        overlayElementPlacements: { ...DEFAULT_WORK_OVERLAY_ELEMENT_PLACEMENTS },
+      };
+    case 'list':
+    case 'accordion':
+      return { galleryLayout };
+    case 'stack':
+      return {
+        galleryLayout,
+        // Restore roomy portfolio cards when leaving compact / overlay locks.
+        cardDesign: 'editorial',
+      };
+    default:
+      return { galleryLayout };
+  }
+}
+
+/** Soft list / accordion chrome when no explicit card frame is enabled. */
+export function workListRowFallbackStyle(
+  presentation: Pick<
+    PortfolioWorkPresentationSettings,
+    'cardBorderColor' | 'cardBackgroundColor' | 'cardBackgroundEnabled'
+  >
+): CSSProperties {
+  return {
+    borderColor: presentation.cardBorderColor,
+    backgroundColor: presentation.cardBackgroundEnabled
+      ? presentation.cardBackgroundColor
+      : 'transparent',
+  };
+}
+
 export function resolveWorkItemsPerRow(
   layout: PortfolioWorkGalleryLayout,
   itemsPerRow: PortfolioWorkItemsPerRow | undefined
@@ -634,6 +1300,7 @@ export function resolveWorkItemsPerRow(
 /**
  * Responsive grid for work cards.
  * Mobile always stays 1 column; higher counts unlock only from tablet / desktop up.
+ * Prefer wider breakpoints so cards keep readable content width.
  */
 export function workItemsPerRowGridClass(
   itemsPerRow: PortfolioWorkItemsPerRow,
@@ -642,11 +1309,11 @@ export function workItemsPerRowGridClass(
   const gap = workCardGapClass(cardGap);
   switch (itemsPerRow) {
     case 2:
-      return `grid grid-cols-1 ${gap} md:grid-cols-2`;
+      return `grid grid-cols-1 ${gap} lg:grid-cols-2`;
     case 3:
-      return `grid grid-cols-1 ${gap} sm:grid-cols-2 xl:grid-cols-3`;
+      return `grid grid-cols-1 ${gap} md:grid-cols-2 xl:grid-cols-3`;
     case 4:
-      return `grid grid-cols-1 ${gap} sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4`;
+      return `grid grid-cols-1 ${gap} md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4`;
     default:
       return `grid grid-cols-1 ${gap}`;
   }
@@ -655,13 +1322,72 @@ export function workItemsPerRowGridClass(
 export function workItemsPerRowResponsiveHint(itemsPerRow: PortfolioWorkItemsPerRow): string | null {
   switch (itemsPerRow) {
     case 2:
-      return 'Sur mobile, les cartes restent sur 1 colonne. 2 colonnes à partir des tablettes.';
+      return 'Sur mobile, les cartes restent sur 1 colonne. 2 colonnes à partir des grands écrans (lg).';
     case 3:
-      return 'Sur mobile : 1 colonne. Tablette : 2. Grand écran (xl) : 3. Les textes et médias seront plus serrés.';
+      return 'Sur mobile : 1 colonne. Tablette : 2. Grand écran (xl) : 3.';
     case 4:
-      return 'Attention : 4 colonnes uniquement sur très grand écran (2xl). Sur laptop, max 3 ; tablette 2 ; mobile 1. Peu adapté aux cartes riches (long texte, gros média).';
+      return '4 colonnes uniquement sur très grand écran (2xl). Sur laptop max 3 ; tablette 2 ; mobile 1.';
     default:
       return null;
+  }
+}
+
+/** Caps card width so stacked media+info stays portrait instead of stretching full column. */
+export function workCardMaxWidthClass(maxWidth: PortfolioWorkCardMaxWidth | undefined): string {
+  switch (maxWidth) {
+    case 'sm':
+      return 'w-full max-w-md';
+    case 'md':
+      return 'w-full max-w-lg';
+    case 'lg':
+      return 'w-full max-w-xl';
+    case 'xl':
+      return 'w-full max-w-2xl';
+    default:
+      return 'w-full max-w-full';
+  }
+}
+
+/** Align constrained cards inside their grid / flex cell — card frame only. */
+export function workCardMaxWidthJustifyClass(
+  maxWidth: PortfolioWorkCardMaxWidth | undefined,
+  alignment: PortfolioWorkCardAlignment
+): string {
+  if (!maxWidth || maxWidth === 'full') return '';
+  switch (alignment) {
+    case 'center':
+      return 'justify-items-center';
+    case 'right':
+      return 'justify-items-end';
+    default:
+      return 'justify-items-start';
+  }
+}
+
+export function workCardMaxWidthFlexAlignClass(
+  maxWidth: PortfolioWorkCardMaxWidth | undefined,
+  alignment: PortfolioWorkCardAlignment
+): string {
+  if (!maxWidth || maxWidth === 'full') return '';
+  switch (alignment) {
+    case 'center':
+      return 'items-center';
+    case 'right':
+      return 'items-end';
+    default:
+      return 'items-start';
+  }
+}
+
+/** Align category filter bar with the card frame when categories are active. */
+export function workCategoryBarAlignClass(alignment: PortfolioWorkCardAlignment): string {
+  switch (alignment) {
+    case 'center':
+      return 'flex w-full justify-center';
+    case 'right':
+      return 'flex w-full justify-end';
+    default:
+      return 'flex w-full justify-start';
   }
 }
 
@@ -719,30 +1445,24 @@ function workCardBorderWidthClass(border: PortfolioWorkCardBorder): string {
   }
 }
 
-/** Combined frame (border + radius + padding) around the whole card. */
-export function workCardFrameClass(p: PortfolioWorkPresentationSettings): string {
-  const hasBorder = p.cardBorder !== 'none';
-  const hasPadding = p.cardPadding !== 'none';
-  const hasBackground = p.cardBackgroundEnabled;
-  if (!hasBorder && !hasPadding && !hasBackground) return '';
-
+/** Manual border + corner radius on the visible card surface (media or shell). */
+export function workCardEdgeClass(
+  p: Pick<PortfolioWorkPresentationSettings, 'cardBorder' | 'cardBorderRadius'>
+): string {
   const parts = [workCardRadiusClass(p.cardBorderRadius)];
-  if (hasPadding) parts.push(workCardPaddingClass(p.cardPadding));
-  if (hasBorder) {
+  if (p.cardBorder !== 'none') {
     parts.push(workCardBorderWidthClass(p.cardBorder));
     if (p.cardBorder === 'soft') parts.push('shadow-sm');
   }
   return parts.filter(Boolean).join(' ');
 }
 
-export function workCardFrameStyle(
+export function workCardEdgeStyle(
   p: PortfolioWorkPresentationSettings
 ): CSSProperties | undefined {
-  const style: CSSProperties = {};
+  if (p.cardBorder === 'none') return undefined;
 
-  if (p.cardBackgroundEnabled) {
-    style.backgroundColor = sanitizeHex(p.cardBackgroundColor, DEFAULT_WORK_CARD_BACKGROUND_COLOR);
-  }
+  const style: CSSProperties = { borderStyle: 'solid' };
 
   if (p.cardBorder === 'accent') {
     const accent = sanitizeHex(p.ctaColor, DEFAULT_WORK_CTA_COLOR);
@@ -750,29 +1470,118 @@ export function workCardFrameStyle(
     if (!p.cardBackgroundEnabled) {
       style.backgroundImage = `linear-gradient(180deg, ${accent}0a 0%, transparent 40%)`;
     }
-  } else if (p.cardBorder !== 'none') {
-    style.borderStyle = 'solid';
+  } else {
     style.borderColor = sanitizeHex(p.cardBorderColor, DEFAULT_WORK_CARD_BORDER_COLOR);
+  }
+
+  return style;
+}
+
+/** Optional inner padding / background wrapper around the whole card. */
+export function workCardFrameClass(p: PortfolioWorkPresentationSettings): string {
+  const hasPadding = p.cardPadding !== 'none';
+  const hasBackground = p.cardBackgroundEnabled;
+  if (!hasPadding && !hasBackground) return '';
+
+  const parts = [workCardRadiusClass(p.cardBorderRadius)];
+  if (hasPadding) parts.push(workCardPaddingClass(p.cardPadding));
+  return parts.filter(Boolean).join(' ');
+}
+
+export function workCardFrameStyle(
+  p: PortfolioWorkPresentationSettings
+): CSSProperties | undefined {
+  if (!p.cardBackgroundEnabled) return undefined;
+  return {
+    backgroundColor: sanitizeHex(p.cardBackgroundColor, DEFAULT_WORK_CARD_BACKGROUND_COLOR),
+  };
+}
+
+/** Vertical gap between info blocks inside the content frame. */
+export function workContentFrameGapClass(gap: PortfolioWorkCardGap): string {
+  switch (gap) {
+    case 'sm':
+      return 'gap-2';
+    case 'lg':
+      return 'gap-5';
+    case 'xl':
+      return 'gap-7';
+    default:
+      return 'gap-3.5';
+  }
+}
+
+/** Inner frame around project info (title, description, tools, CTA). */
+export function workContentFrameClass(
+  p: Pick<
+    PortfolioWorkPresentationSettings,
+    'contentFrameEnabled' | 'contentFrameBorder' | 'contentFrameBorderRadius' | 'contentFramePadding'
+  >
+): string {
+  if (!p.contentFrameEnabled) return '';
+
+  const parts = [
+    workCardRadiusClass(p.contentFrameBorderRadius),
+    workCardPaddingClass(p.contentFramePadding),
+  ];
+  if (p.contentFrameBorder !== 'none') {
+    parts.push(workCardBorderWidthClass(p.contentFrameBorder));
+    if (p.contentFrameBorder === 'soft') parts.push('shadow-sm');
+  }
+  return parts.filter(Boolean).join(' ');
+}
+
+export function workContentFrameStyle(
+  p: PortfolioWorkPresentationSettings
+): CSSProperties | undefined {
+  if (!p.contentFrameEnabled) return undefined;
+
+  const style: CSSProperties = {};
+
+  if (p.contentFrameBackgroundEnabled) {
+    style.backgroundColor = sanitizeHex(
+      p.contentFrameBackgroundColor,
+      DEFAULT_WORK_CARD_BACKGROUND_COLOR
+    );
+  }
+
+  if (p.contentFrameBorder === 'accent') {
+    const accent = sanitizeHex(p.ctaColor, DEFAULT_WORK_CTA_COLOR);
+    style.borderStyle = 'solid';
+    style.borderColor = accent;
+    if (!p.contentFrameBackgroundEnabled) {
+      style.backgroundImage = `linear-gradient(180deg, ${accent}0a 0%, transparent 40%)`;
+    }
+  } else if (p.contentFrameBorder !== 'none') {
+    style.borderStyle = 'solid';
+    style.borderColor = sanitizeHex(p.contentFrameBorderColor, DEFAULT_WORK_CARD_BORDER_COLOR);
   }
 
   return Object.keys(style).length > 0 ? style : undefined;
 }
 
-export function workCardMediaClass(design: PortfolioWorkCardDesign): string {
+/** Card-design behavior only (shadow, hover) — border and radius come from manual edge settings. */
+export function workCardMediaBehaviorClass(design: PortfolioWorkCardDesign): string {
+  const base = 'relative block overflow-hidden transition duration-300';
   switch (design) {
     case 'minimal':
-      return 'relative block overflow-hidden rounded-lg border border-neutral-200/90 bg-neutral-50 transition duration-300 hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900';
+      return `${base} bg-neutral-50 dark:bg-neutral-900`;
     case 'compact':
-      return 'relative block overflow-hidden rounded-[1.25rem] bg-neutral-100 shadow-sm transition duration-300 hover:shadow-md dark:bg-neutral-900';
+      return `${base} bg-neutral-100 shadow-sm hover:shadow-md dark:bg-neutral-900`;
     case 'stacked':
-      return 'relative block overflow-hidden rounded-[1.75rem] bg-neutral-100 shadow-sm transition duration-300 hover:shadow-lg dark:bg-neutral-900';
+      return `${base} bg-neutral-100 shadow-sm hover:shadow-lg dark:bg-neutral-900`;
     case 'overlay':
-      return 'relative block overflow-hidden rounded-[2rem] bg-neutral-900 shadow-md transition duration-300 hover:-translate-y-0.5 hover:shadow-xl';
+      return `${base} bg-neutral-900 shadow-md hover:-translate-y-0.5 hover:shadow-xl`;
     case 'framed':
-      return 'relative block overflow-hidden rounded-[1.25rem] border border-neutral-200/80 bg-neutral-100 shadow-sm transition duration-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900';
+      return `${base} bg-neutral-100 shadow-sm hover:shadow-md dark:bg-neutral-900`;
     default:
-      return 'relative block overflow-hidden rounded-[2rem] bg-neutral-100 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:shadow-lg dark:bg-neutral-900';
+      return `${base} bg-neutral-100 shadow-sm hover:-translate-y-0.5 hover:shadow-lg dark:bg-neutral-900`;
   }
+}
+
+/** @deprecated Use workCardMediaBehaviorClass + workCardEdgeClass */
+export function workCardMediaClass(design: PortfolioWorkCardDesign): string {
+  return workCardMediaBehaviorClass(design);
 }
 
 export function workCardMediaAspectClass(
@@ -791,7 +1600,7 @@ export function workCardMediaAspectClass(
     case 'compact':
       return 'aspect-[16/11]';
     case 'overlay':
-      return 'aspect-[4/5] sm:aspect-[3/4]';
+      return 'aspect-[3/4] sm:aspect-[4/5] lg:aspect-[3/4]';
     case 'stacked':
       return 'aspect-[16/9]';
     default:
@@ -807,10 +1616,25 @@ export function workCardMediaAspectStyle(
 ): CSSProperties | undefined {
   if (!workCardIsStacked(design, placement)) return undefined;
   const clamped = Math.min(70, Math.max(30, Math.round(mediaRatio)));
-  const minAspect = design === 'overlay' ? 0.7 : 0.85;
-  const maxAspect = design === 'compact' ? 2.1 : 2.35;
+  // Compact stays flatter (tile feel); portfolio / overlay can go taller.
+  const minAspect = design === 'overlay' ? 0.7 : design === 'compact' ? 1.2 : 0.85;
+  const maxAspect = design === 'compact' ? 1.55 : design === 'overlay' ? 2.1 : 2.35;
   const aspect = maxAspect - ((clamped - 30) / 40) * (maxAspect - minAspect);
   return { aspectRatio: `${aspect}` };
+}
+
+/** One notch denser gap for compact gallery grids. */
+export function workCompactGalleryGap(cardGap: PortfolioWorkCardGap): PortfolioWorkCardGap {
+  switch (cardGap) {
+    case 'xl':
+      return 'lg';
+    case 'lg':
+      return 'md';
+    case 'md':
+      return 'sm';
+    default:
+      return 'sm';
+  }
 }
 
 export function workCardTitleClass(design: PortfolioWorkCardDesign): string {
@@ -826,32 +1650,303 @@ export function workCardTitleClass(design: PortfolioWorkCardDesign): string {
   }
 }
 
-export function workCtaClassName(design: PortfolioWorkCtaDesign): string {
-  const base = 'inline-flex items-center gap-2 text-base font-bold transition';
-  switch (design) {
-    case 'pill-dark':
-      return `${base} rounded-full bg-neutral-950 px-6 py-3 uppercase tracking-[0.1em] text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950`;
-    case 'pill-outline':
-      return `${base} rounded-full border-2 border-neutral-900 px-6 py-3 uppercase tracking-[0.1em] text-neutral-950 hover:bg-neutral-50 dark:border-white dark:text-white`;
-    case 'pill-accent':
-      return `${base} rounded-full px-6 py-3 uppercase tracking-[0.1em] text-white hover:opacity-90`;
-    case 'text-arrow':
-      return `${base} px-0 py-1 uppercase tracking-[0.12em] underline-offset-4 hover:underline`;
+function workHexToRgba(hex: string, alpha: number): string {
+  const raw = hex.trim().replace('#', '');
+  const full =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((c) => `${c}${c}`)
+          .join('')
+      : raw;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return `rgba(0,0,0,${alpha})`;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Mix hex toward black (positive amount) or white (negative). amount ∈ 0–1. */
+function workShadeHex(hex: string, amount: number): string {
+  const raw = hex.trim().replace('#', '');
+  const full =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((c) => `${c}${c}`)
+          .join('')
+      : raw;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return hex;
+  const mix = (channel: number) => {
+    if (amount >= 0) return Math.round(channel * (1 - amount));
+    return Math.round(channel + (255 - channel) * Math.abs(amount));
+  };
+  const r = mix(parseInt(full.slice(0, 2), 16));
+  const g = mix(parseInt(full.slice(2, 4), 16));
+  const b = mix(parseInt(full.slice(4, 6), 16));
+  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function workSameHex(a: string, b: string): boolean {
+  return a.replace('#', '').toLowerCase() === b.replace('#', '').toLowerCase();
+}
+
+function workCtaBorderWidthClass(
+  width: PortfolioWorkCtaBorderWidth | undefined,
+  design: PortfolioWorkCtaDesign
+): string {
+  const resolved = width ?? 'thin';
+  if (resolved === 'none') {
+    return design === 'pill-outline' ? 'border border-transparent' : 'border-0';
+  }
+  switch (resolved) {
+    case 'medium':
+      return 'border-2';
+    case 'thick':
+      return 'border-[3px]';
     default:
-      return `${base} uppercase tracking-[0.12em] hover:opacity-90`;
+      return 'border';
   }
 }
 
-export function workCtaStyle(design: PortfolioWorkCtaDesign, accentColor: string): CSSProperties | undefined {
-  const accent = sanitizeHex(accentColor, DEFAULT_WORK_CTA_COLOR);
-  if (design === 'pill-accent') return { backgroundColor: accent };
-  if (design === 'circle-icon' || design === 'text-arrow') return { color: accent };
-  return undefined;
+type WorkCtaSurfacePresentation = Pick<
+  PortfolioWorkPresentationSettings,
+  | 'ctaColor'
+  | 'ctaBorderColor'
+  | 'ctaBorderWidth'
+  | 'ctaHoverEnabled'
+  | 'ctaHoverBackgroundColor'
+  | 'ctaHoverTextColor'
+  | 'ctaHoverBorderColor'
+  | 'sectionBackgroundColor'
+  | 'elementStyles'
+>;
+
+/**
+ * Resting + hover colors as CSS vars (Navigation-style).
+ * Filled pills: label ink = page background (`fond`) — not fixed white —
+ * so light/dark modes stay consistent with the original contrast rule.
+ */
+export function workCtaSurfaceStyle(
+  design: PortfolioWorkCtaDesign,
+  presentation: WorkCtaSurfacePresentation
+): CSSProperties {
+  const accent = sanitizeHex(presentation.ctaColor, DEFAULT_WORK_CTA_COLOR);
+  const border = sanitizeHex(presentation.ctaBorderColor, accent);
+  const labelInk = sanitizeHex(presentation.elementStyles?.cta?.color ?? accent, accent);
+  /** Page fill — dark in dark mode, light in light mode. */
+  const pageFond = sanitizeHex(
+    presentation.sectionBackgroundColor,
+    workContrastingInk(accent)
+  );
+  const hoverEnabled = presentation.ctaHoverEnabled !== false;
+  const hoverBgRaw = sanitizeHex(presentation.ctaHoverBackgroundColor, accent);
+  const hoverTextRaw = sanitizeHex(presentation.ctaHoverTextColor, pageFond);
+  const hoverBorderRaw = sanitizeHex(presentation.ctaHoverBorderColor, hoverBgRaw);
+
+  let bg = 'transparent';
+  let fg = labelInk;
+  let brd = border;
+  let hBg = hoverBgRaw;
+  let hFg = hoverTextRaw;
+  let hBrd = hoverBorderRaw;
+
+  if (design === 'pill-accent' || design === 'pill-dark') {
+    bg = accent;
+    fg = pageFond;
+    brd = presentation.ctaBorderWidth === 'none' ? accent : border;
+    // Visible hover: shade accent if hover token equals resting fill.
+    hBg = hoverEnabled
+      ? workSameHex(hoverBgRaw, accent)
+        ? workShadeHex(accent, 0.18)
+        : hoverBgRaw
+      : accent;
+    hFg = hoverEnabled ? pageFond : pageFond;
+    hBrd = hoverEnabled
+      ? workSameHex(hoverBorderRaw, brd)
+        ? workShadeHex(border === accent ? accent : border, 0.18)
+        : hoverBorderRaw
+      : brd;
+  } else if (design === 'pill-outline') {
+    bg = 'transparent';
+    fg = labelInk;
+    brd = border;
+    hBg = hoverEnabled ? hoverBgRaw : 'transparent';
+    // Filled on hover → page-fond ink (same rule as accent pills).
+    hFg = hoverEnabled ? pageFond : labelInk;
+    hBrd = hoverEnabled ? hoverBorderRaw : border;
+  } else if (design === 'circle-icon') {
+    bg = 'transparent';
+    fg = labelInk;
+    brd = 'transparent';
+    hBg = 'transparent';
+    // Label brightens to accent; icon shell handles its own fill hover.
+    hFg = hoverEnabled ? accent : labelInk;
+    hBrd = 'transparent';
+  } else {
+    // text-arrow
+    bg = 'transparent';
+    fg = labelInk;
+    brd = 'transparent';
+    hBg = 'transparent';
+    hFg = hoverEnabled ? accent : labelInk;
+    hBrd = 'transparent';
+  }
+
+  return {
+    ['--work-cta-bg' as string]: bg,
+    ['--work-cta-text' as string]: fg,
+    ['--work-cta-border' as string]: brd,
+    ['--work-cta-hover-bg' as string]: hBg,
+    ['--work-cta-hover-text' as string]: hFg,
+    ['--work-cta-hover-border' as string]: hBrd,
+    ['--work-cta-hover-wash' as string]: workHexToRgba(hoverBgRaw, 0.16),
+    ['--work-cta-accent' as string]: accent,
+    ['--work-cta-page-fond' as string]: pageFond,
+  };
 }
 
-export function workCtaIconShellClass(design: PortfolioWorkCtaDesign): string {
-  if (design !== 'circle-icon') return 'flex h-4 w-4 items-center justify-center';
-  return 'flex h-10 w-10 items-center justify-center rounded-full border border-orange-200 bg-orange-50 transition hover:border-orange-300 hover:bg-orange-100 dark:border-orange-500/40 dark:bg-orange-500/10';
+function workCtaBorderRadiusClass(
+  radius: PortfolioWorkCtaBorderRadius | undefined,
+  design: PortfolioWorkCtaDesign
+): string {
+  // Circle icon shell stays round; text-arrow has no box.
+  if (design === 'circle-icon' || design === 'text-arrow') return '';
+  switch (radius ?? 'full') {
+    case 'none':
+      return 'rounded-none';
+    case 'sm':
+      return 'rounded-lg';
+    case 'md':
+      return 'rounded-xl';
+    case 'lg':
+      return 'rounded-2xl';
+    default:
+      return 'rounded-full';
+  }
+}
+
+export function workCtaClassName(
+  design: PortfolioWorkCtaDesign,
+  presentation?: Pick<
+    PortfolioWorkPresentationSettings,
+    'ctaBorderWidth' | 'ctaBorderRadius' | 'ctaHoverEnabled'
+  >
+): string {
+  const borderW = workCtaBorderWidthClass(presentation?.ctaBorderWidth, design);
+  const radius = workCtaBorderRadiusClass(presentation?.ctaBorderRadius, design);
+  const hoverOn = presentation?.ctaHoverEnabled !== false;
+  const hoverClasses = hoverOn
+    ? 'hover:bg-[var(--work-cta-hover-bg)] hover:text-[var(--work-cta-hover-text)] hover:border-[color:var(--work-cta-hover-border)]'
+    : '';
+  const surface = `bg-[var(--work-cta-bg)] text-[var(--work-cta-text)] border-solid border-[color:var(--work-cta-border)] transition-colors duration-200 ${hoverClasses}`;
+  const base = `group/cta inline-flex max-w-full min-w-0 flex-wrap items-center gap-2.5 text-sm font-bold sm:text-base ${surface}`;
+
+  switch (design) {
+    case 'pill-dark':
+      return `${base} ${borderW} ${radius} px-5 py-2.5 uppercase tracking-[0.1em] shadow-sm hover:shadow-md sm:px-6 sm:py-3`;
+    case 'pill-outline':
+      return `${base} ${borderW} ${radius} px-5 py-2.5 uppercase tracking-[0.1em] hover:shadow-sm sm:px-6 sm:py-3`;
+    case 'pill-accent':
+      return `${base} ${borderW} ${radius} px-5 py-2.5 uppercase tracking-[0.1em] shadow-sm hover:shadow-md hover:-translate-y-px sm:px-6 sm:py-3`;
+    case 'text-arrow':
+      return `${base} border-0 bg-transparent px-0 py-1 uppercase tracking-[0.12em] underline-offset-4 decoration-transparent hover:underline hover:decoration-current`;
+    default:
+      return `${base} border-0 bg-transparent uppercase tracking-[0.12em]`;
+  }
+}
+
+/** Prefer palette color on dark overlay scrims; fall back to white when ink is too dark. */
+export function workOverlayReadableColor(preferredHex: string, fallback = '#ffffff'): string {
+  const hex = sanitizeHex(preferredHex, fallback);
+  return workColorLuminance(hex) < 0.2 ? fallback : hex;
+}
+
+/** Relative luminance 0–1 for work contrast helpers. */
+export function workColorLuminance(hex: string): number {
+  const raw = hex.trim().replace('#', '');
+  const full =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((c) => `${c}${c}`)
+          .join('')
+      : raw;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return 0.5;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const toLin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
+}
+
+/** Pick light or dark ink that stays readable on `backgroundHex`. */
+export function workContrastingInk(
+  backgroundHex: string,
+  light = '#ffffff',
+  dark = '#0a0a0a'
+): string {
+  return workColorLuminance(backgroundHex) > 0.55 ? dark : light;
+}
+
+/** @deprecated Prefer workCtaSurfaceStyle */
+export function workCtaStyle(
+  design: PortfolioWorkCtaDesign,
+  presentation: WorkCtaSurfacePresentation
+): CSSProperties | undefined {
+  return workCtaSurfaceStyle(design, presentation);
+}
+
+export function workCtaIconShellClass(
+  design: PortfolioWorkCtaDesign,
+  presentation?: Pick<PortfolioWorkPresentationSettings, 'ctaBorderWidth' | 'ctaHoverEnabled'>
+): string {
+  if (design !== 'circle-icon') {
+    return 'flex h-4 w-4 items-center justify-center transition-colors duration-200 group-hover/cta:text-[var(--work-cta-hover-text)]';
+  }
+  const borderW = workCtaBorderWidthClass(presentation?.ctaBorderWidth ?? 'thin', design);
+  const hoverOn = presentation?.ctaHoverEnabled !== false;
+  const hover = hoverOn
+    ? 'group-hover/cta:bg-[var(--work-cta-hover-bg)] group-hover/cta:text-[var(--work-cta-page-fond)] group-hover/cta:border-[color:var(--work-cta-hover-border)] group-hover/cta:shadow-md group-hover/cta:scale-[1.03]'
+    : '';
+  return `flex h-10 w-10 items-center justify-center rounded-full ${borderW} border-solid border-[color:var(--work-cta-border)] bg-[var(--work-cta-icon-bg)] text-[var(--work-cta-accent)] transition-all duration-200 ${hover}`;
+}
+
+export function workCtaIconShellStyle(
+  design: PortfolioWorkCtaDesign,
+  presentation: WorkCtaSurfacePresentation
+): CSSProperties | undefined {
+  if (design !== 'circle-icon') return { color: 'inherit' };
+  const accent = sanitizeHex(presentation.ctaColor, DEFAULT_WORK_CTA_COLOR);
+  const border = sanitizeHex(presentation.ctaBorderColor, accent);
+  const pageFond = sanitizeHex(
+    presentation.sectionBackgroundColor,
+    workContrastingInk(accent)
+  );
+  const hoverBgRaw = sanitizeHex(presentation.ctaHoverBackgroundColor, accent);
+  const hoverBg = workSameHex(hoverBgRaw, accent) ? workShadeHex(accent, 0.12) : hoverBgRaw;
+  const hoverBorder = sanitizeHex(presentation.ctaHoverBorderColor, hoverBg);
+  return {
+    ['--work-cta-accent' as string]: accent,
+    ['--work-cta-border' as string]: border,
+    ['--work-cta-icon-bg' as string]: workHexToRgba(accent, 0.14),
+    ['--work-cta-hover-bg' as string]: hoverBg,
+    ['--work-cta-hover-border' as string]: hoverBorder,
+    ['--work-cta-page-fond' as string]: pageFond,
+  };
+}
+
+/** Tool icon circle surface — follows Hero tools icon palette tokens. */
+export function workToolIconShellStyle(
+  presentation: Pick<
+    PortfolioWorkPresentationSettings,
+    'toolsIconBackgroundColor' | 'toolsIconBorderColor' | 'cardBorderColor' | 'cardBackgroundColor'
+  >
+): CSSProperties {
+  return {
+    borderColor: presentation.toolsIconBorderColor || presentation.cardBorderColor,
+    backgroundColor: presentation.toolsIconBackgroundColor || presentation.cardBackgroundColor,
+  };
 }
 
 export function pickWorkPresentationSettings(work: unknown): PortfolioWorkPresentationSettings {
@@ -891,6 +1986,12 @@ export function mergeWorkPresentation(
     cardContentAlignment === 'right'
       ? cardContentAlignment
       : base.cardContentAlignment;
+  const resolvedCardAlignment =
+    record.cardAlignment === 'left' ||
+    record.cardAlignment === 'center' ||
+    record.cardAlignment === 'right'
+      ? record.cardAlignment
+      : base.cardAlignment;
 
   const resolvedCtaAlignment =
     ctaAlignment === 'left' || ctaAlignment === 'center' || ctaAlignment === 'right'
@@ -899,7 +2000,7 @@ export function mergeWorkPresentation(
         ? resolvedCardContentAlignment
         : base.ctaAlignment;
 
-  return {
+  const merged = {
     ...background,
     titlePreset:
       titlePreset === 'portfolio' ||
@@ -971,6 +2072,14 @@ export function mergeWorkPresentation(
       }
       return base.itemsPerRow;
     })(),
+    cardMaxWidth:
+      record.cardMaxWidth === 'full' ||
+      record.cardMaxWidth === 'xl' ||
+      record.cardMaxWidth === 'lg' ||
+      record.cardMaxWidth === 'md' ||
+      record.cardMaxWidth === 'sm'
+        ? record.cardMaxWidth
+        : base.cardMaxWidth,
     cardBorder:
       cardBorder === 'none' ||
       cardBorder === 'soft' ||
@@ -1003,11 +2112,84 @@ export function mergeWorkPresentation(
       cardGap === 'sm' || cardGap === 'md' || cardGap === 'lg' || cardGap === 'xl'
         ? cardGap
         : base.cardGap,
+    cardAlignment: resolvedCardAlignment,
     cardContentAlignment: resolvedCardContentAlignment,
+    contentFrameEnabled:
+      typeof record.contentFrameEnabled === 'boolean'
+        ? record.contentFrameEnabled
+        : base.contentFrameEnabled,
+    contentFrameBorder:
+      record.contentFrameBorder === 'none' ||
+      record.contentFrameBorder === 'soft' ||
+      record.contentFrameBorder === 'solid' ||
+      record.contentFrameBorder === 'accent'
+        ? record.contentFrameBorder
+        : base.contentFrameBorder,
+    contentFrameBorderColor: sanitizeHex(record.contentFrameBorderColor, base.contentFrameBorderColor),
+    contentFrameBackgroundEnabled:
+      typeof record.contentFrameBackgroundEnabled === 'boolean'
+        ? record.contentFrameBackgroundEnabled
+        : base.contentFrameBackgroundEnabled,
+    contentFrameBackgroundColor: sanitizeHex(
+      record.contentFrameBackgroundColor,
+      base.contentFrameBackgroundColor
+    ),
+    contentFrameBorderManual:
+      typeof record.contentFrameBorderManual === 'boolean'
+        ? record.contentFrameBorderManual
+        : (base.contentFrameBorderManual ?? false),
+    contentFrameBackgroundManual:
+      typeof record.contentFrameBackgroundManual === 'boolean'
+        ? record.contentFrameBackgroundManual
+        : (base.contentFrameBackgroundManual ?? false),
+    contentFrameBorderRadius:
+      record.contentFrameBorderRadius === 'none' ||
+      record.contentFrameBorderRadius === 'sm' ||
+      record.contentFrameBorderRadius === 'md' ||
+      record.contentFrameBorderRadius === 'lg' ||
+      record.contentFrameBorderRadius === 'xl'
+        ? record.contentFrameBorderRadius
+        : base.contentFrameBorderRadius,
+    contentFramePadding:
+      record.contentFramePadding === 'none' ||
+      record.contentFramePadding === 'sm' ||
+      record.contentFramePadding === 'md' ||
+      record.contentFramePadding === 'lg'
+        ? record.contentFramePadding
+        : base.contentFramePadding,
+    contentFrameGap:
+      record.contentFrameGap === 'sm' ||
+      record.contentFrameGap === 'md' ||
+      record.contentFrameGap === 'lg' ||
+      record.contentFrameGap === 'xl'
+        ? record.contentFrameGap
+        : base.contentFrameGap,
+    elementChromes: mergeWorkElementChromes(
+      mergeWorkElementChromes(DEFAULT_WORK_ELEMENT_CHROMES, base.elementChromes),
+      record.elementChromes
+    ),
+    overlayLayoutMode:
+      record.overlayLayoutMode === 'stack' || record.overlayLayoutMode === 'free'
+        ? record.overlayLayoutMode
+        : base.overlayLayoutMode,
+    overlayElementPlacements: mergeWorkOverlayElementPlacements(
+      mergeWorkOverlayElementPlacements(
+        DEFAULT_WORK_OVERLAY_ELEMENT_PLACEMENTS,
+        base.overlayElementPlacements
+      ),
+      record.overlayElementPlacements
+    ),
     ctaAlignment: resolvedCtaAlignment,
     mediaRatio: sanitizeMediaRatio(record.mediaRatio, base.mediaRatio),
     showMarketplaceLink:
       typeof record.showMarketplaceLink === 'boolean' ? record.showMarketplaceLink : base.showMarketplaceLink,
+    showCardMedia: typeof record.showCardMedia === 'boolean' ? record.showCardMedia : base.showCardMedia,
+    noMediaInfoLayout:
+      record.noMediaInfoLayout === 'fill' ||
+      record.noMediaInfoLayout === 'readable' ||
+      record.noMediaInfoLayout === 'centered'
+        ? record.noMediaInfoLayout
+        : base.noMediaInfoLayout,
     showCardTitle: typeof record.showCardTitle === 'boolean' ? record.showCardTitle : base.showCardTitle,
     showCardDescription:
       typeof record.showCardDescription === 'boolean' ? record.showCardDescription : base.showCardDescription,
@@ -1036,6 +2218,35 @@ export function mergeWorkPresentation(
         : base.ctaDesign,
     ctaLabel: typeof record.ctaLabel === 'string' && record.ctaLabel.trim() ? record.ctaLabel.trim() : base.ctaLabel,
     ctaColor: sanitizeHex(record.ctaColor, base.ctaColor),
+    ctaBorderColor: sanitizeHex(record.ctaBorderColor, base.ctaBorderColor),
+    ctaBorderWidth:
+      record.ctaBorderWidth === 'none' ||
+      record.ctaBorderWidth === 'thin' ||
+      record.ctaBorderWidth === 'medium' ||
+      record.ctaBorderWidth === 'thick'
+        ? record.ctaBorderWidth
+        : base.ctaBorderWidth,
+    ctaBorderRadius:
+      record.ctaBorderRadius === 'none' ||
+      record.ctaBorderRadius === 'sm' ||
+      record.ctaBorderRadius === 'md' ||
+      record.ctaBorderRadius === 'lg' ||
+      record.ctaBorderRadius === 'full'
+        ? record.ctaBorderRadius
+        : base.ctaBorderRadius,
+    ctaHoverEnabled:
+      typeof record.ctaHoverEnabled === 'boolean' ? record.ctaHoverEnabled : base.ctaHoverEnabled,
+    ctaHoverBackgroundColor: sanitizeHex(
+      record.ctaHoverBackgroundColor,
+      base.ctaHoverBackgroundColor
+    ),
+    ctaHoverTextColor: sanitizeHex(record.ctaHoverTextColor, base.ctaHoverTextColor),
+    ctaHoverBorderColor: sanitizeHex(record.ctaHoverBorderColor, base.ctaHoverBorderColor),
+    toolsIconBackgroundColor: sanitizeHex(
+      record.toolsIconBackgroundColor,
+      base.toolsIconBackgroundColor
+    ),
+    toolsIconBorderColor: sanitizeHex(record.toolsIconBorderColor, base.toolsIconBorderColor),
     toolsDisplay:
       toolsDisplay === 'icons' || toolsDisplay === 'list' || toolsDisplay === 'both'
         ? toolsDisplay
@@ -1067,7 +2278,27 @@ export function mergeWorkPresentation(
         : base.categoryUncategorizedLabel,
     categoryActiveColor: sanitizeHex(record.categoryActiveColor, base.categoryActiveColor),
     categoryMutedColor: sanitizeHex(record.categoryMutedColor, base.categoryMutedColor),
+    useHeroPalette:
+      typeof record.useHeroPalette === 'boolean' ? record.useHeroPalette : base.useHeroPalette,
+    workPalette: mergeWorkPalette(
+      mergeWorkPalette(DEFAULT_WORK_PALETTE, base.workPalette),
+      record.workPalette
+    ),
+    workColorBindings: mergeWorkColorBindings(
+      mergeWorkColorBindings(DEFAULT_WORK_COLOR_BINDINGS, base.workColorBindings),
+      record.workColorBindings
+    ),
     elementStyles: normalizeWorkElementStyles(record.elementStyles ?? base.elementStyles),
+  };
+
+  if (!merged.useHeroPalette) {
+    return merged;
+  }
+
+  return {
+    ...merged,
+    ...(applyWorkPaletteToSettings(merged) as Partial<PortfolioWorkPresentationSettings>),
+    useHeroPalette: true,
   };
 }
 
@@ -1131,9 +2362,9 @@ export function groupWorkItemsByCategory<T extends { genre?: string | null }>(
 export function workCategoryNavClass(design: PortfolioWorkCategoryDesign): string {
   switch (design) {
     case 'tabs':
-      return 'inline-flex flex-wrap gap-1 rounded-2xl bg-neutral-100/90 p-1.5 dark:bg-neutral-900';
+      return 'inline-flex flex-wrap gap-1 rounded-2xl p-1.5';
     case 'underline':
-      return 'flex flex-wrap gap-x-5 gap-y-2 border-b border-neutral-200/80 dark:border-neutral-800';
+      return 'flex flex-wrap gap-x-5 gap-y-2 border-b';
     case 'minimal':
       return 'flex flex-wrap items-center gap-x-4 gap-y-2';
     default:
@@ -1145,19 +2376,29 @@ export function workCategoryChipClass(
   design: PortfolioWorkCategoryDesign,
   active: boolean
 ): string {
-  const base = 'text-sm font-semibold transition';
+  const base = 'text-sm font-semibold transition-colors duration-200';
   switch (design) {
     case 'tabs':
-      return `${base} rounded-xl px-3.5 py-2 ${active ? 'bg-white shadow-sm dark:bg-neutral-800' : 'hover:bg-white/60 dark:hover:bg-neutral-800/60'}`;
-    case 'underline':
-      return `${base} border-b-2 pb-2.5 ${active ? 'border-current' : 'border-transparent opacity-70 hover:opacity-100'}`;
-    case 'minimal':
-      return `${base} ${active ? '' : 'opacity-55 hover:opacity-100'}`;
-    default:
-      return `${base} rounded-full px-3.5 py-1.5 ${
+      return `${base} rounded-xl px-3.5 py-2 ${
         active
-          ? 'text-white'
-          : 'border border-neutral-200/90 bg-white text-neutral-600 hover:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300'
+          ? 'shadow-sm'
+          : 'opacity-70 hover:opacity-100 hover:bg-[var(--work-cat-hover-bg)] hover:text-[color:var(--work-cat-hover-text)]'
+      }`;
+    case 'underline':
+      return `${base} border-b-2 pb-2.5 ${
+        active
+          ? 'border-current'
+          : 'border-transparent opacity-70 hover:opacity-100 hover:text-[color:var(--work-cat-hover-text)]'
+      }`;
+    case 'minimal':
+      return `${base} ${
+        active ? '' : 'opacity-55 hover:opacity-100 hover:text-[color:var(--work-cat-hover-text)]'
+      }`;
+    default:
+      return `${base} rounded-full px-3.5 py-1.5 border ${
+        active
+          ? ''
+          : 'bg-transparent hover:bg-[var(--work-cat-hover-bg)] hover:border-[color:var(--work-cat-hover-border)] hover:text-[color:var(--work-cat-hover-text)]'
       }`;
   }
 }

@@ -17,16 +17,20 @@ import {
   profileSectionMutedTextClass,
   profileSectionSubheadingClass,
 } from '@/components/creator/studio/profile-section-ui';
+import { getSkillUsageDescription } from '@/components/portfolio/skill-usage-descriptions';
 
 type ToolCategoryId = CreatorToolPreset['category'];
 
 const MAX_STRENGTHS = 12;
+const MAX_DESCRIPTION = 280;
+
+type StrengthFormItem = { value: string; description?: string };
 
 type ProfileStrengthsFieldProps = {
   control: Control<ProfileFormValues>;
   setValue: UseFormSetValue<ProfileFormValues>;
   readOnly?: boolean;
-  values?: string[];
+  values?: StrengthFormItem[];
 };
 
 function normalizeSelected(values: string[]): string[] {
@@ -43,33 +47,6 @@ function normalizeSelected(values: string[]): string[] {
   return result;
 }
 
-function StrengthChip({
-  label,
-  onRemove,
-  readOnly = false,
-}: {
-  label: string;
-  onRemove?: () => void;
-  readOnly?: boolean;
-}) {
-  return (
-    <span className="inline-flex items-center gap-2.5 rounded-full border border-neutral-300 bg-white py-2 pl-2 pr-3 text-[15px] font-medium text-neutral-900 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-50">
-      <CreatorToolLogo label={label} size={28} />
-      <span className="max-w-[14rem] truncate">{label}</span>
-      {!readOnly && onRemove ? (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded-full px-1 text-xs font-semibold text-red-600 hover:text-red-700 dark:text-red-400"
-          aria-label={`Remove ${label}`}
-        >
-          ×
-        </button>
-      ) : null}
-    </span>
-  );
-}
-
 function CategoryChevron({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -80,7 +57,7 @@ function CategoryChevron({ expanded }: { expanded: boolean }) {
       strokeWidth={2}
       aria-hidden
     >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -130,22 +107,48 @@ export function ProfileStrengthsField({
   const [customDraft, setCustomDraft] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<ToolCategoryId>>(() => new Set());
 
-  const selectedValues = useMemo(() => {
-    const source = readOnly ? values : (watchedStrengths ?? []).map((item) => item.value);
-    return normalizeSelected(source);
+  const formItems = useMemo((): StrengthFormItem[] => {
+    if (readOnly) return values;
+    return watchedStrengths ?? [];
   }, [readOnly, values, watchedStrengths]);
+
+  const selectedValues = useMemo(
+    () => normalizeSelected(formItems.map((item) => item.value)),
+    [formItems]
+  );
 
   const selectedKeys = useMemo(
     () => new Set(selectedValues.map((value) => value.toLowerCase())),
     [selectedValues]
   );
 
+  const descriptionByLabel = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of formItems) {
+      map.set(item.value.toLowerCase(), item.description ?? '');
+    }
+    return map;
+  }, [formItems]);
+
   const syncSelectedValues = (nextValues: string[]) => {
+    const previous = new Map(
+      (watchedStrengths ?? []).map((item) => [item.value.toLowerCase(), item.description ?? ''])
+    );
     setValue(
       'strengthsTools',
-      normalizeSelected(nextValues).map((value) => ({ value })),
+      normalizeSelected(nextValues).map((value) => ({
+        value,
+        description: previous.get(value.toLowerCase()) ?? '',
+      })),
       { shouldDirty: true, shouldValidate: true }
     );
+  };
+
+  const updateDescription = (label: string, description: string) => {
+    const next = (watchedStrengths ?? []).map((item) =>
+      item.value === label ? { ...item, description } : item
+    );
+    setValue('strengthsTools', next, { shouldDirty: true, shouldValidate: true });
   };
 
   const isPresetSelected = (preset: CreatorToolPreset): boolean =>
@@ -190,17 +193,31 @@ export function ProfileStrengthsField({
   };
 
   const countSelectedInCategory = (categoryId: ToolCategoryId) =>
-    CREATOR_TOOL_PRESETS.filter((preset) => preset.category === categoryId && isPresetSelected(preset)).length;
+    CREATOR_TOOL_PRESETS.filter((preset) => preset.category === categoryId && isPresetSelected(preset))
+      .length;
 
   if (readOnly) {
     if (selectedValues.length === 0) {
       return <p className={profileSectionEmptyClass}>No strengths added yet.</p>;
     }
     return (
-      <div className="flex flex-wrap gap-2">
-        {selectedValues.map((item) => (
-          <StrengthChip key={item} label={item} readOnly />
-        ))}
+      <div className="space-y-3">
+        {selectedValues.map((item) => {
+          const custom = descriptionByLabel.get(item.toLowerCase())?.trim() ?? '';
+          const body = custom || getSkillUsageDescription(item);
+          return (
+            <div
+              key={item}
+              className="rounded-2xl border border-neutral-200 bg-white px-3.5 py-3 dark:border-neutral-700 dark:bg-neutral-950"
+            >
+              <div className="flex items-center gap-2.5">
+                <CreatorToolLogo label={item} size={28} />
+                <p className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">{item}</p>
+              </div>
+              <p className={`mt-2 text-sm leading-relaxed ${profileSectionMutedTextClass}`}>{body}</p>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -210,17 +227,60 @@ export function ProfileStrengthsField({
   return (
     <div className="space-y-5">
       {selectedValues.length > 0 && (
-        <div>
-          <p className={`mb-2 ${profileSectionSubheadingClass}`}>Selected</p>
-          <div className="flex flex-wrap gap-2">
-            {selectedValues.map((label) => (
-              <StrengthChip
-                key={label}
-                label={label}
-                onRemove={() => syncSelectedValues(selectedValues.filter((value) => value !== label))}
-              />
-            ))}
+        <div className="space-y-3">
+          <div>
+            <p className={`mb-1 ${profileSectionSubheadingClass}`}>Selected</p>
+            <p className={profileSectionMutedTextClass}>
+              Edit each tool description for the portfolio cards. Leave blank to keep the automatic
+              blurb.
+            </p>
           </div>
+          {selectedValues.map((label) => {
+            const description = descriptionByLabel.get(label.toLowerCase()) ?? '';
+            const autoPreview = getSkillUsageDescription(label);
+            return (
+              <div
+                key={label}
+                className="rounded-2xl border border-neutral-200 bg-white p-3.5 dark:border-neutral-700 dark:bg-neutral-950"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <CreatorToolLogo label={label} size={28} />
+                    <p className="truncate text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
+                      {label}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      syncSelectedValues(selectedValues.filter((value) => value !== label))
+                    }
+                    className="shrink-0 rounded-full px-2 text-xs font-semibold text-red-600 hover:text-red-700 dark:text-red-400"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <label className="mt-3 block">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">
+                    Description
+                  </span>
+                  <textarea
+                    rows={2}
+                    maxLength={MAX_DESCRIPTION}
+                    value={description}
+                    onChange={(event) => updateDescription(label, event.target.value)}
+                    placeholder={autoPreview}
+                    className={`mt-1.5 ${profileFormInputClass} min-h-[4.5rem] resize-y`}
+                  />
+                </label>
+                <p className={`mt-1.5 text-xs ${profileSectionMutedTextClass}`}>
+                  {description.trim()
+                    ? `${description.trim().length}/${MAX_DESCRIPTION}`
+                    : `Auto: ${autoPreview}`}
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -249,9 +309,7 @@ export function ProfileStrengthsField({
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-neutral-50 dark:hover:bg-neutral-900/60"
               >
                 <CategoryChevron expanded={expanded} />
-                <span className={profileSectionSubheadingClass}>
-                  {category.label}
-                </span>
+                <span className={profileSectionSubheadingClass}>{category.label}</span>
                 <span className={`ml-auto ${profileSectionMutedTextClass}`}>
                   {selectedCount > 0 ? `${selectedCount} added · ` : ''}
                   {presets.length} tools
@@ -289,19 +347,18 @@ export function ProfileStrengthsField({
                 addCustomTool();
               }
             }}
-            placeholder="e.g. My own workflow"
-            className={`${profileFormInputClass} min-w-0 flex-1`}
+            placeholder="Tool name"
+            className={profileFormInputClass}
           />
           <button
             type="button"
             onClick={addCustomTool}
             disabled={!customDraft.trim() || selectedValues.length >= MAX_STRENGTHS}
-            className="inline-flex shrink-0 justify-center rounded-full border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-900"
+            className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Add custom
+            Add
           </button>
         </div>
-
       </div>
     </div>
   );

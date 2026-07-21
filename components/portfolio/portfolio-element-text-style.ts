@@ -157,6 +157,9 @@ export function elementTextInlineStyle(style: PortfolioElementTextStyle): CSSPro
   };
   if (style.font === 'serif') {
     base.fontFamily = "'Playfair Display', Georgia, serif";
+  } else if (style.font === 'display') {
+    base.fontFamily = "'Playfair Display', Georgia, serif";
+    base.letterSpacing = '-0.02em';
   }
   return base;
 }

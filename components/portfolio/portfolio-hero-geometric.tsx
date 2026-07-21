@@ -21,26 +21,62 @@ import {
   type PortfolioContentGutter,
 } from '@/components/portfolio/portfolio-editorial-layout';
 
-/** Full-height frame matching section gutters — children position with % of this box. */
-export function heroContentLayerFrame(
-  gutter: PortfolioContentGutter = DEFAULT_CONTENT_GUTTER
-): string {
-  return `pointer-events-none absolute inset-y-0 hidden lg:block ${portfolioHeroLayerInset(gutter)}`;
+const DEFAULT_HERO_CONTENT_WIDTH_CLASS = 'max-w-[90rem]';
+
+/**
+ * Outer shell: same max-width + centering as the hero copy / Global content width.
+ * Inner shell: side-margin insets so % children match the padded content box
+ * (right motif flush = start of the right side margin).
+ */
+export function HeroEditorialLayerFrame({
+  gutter = DEFAULT_CONTENT_GUTTER,
+  contentWidthClass = DEFAULT_HERO_CONTENT_WIDTH_CLASS,
+  className,
+  style,
+  children,
+}: {
+  gutter?: PortfolioContentGutter;
+  contentWidthClass?: string;
+  className?: string;
+  style?: CSSProperties;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      className={`pointer-events-none absolute inset-y-0 left-1/2 hidden w-full -translate-x-1/2 overflow-x-clip xl:block ${contentWidthClass}`}
+    >
+      <div
+        className={`absolute inset-y-0 overflow-x-clip ${portfolioHeroLayerInset(gutter)} ${className ?? ''}`}
+        style={style}
+      >
+        {children}
+      </div>
+    </div>
+  );
 }
 
-/** @deprecated Prefer heroContentLayerFrame(gutter) */
+/** @deprecated Prefer HeroEditorialLayerFrame — string form ignores content width. */
+export function heroContentLayerFrame(
+  gutter: PortfolioContentGutter = DEFAULT_CONTENT_GUTTER,
+  contentWidthClass = DEFAULT_HERO_CONTENT_WIDTH_CLASS
+): string {
+  return `pointer-events-none absolute inset-y-0 left-0 right-0 mx-auto hidden w-full xl:block ${contentWidthClass} ${portfolioHeroLayerInset(gutter)}`;
+}
+
+/** @deprecated Prefer HeroEditorialLayerFrame */
 export const HERO_CONTENT_LAYER_FRAME = heroContentLayerFrame(DEFAULT_CONTENT_GUTTER);
 
 export const HERO_GEOM_LAYER_SHELL = `${HERO_CONTENT_LAYER_FRAME} overflow-hidden`;
 
 /** Portrait layer — overflow visible so free placement is not clipped at panel edges. */
 export function heroPortraitLayerShell(
-  gutter: PortfolioContentGutter = DEFAULT_CONTENT_GUTTER
+  gutter: PortfolioContentGutter = DEFAULT_CONTENT_GUTTER,
+  contentWidthClass = DEFAULT_HERO_CONTENT_WIDTH_CLASS
 ): string {
-  return `${heroContentLayerFrame(gutter)} overflow-visible`;
+  return `${heroContentLayerFrame(gutter, contentWidthClass)} overflow-visible`;
 }
 
-/** @deprecated Prefer heroPortraitLayerShell(gutter) */
+/** @deprecated Prefer HeroEditorialLayerFrame */
 export const HERO_PORTRAIT_LAYER_SHELL = heroPortraitLayerShell(DEFAULT_CONTENT_GUTTER);
 
 export { heroGeomLayerPositionStyle } from '@/components/portfolio/portfolio-hero-settings';
@@ -55,6 +91,7 @@ type GeomFadeProps = {
   motifPanelSize?: MotifPanelSize;
   background?: PortfolioHeroBackgroundSettings;
   contentGutter?: PortfolioContentGutter;
+  contentWidthClass?: string;
 };
 
 function motifPanelShellStyle(
@@ -91,11 +128,16 @@ export function PortfolioHeroGeometricBackground({
   motifPanelSize,
   background,
   contentGutter = DEFAULT_CONTENT_GUTTER,
+  contentWidthClass = DEFAULT_HERO_CONTENT_WIDTH_CLASS,
 }: GeomFadeProps) {
   if (!motifPosition || !motifPanelSize) return null;
 
   return (
-    <div aria-hidden className={`${heroContentLayerFrame(contentGutter)} z-0 overflow-visible`}>
+    <HeroEditorialLayerFrame
+      gutter={contentGutter}
+      contentWidthClass={contentWidthClass}
+      className="z-0 overflow-visible"
+    >
       <div
         className="pointer-events-none absolute overflow-visible"
         style={motifPanelShellStyle(fadeOpacity, motifPosition, motifPanelSize)}
@@ -105,7 +147,7 @@ export function PortfolioHeroGeometricBackground({
           style={motifPanelStyle(motifShape, motifColor, customMotifPoints, background)}
         />
       </div>
-    </div>
+    </HeroEditorialLayerFrame>
   );
 }
 
@@ -117,6 +159,7 @@ export function PortfolioHeroGeometricOverlay({
   motifPosition,
   motifPanelSize,
   contentGutter = DEFAULT_CONTENT_GUTTER,
+  contentWidthClass = DEFAULT_HERO_CONTENT_WIDTH_CLASS,
 }: Pick<
   GeomFadeProps,
   | 'fadeOpacity'
@@ -125,20 +168,25 @@ export function PortfolioHeroGeometricOverlay({
   | 'motifPosition'
   | 'motifPanelSize'
   | 'contentGutter'
+  | 'contentWidthClass'
 >) {
   if (!motifPosition || !motifPanelSize) return null;
 
   const clipStyle = motifClipStyle(motifShape, customMotifPoints);
 
   return (
-    <div aria-hidden className={`${heroContentLayerFrame(contentGutter)} z-20 overflow-visible`}>
+    <HeroEditorialLayerFrame
+      gutter={contentGutter}
+      contentWidthClass={contentWidthClass}
+      className="z-20 overflow-visible"
+    >
       <div
         className="pointer-events-none absolute overflow-visible"
         style={motifPanelShellStyle(fadeOpacity, motifPosition, motifPanelSize)}
       >
         <div className="portfolio-hero-geom-overlay absolute inset-0" style={clipStyle} />
       </div>
-    </div>
+    </HeroEditorialLayerFrame>
   );
 }
 
@@ -151,25 +199,26 @@ export function PortfolioHeroMetaGeomBar({
   motifPosition,
   motifPanelSize,
   contentGutter = DEFAULT_CONTENT_GUTTER,
+  contentWidthClass = DEFAULT_HERO_CONTENT_WIDTH_CLASS,
 }: GeomFadeProps & { children: ReactNode }) {
   if (!motifPosition || !motifPanelSize) return null;
 
   const clipStyle = motifClipStyle(motifShape, customMotifPoints);
 
   return (
-    <div aria-hidden className={`${heroContentLayerFrame(contentGutter)} z-[15] overflow-visible`}>
+    <HeroEditorialLayerFrame
+      gutter={contentGutter}
+      contentWidthClass={contentWidthClass}
+      className="z-[15] overflow-visible"
+    >
       <div
         className="pointer-events-none absolute overflow-visible"
         style={motifPanelShellStyle(fadeOpacity, motifPosition, motifPanelSize)}
       >
-        <div className="pointer-events-auto absolute inset-0" style={clipStyle}>
-          <div className="absolute inset-x-0 bottom-28 xl:bottom-32 2xl:bottom-36">
-            <div className="absolute left-[75%] flex w-[min(42rem,46%)] -translate-x-1/2 justify-between px-4 sm:px-6">
-              {children}
-            </div>
-          </div>
+        <div className="absolute inset-0 overflow-hidden" style={clipStyle}>
+          {children}
         </div>
       </div>
-    </div>
+    </HeroEditorialLayerFrame>
   );
 }

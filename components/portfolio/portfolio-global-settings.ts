@@ -21,6 +21,9 @@ export type PortfolioGlobalContentGutter = PortfolioContentGutter;
 
 export type PortfolioGlobalTitleScroll = 'sticky' | 'static';
 
+/** Soft enter/exit for the left title block — Split screen navigation only. */
+export type PortfolioGlobalSplitTitleMotion = 'fade' | 'fade-up' | 'fade-scale';
+
 export type { PortfolioGlobalMotionProfile };
 
 export type PortfolioGlobalTitleOrientation = 'horizontal' | 'vertical';
@@ -31,7 +34,23 @@ export type PortfolioGlobalSectionTitleTopSpacing = 'compact' | 'standard' | 'co
 
 export type PortfolioGlobalTypographyScope = 'section' | 'global';
 
-export type PortfolioGlobalHeaderFont = 'sans' | 'serif' | 'display';
+export type PortfolioGlobalHeaderFont =
+  | 'sans'
+  | 'serif'
+  | 'display'
+  | 'condensed'
+  | 'geometric';
+
+/**
+ * Site-wide body / UI typeface for the public portfolio.
+ * Explicit per-element fonts (serif titles, etc.) still override this.
+ */
+export type PortfolioGlobalBodyFont =
+  | 'default'
+  | 'plusJakarta'
+  | 'montserrat'
+  | 'raleway'
+  | 'roboto';
 
 export type PortfolioGlobalTitleSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -55,6 +74,47 @@ export type PortfolioGlobalTitleChrome = {
   borderRadius: PortfolioGlobalTitleChromeRadius;
   padding: PortfolioGlobalTitleChromePadding;
 };
+
+/**
+ * Frame around the Split screen left-rail title block
+ * (title + description + optional trailing CTA).
+ */
+export type PortfolioGlobalSplitTitleFrameBorderSides = {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+};
+
+/** Soft outer glow on the frame border (box-shadow). */
+export type PortfolioGlobalSplitTitleFrameBorderBlur = 'none' | 'soft' | 'medium' | 'strong';
+
+export type PortfolioGlobalSplitTitleFrame = {
+  enabled: boolean;
+  backgroundEnabled: boolean;
+  backgroundColor: string;
+  borderEnabled: boolean;
+  borderColor: string;
+  borderWidth: PortfolioGlobalTitleChromeBorderWidth;
+  /** Which sides draw a stroke when border is enabled. */
+  borderSides: PortfolioGlobalSplitTitleFrameBorderSides;
+  /** Soft blurred outer edge (glow), independent of solid sides. */
+  borderBlur: PortfolioGlobalSplitTitleFrameBorderBlur;
+  /** Second outer border line (doublure). */
+  borderDoubleEnabled: boolean;
+  borderDoubleColor: string;
+  borderDoubleGap: PortfolioGlobalSplitTitleFrameBorderDoubleGap;
+  borderRadius: PortfolioGlobalTitleChromeRadius;
+  padding: PortfolioGlobalTitleChromePadding;
+  /**
+   * Nudge the title block left (−) or right (+) inside the split rail (px).
+   * Applies even when the decorative frame is off.
+   */
+  offsetX: number;
+};
+
+/** Gap between the main border and the outer doublure. */
+export type PortfolioGlobalSplitTitleFrameBorderDoubleGap = 'tight' | 'standard' | 'wide';
 
 export type PortfolioGlobalTitleTypography = {
   scope: PortfolioGlobalTypographyScope;
@@ -80,6 +140,18 @@ export type PortfolioGlobalSubtitleTypography = {
 
 export type PortfolioGlobalBackgroundImageSize = 'cover' | 'contain' | 'fill';
 
+/** Decorative repeating motif painted above the page fill (branding-style geometry). */
+export type PortfolioGlobalBackgroundPattern =
+  | 'none'
+  | 'arrows'
+  | 'cubes'
+  | 'hexagons'
+  | 'double-hexagon'
+  | 'axis-reticle'
+  | 'faceted-diamond'
+  | 'opposed-triangles'
+  | 'asymmetric-grid';
+
 export type PortfolioGlobalBackgroundImagePosition =
   | 'center'
   | 'top'
@@ -97,6 +169,11 @@ export type PortfolioGlobalSettings = {
   /** Fixed viewport background image (stays put while scrolling). */
   backgroundImageEnabled: boolean;
   backgroundImageUrl: string;
+  /**
+   * Shared background image library (max {@link MAX_PORTFOLIO_BACKGROUND_IMAGES}).
+   * Global + section pickers select an active URL from this list.
+   */
+  backgroundImageLibrary: string[];
   backgroundImageSize: PortfolioGlobalBackgroundImageSize;
   backgroundImagePosition: PortfolioGlobalBackgroundImagePosition;
   /** Image layer opacity 0–100. */
@@ -106,11 +183,31 @@ export type PortfolioGlobalSettings = {
   backgroundImageInsetRight: number;
   backgroundImageInsetBottom: number;
   backgroundImageInsetLeft: number;
+  /** Repeating geometric motif over the page background (any mode). */
+  backgroundPattern: PortfolioGlobalBackgroundPattern;
+  backgroundPatternColor: string;
+  /** Second stroke/fill color used by the duotone geometric patterns. */
+  backgroundPatternSecondaryColor: string;
+  /** Pattern layer opacity 0–100. */
+  backgroundPatternOpacity: number;
+  /** Units (tiles) per row. 0 = auto (natural tile size). */
+  backgroundPatternUnitsPerRow: number;
+  /** Horizontal spacing between units, in tile px. */
+  backgroundPatternGapX: number;
+  /** Vertical spacing between units, in tile px. */
+  backgroundPatternGapY: number;
   /**
    * When true, keep social brands + hardcoded accent utilities monochrome.
    * Set by Noir / Blanc and preserved on duplicates so images/icons don’t flip on edit.
    */
   monochromeUi: boolean;
+  /**
+   * Site-wide dark / light appearance. Switching applies the Hero dark/light
+   * palette and links every section to those tokens.
+   */
+  colorMode: 'dark' | 'light';
+  /** Owner-only: Ctrl+, (⌘,) opens portfolio settings. */
+  settingsShortcutEnabled: boolean;
   titleAlignment: PortfolioGlobalTitleAlignment;
   titleOrientation: PortfolioGlobalTitleOrientation;
   titleOrientationTargets: PortfolioGlobalTitleOrientationTargets;
@@ -118,9 +215,19 @@ export type PortfolioGlobalSettings = {
   /** Left/right page gutters for hero + sections. */
   contentGutter: PortfolioGlobalContentGutter;
   titleScroll: PortfolioGlobalTitleScroll;
+  /** Animation for title + description + trailing in Split screen left rail. */
+  splitTitleMotion: PortfolioGlobalSplitTitleMotion;
+  /** Frame (border / background / padding) around Split screen title block. */
+  splitTitleFrame: PortfolioGlobalSplitTitleFrame;
+  /** Top padding on right-column sections in Split screen (between content blocks). */
+  splitContentTopSpacing: PortfolioGlobalSectionTitleTopSpacing;
   motionProfile: PortfolioGlobalMotionProfile;
   sectionTitleTopSpacing: PortfolioGlobalSectionTitleTopSpacing;
   sectionOrder: PortfolioNavSectionKey[];
+  /**
+   * Base typeface for all portfolio text. Serif / display overrides in sections still win.
+   */
+  bodyFont: PortfolioGlobalBodyFont;
   titleTypography: PortfolioGlobalTitleTypography;
   subtitleTypography: PortfolioGlobalSubtitleTypography;
   titleChrome: PortfolioGlobalTitleChrome;
@@ -167,6 +274,72 @@ export const DEFAULT_GLOBAL_TITLE_CHROME: PortfolioGlobalTitleChrome = {
   borderRadius: 'md',
   padding: 'none',
 };
+
+export const DEFAULT_GLOBAL_SPLIT_TITLE_FRAME_BORDER_SIDES: PortfolioGlobalSplitTitleFrameBorderSides = {
+  top: true,
+  right: true,
+  bottom: true,
+  left: true,
+};
+
+export const DEFAULT_GLOBAL_SPLIT_TITLE_FRAME: PortfolioGlobalSplitTitleFrame = {
+  enabled: false,
+  backgroundEnabled: true,
+  backgroundColor: '#f5f5f5',
+  borderEnabled: true,
+  borderColor: '#e5e5e5',
+  borderWidth: 'thin',
+  borderSides: { ...DEFAULT_GLOBAL_SPLIT_TITLE_FRAME_BORDER_SIDES },
+  borderBlur: 'none',
+  borderDoubleEnabled: false,
+  borderDoubleColor: '#d4d4d4',
+  borderDoubleGap: 'standard',
+  borderRadius: 'lg',
+  padding: 'standard',
+  offsetX: 0,
+};
+
+export const GLOBAL_SPLIT_TITLE_OFFSET_X_MIN = -80;
+export const GLOBAL_SPLIT_TITLE_OFFSET_X_MAX = 80;
+
+export function clampGlobalSplitTitleOffsetX(value: unknown, fallback = 0): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.round(
+    Math.min(GLOBAL_SPLIT_TITLE_OFFSET_X_MAX, Math.max(GLOBAL_SPLIT_TITLE_OFFSET_X_MIN, n))
+  );
+}
+
+export const PORTFOLIO_GLOBAL_SPLIT_TITLE_FRAME_BORDER_BLUR_OPTIONS: {
+  value: PortfolioGlobalSplitTitleFrameBorderBlur;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'None', description: 'Sharp edge only — no outer glow.' },
+  { value: 'soft', label: 'Soft', description: 'Light blurred outline around the frame.' },
+  { value: 'medium', label: 'Medium', description: 'Clearer soft haze outside the border.' },
+  { value: 'strong', label: 'Strong', description: 'Wide diffused glow on the outer edge.' },
+];
+
+export const PORTFOLIO_GLOBAL_SPLIT_TITLE_FRAME_BORDER_DOUBLE_GAP_OPTIONS: {
+  value: PortfolioGlobalSplitTitleFrameBorderDoubleGap;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'tight', label: 'Tight', description: 'Petit espace entre les deux traits.' },
+  { value: 'standard', label: 'Standard', description: 'Espace équilibré entre les deux bordures.' },
+  { value: 'wide', label: 'Wide', description: 'Grand espace entre les deux bordures.' },
+];
+
+export const PORTFOLIO_GLOBAL_SPLIT_TITLE_FRAME_BORDER_SIDE_OPTIONS: {
+  key: keyof PortfolioGlobalSplitTitleFrameBorderSides;
+  label: string;
+}[] = [
+  { key: 'top', label: 'Top' },
+  { key: 'right', label: 'Right' },
+  { key: 'bottom', label: 'Bottom' },
+  { key: 'left', label: 'Left' },
+];
 
 export const DEFAULT_GLOBAL_TITLE_ORIENTATION_TARGETS: PortfolioGlobalTitleOrientationTargets = {
   work: false,
@@ -243,12 +416,23 @@ export function moveSectionInOrder(
 
 export const DEFAULT_GLOBAL_BACKGROUND_IMAGE_OPACITY = 100;
 export const DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET = 0;
+export const DEFAULT_GLOBAL_BACKGROUND_PATTERN_COLOR = '#a3a3a3';
+export const DEFAULT_GLOBAL_BACKGROUND_PATTERN_SECONDARY_COLOR = '#00e5a0';
+export const DEFAULT_GLOBAL_BACKGROUND_PATTERN_OPACITY = 12;
+/** 0 = auto (natural tile size, previous behavior). */
+export const DEFAULT_GLOBAL_BACKGROUND_PATTERN_UNITS_PER_ROW = 0;
+export const GLOBAL_BACKGROUND_PATTERN_UNITS_PER_ROW_MAX = 32;
+export const DEFAULT_GLOBAL_BACKGROUND_PATTERN_GAP = 0;
+export const GLOBAL_BACKGROUND_PATTERN_GAP_MAX = 160;
+/** Max images stored in the shared portfolio background library. */
+export const MAX_PORTFOLIO_BACKGROUND_IMAGES = 5;
 
 export const DEFAULT_GLOBAL_SETTINGS: PortfolioGlobalSettings = {
   backgroundEnabled: false,
   backgroundColor: DEFAULT_GLOBAL_BACKGROUND_COLOR,
   backgroundImageEnabled: false,
   backgroundImageUrl: '',
+  backgroundImageLibrary: [],
   backgroundImageSize: 'cover',
   backgroundImagePosition: 'center',
   backgroundImageOpacity: DEFAULT_GLOBAL_BACKGROUND_IMAGE_OPACITY,
@@ -256,16 +440,29 @@ export const DEFAULT_GLOBAL_SETTINGS: PortfolioGlobalSettings = {
   backgroundImageInsetRight: DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET,
   backgroundImageInsetBottom: DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET,
   backgroundImageInsetLeft: DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET,
+  backgroundPattern: 'none',
+  backgroundPatternColor: DEFAULT_GLOBAL_BACKGROUND_PATTERN_COLOR,
+  backgroundPatternSecondaryColor: DEFAULT_GLOBAL_BACKGROUND_PATTERN_SECONDARY_COLOR,
+  backgroundPatternOpacity: DEFAULT_GLOBAL_BACKGROUND_PATTERN_OPACITY,
+  backgroundPatternUnitsPerRow: DEFAULT_GLOBAL_BACKGROUND_PATTERN_UNITS_PER_ROW,
+  backgroundPatternGapX: DEFAULT_GLOBAL_BACKGROUND_PATTERN_GAP,
+  backgroundPatternGapY: DEFAULT_GLOBAL_BACKGROUND_PATTERN_GAP,
   monochromeUi: false,
+  colorMode: 'dark',
+  settingsShortcutEnabled: true,
   titleAlignment: 'section',
   titleOrientation: 'horizontal',
   titleOrientationTargets: { ...DEFAULT_GLOBAL_TITLE_ORIENTATION_TARGETS },
   contentWidth: 'standard',
   contentGutter: DEFAULT_CONTENT_GUTTER,
   titleScroll: 'sticky',
+  splitTitleMotion: 'fade',
+  splitTitleFrame: { ...DEFAULT_GLOBAL_SPLIT_TITLE_FRAME },
+  splitContentTopSpacing: 'compact',
   motionProfile: DEFAULT_MOTION_PROFILE,
   sectionTitleTopSpacing: 'standard',
   sectionOrder: [...DEFAULT_CONTENT_SECTION_ORDER],
+  bodyFont: 'plusJakarta',
   titleTypography: { ...DEFAULT_GLOBAL_TITLE_TYPOGRAPHY },
   subtitleTypography: { ...DEFAULT_GLOBAL_SUBTITLE_TYPOGRAPHY },
   titleChrome: { ...DEFAULT_GLOBAL_TITLE_CHROME },
@@ -287,9 +484,21 @@ export const PORTFOLIO_GLOBAL_CONTENT_WIDTH_OPTIONS: {
   label: string;
   description: string;
 }[] = [
-  { value: 'standard', label: 'Standard', description: 'Default editorial reading width.' },
-  { value: 'wide', label: 'Wide', description: 'Roomier layout on large screens.' },
-  { value: 'full', label: 'Full', description: 'Maximize horizontal space.' },
+  {
+    value: 'standard',
+    label: 'Standard',
+    description: 'Caps the column at ~1440px (centered) — classic editorial width.',
+  },
+  {
+    value: 'wide',
+    label: 'Wide',
+    description: 'Caps at ~1600px — roomier on large monitors.',
+  },
+  {
+    value: 'full',
+    label: 'Full',
+    description: 'No max width — only Side margins control the edges.',
+  },
 ];
 
 export const PORTFOLIO_GLOBAL_CONTENT_GUTTER_OPTIONS: {
@@ -320,6 +529,51 @@ export const PORTFOLIO_GLOBAL_TITLE_SCROLL_OPTIONS: {
   },
 ];
 
+export const PORTFOLIO_GLOBAL_SPLIT_TITLE_MOTION_OPTIONS: {
+  value: PortfolioGlobalSplitTitleMotion;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'fade',
+    label: 'Fade',
+    description: 'Soft opacity only — the title block dissolves in and out.',
+  },
+  {
+    value: 'fade-up',
+    label: 'Fade soft',
+    description: 'Same as Fade — appears in place at center with no slide.',
+  },
+  {
+    value: 'fade-scale',
+    label: 'Fade scale',
+    description: 'Slight scale with fade — polished enter / leave transition.',
+  },
+];
+
+export function splitTitleMotionClassNames(
+  motion: PortfolioGlobalSplitTitleMotion,
+  active: boolean
+): string {
+  const ease = 'duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
+  // Titles stay fixed in the left frame — never translate/slide, only fade (or soft scale).
+  switch (motion) {
+    case 'fade-scale':
+      return `transition-[opacity,visibility,transform] ${ease} ${
+        active
+          ? 'pointer-events-auto visible scale-100 opacity-100'
+          : 'pointer-events-none invisible scale-[0.96] opacity-0'
+      }`;
+    case 'fade-up':
+    case 'fade':
+    default:
+      return `transition-[opacity,visibility] ${ease} ${
+        active
+          ? 'pointer-events-auto visible opacity-100'
+          : 'pointer-events-none invisible opacity-0'
+      }`;
+  }
+}
 export const PORTFOLIO_GLOBAL_TITLE_ORIENTATION_OPTIONS: {
   value: PortfolioGlobalTitleOrientation;
   label: string;
@@ -340,6 +594,33 @@ export const PORTFOLIO_GLOBAL_SECTION_TOP_SPACING_OPTIONS: {
   { value: 'spacious', label: 'Spacious', description: 'Maximum space above section titles.' },
 ];
 
+export const PORTFOLIO_GLOBAL_SPLIT_CONTENT_TOP_SPACING_OPTIONS: {
+  value: PortfolioGlobalSectionTitleTopSpacing;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'compact',
+    label: 'Compact',
+    description: 'Minimal gap between right-column sections in Split screen.',
+  },
+  {
+    value: 'standard',
+    label: 'Standard',
+    description: 'Balanced top spacing on every right-column block.',
+  },
+  {
+    value: 'comfortable',
+    label: 'Comfortable',
+    description: 'More breathing room between Split screen sections.',
+  },
+  {
+    value: 'spacious',
+    label: 'Spacious',
+    description: 'Large separation between right-column sections.',
+  },
+];
+
 export const PORTFOLIO_GLOBAL_TYPOGRAPHY_SCOPE_OPTIONS: {
   value: PortfolioGlobalTypographyScope;
   label: string;
@@ -353,11 +634,130 @@ export const PORTFOLIO_GLOBAL_HEADER_FONT_OPTIONS: {
   value: PortfolioGlobalHeaderFont;
   label: string;
   description: string;
+  /** Google Font stack already loaded in globals.css */
+  fontFamily: string;
+  /** Short sample shown on the settings mockup card. */
+  previewText: string;
 }[] = [
-  { value: 'sans', label: 'Modern sans', description: 'Bold geometric sans-serif.' },
-  { value: 'serif', label: 'Editorial serif', description: 'Playfair Display — magazine feel.' },
-  { value: 'display', label: 'Display caps', description: 'Uppercase poster style.' },
+  {
+    value: 'sans',
+    label: 'Montserrat',
+    description: 'Modern geometric sans — clean and bold.',
+    fontFamily: "'Montserrat', sans-serif",
+    previewText: 'PROJECTS',
+  },
+  {
+    value: 'serif',
+    label: 'Playfair',
+    description: 'Editorial serif — magazine feel.',
+    fontFamily: "'Playfair Display', serif",
+    previewText: 'Projects',
+  },
+  {
+    value: 'display',
+    label: 'Bebas Neue',
+    description: 'Poster display caps — strong impact.',
+    fontFamily: "'Bebas Neue', sans-serif",
+    previewText: 'PROJECTS',
+  },
+  {
+    value: 'condensed',
+    label: 'Oswald',
+    description: 'Condensed sans — tight and athletic.',
+    fontFamily: "'Oswald', sans-serif",
+    previewText: 'PROJECTS',
+  },
+  {
+    value: 'geometric',
+    label: 'Raleway',
+    description: 'Elegant geometric — refined headlines.',
+    fontFamily: "'Raleway', sans-serif",
+    previewText: 'Projects',
+  },
 ];
+
+export const PORTFOLIO_GLOBAL_BODY_FONT_OPTIONS: {
+  value: PortfolioGlobalBodyFont;
+  label: string;
+  description: string;
+  /** Empty = keep the app default (Aeonik via --font-aeonik). */
+  fontFamily: string;
+  previewText: string;
+}[] = [
+  {
+    value: 'plusJakarta',
+    label: 'Plus Jakarta Sans',
+    description: 'Google Fonts equivalent to Maison Neue — premium neo-grotesque.',
+    fontFamily: "'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif",
+    previewText: 'The quick brown fox',
+  },
+  {
+    value: 'default',
+    label: 'Site default',
+    description: 'Keep the app base typeface (Aeonik) for the portfolio.',
+    fontFamily: '',
+    previewText: 'The quick brown fox',
+  },
+  {
+    value: 'montserrat',
+    label: 'Montserrat',
+    description: 'Clean geometric sans — versatile and sharp.',
+    fontFamily: "'Montserrat', ui-sans-serif, system-ui, sans-serif",
+    previewText: 'The quick brown fox',
+  },
+  {
+    value: 'raleway',
+    label: 'Raleway',
+    description: 'Elegant geometric — refined body and UI.',
+    fontFamily: "'Raleway', ui-sans-serif, system-ui, sans-serif",
+    previewText: 'The quick brown fox',
+  },
+  {
+    value: 'roboto',
+    label: 'Roboto',
+    description: 'Neutral product sans — highly readable.',
+    fontFamily: "'Roboto', ui-sans-serif, system-ui, sans-serif",
+    previewText: 'The quick brown fox',
+  },
+];
+
+const GLOBAL_BODY_FONT_VALUES = new Set<PortfolioGlobalBodyFont>(
+  PORTFOLIO_GLOBAL_BODY_FONT_OPTIONS.map((option) => option.value)
+);
+
+export function isPortfolioGlobalBodyFont(value: unknown): value is PortfolioGlobalBodyFont {
+  return typeof value === 'string' && GLOBAL_BODY_FONT_VALUES.has(value as PortfolioGlobalBodyFont);
+}
+
+/** Resolved CSS font-family for the portfolio root, or undefined to keep the site default. */
+export function globalBodyFontFamily(
+  font: PortfolioGlobalBodyFont | undefined
+): string | undefined {
+  const option = PORTFOLIO_GLOBAL_BODY_FONT_OPTIONS.find((item) => item.value === (font ?? 'plusJakarta'));
+  const family = option?.fontFamily?.trim();
+  return family ? family : undefined;
+}
+
+/** Inline style + CSS var override so Tailwind `font-sans` inside the portfolio follows bodyFont. */
+export function globalBodyFontRootStyle(
+  font: PortfolioGlobalBodyFont | undefined
+): CSSProperties | undefined {
+  const family = globalBodyFontFamily(font);
+  if (!family) return undefined;
+  return {
+    fontFamily: family,
+    ['--font-aeonik' as string]: family,
+    ['--portfolio-body-font' as string]: family,
+  };
+}
+
+const GLOBAL_HEADER_FONT_VALUES = new Set<PortfolioGlobalHeaderFont>(
+  PORTFOLIO_GLOBAL_HEADER_FONT_OPTIONS.map((option) => option.value)
+);
+
+export function isPortfolioGlobalHeaderFont(value: unknown): value is PortfolioGlobalHeaderFont {
+  return typeof value === 'string' && GLOBAL_HEADER_FONT_VALUES.has(value as PortfolioGlobalHeaderFont);
+}
 
 export const PORTFOLIO_GLOBAL_TITLE_SIZE_OPTIONS: {
   value: PortfolioGlobalTitleSize;
@@ -449,6 +849,43 @@ export function resolveSectionHeaderAlign(
   };
 }
 
+/** Below xl (mobile + tablet): section titles/subtitles are centered; xl+ follows alignment. */
+export function sectionHeaderTitleTextAlignClass(centered: boolean, alignRight: boolean): string {
+  if (centered) return 'text-center';
+  if (alignRight) return 'text-center xl:text-right';
+  return 'text-center xl:text-left';
+}
+
+export function sectionHeaderSubtitleAlignClass(centered: boolean, alignRight: boolean): string {
+  if (centered) return 'mx-auto text-center';
+  if (alignRight) return 'mx-auto text-center xl:ml-auto xl:mr-0 xl:text-right';
+  return 'mx-auto text-center xl:mx-0 xl:text-left';
+}
+
+export function sectionHeaderOuterLayoutClass(centerContent: boolean, rightContent: boolean): string {
+  if (centerContent) return 'flex justify-center';
+  if (rightContent) return 'flex justify-center xl:justify-end';
+  return 'flex justify-center xl:block';
+}
+
+export function sectionHeaderTitleWrapClass(
+  showPill: boolean,
+  centered: boolean,
+  alignRight: boolean,
+  floatingChromeClass: string
+): string {
+  const pill = showPill ? floatingChromeClass : '';
+  if (centered) return `mx-auto w-fit max-w-full ${pill}`.trim();
+  if (alignRight) return `mx-auto w-fit max-w-full xl:ml-auto xl:mr-0 ${pill}`.trim();
+  return `mx-auto w-fit max-w-full xl:mx-0 ${pill}`.trim();
+}
+
+export function sectionHeaderTrailingLayoutClass(centered: boolean, alignRight: boolean): string {
+  if (centered) return 'flex justify-center';
+  if (alignRight) return 'flex justify-center xl:justify-end';
+  return 'flex justify-center xl:block';
+}
+
 /** Resolves vertical orientation for a single section (only when globally enabled and targeted). */
 export function resolveSectionTitleOrientation(
   global: PortfolioGlobalSettings,
@@ -468,6 +905,20 @@ function globalTitleChromePaddingClass(padding: PortfolioGlobalTitleChromePaddin
       return 'px-3 py-2 sm:px-4 sm:py-2.5';
     default:
       return '';
+  }
+}
+
+/** Roomier padding for the Split title block (title + subtitle + CTA). */
+function globalSplitTitleFramePaddingClass(padding: PortfolioGlobalTitleChromePadding): string {
+  switch (padding) {
+    case 'compact':
+      return 'px-4 py-4 sm:px-5 sm:py-5';
+    case 'comfortable':
+      return 'px-8 py-8 sm:px-10 sm:py-10';
+    case 'standard':
+      return 'px-6 py-6 sm:px-7 sm:py-7';
+    default:
+      return 'px-5 py-5';
   }
 }
 
@@ -497,6 +948,130 @@ function globalTitleChromeBorderWidthClass(width: PortfolioGlobalTitleChromeBord
     default:
       return '';
   }
+}
+
+function globalSplitTitleFrameBorderWidthPx(width: PortfolioGlobalTitleChromeBorderWidth): number {
+  switch (width) {
+    case 'medium':
+      return 2;
+    case 'thick':
+      return 3;
+    case 'thin':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function globalSplitTitleFrameDoubleGapPx(
+  gap: PortfolioGlobalSplitTitleFrameBorderDoubleGap
+): number {
+  switch (gap) {
+    case 'tight':
+      return 3;
+    case 'wide':
+      return 8;
+    default:
+      return 5;
+  }
+}
+
+function globalSplitTitleFrameBlurGlowBase(hex: string): string {
+  const h = hex.replace('#', '');
+  const full =
+    h.length === 3
+      ? h
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : h;
+  if (full.length !== 6) return '#404040';
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  // Light borders vanish as glow on white — darken the blur tint.
+  return lum > 0.65 ? '#404040' : hex;
+}
+
+function globalSplitTitleFrameBlurParams(blur: PortfolioGlobalSplitTitleFrameBorderBlur): {
+  blurPx: number;
+  offsetPx: number;
+  alpha: string;
+} | null {
+  switch (blur) {
+    case 'soft':
+      return { blurPx: 14, offsetPx: 4, alpha: '55' };
+    case 'medium':
+      return { blurPx: 22, offsetPx: 6, alpha: '66' };
+    case 'strong':
+      return { blurPx: 34, offsetPx: 8, alpha: '7a' };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Soft outer glow on selected sides only.
+ * Applied on the full frame box with negative spread so unselected edges stay clean.
+ */
+function globalSplitTitleFrameSideBlurShadows(
+  sides: PortfolioGlobalSplitTitleFrameBorderSides,
+  blur: PortfolioGlobalSplitTitleFrameBorderBlur,
+  color: string
+): string[] {
+  const params = globalSplitTitleFrameBlurParams(blur);
+  if (!params) return [];
+  const safe = sanitizeHex(color, DEFAULT_GLOBAL_SPLIT_TITLE_FRAME.borderColor);
+  const tint = `${globalSplitTitleFrameBlurGlowBase(safe)}${params.alpha}`;
+  const { blurPx, offsetPx } = params;
+  const spread = -Math.max(blurPx - 2, offsetPx);
+  const out: string[] = [];
+  if (sides.top) out.push(`0 -${offsetPx}px ${blurPx}px ${spread}px ${tint}`);
+  if (sides.right) out.push(`${offsetPx}px 0 ${blurPx}px ${spread}px ${tint}`);
+  if (sides.bottom) out.push(`0 ${offsetPx}px ${blurPx}px ${spread}px ${tint}`);
+  if (sides.left) out.push(`-${offsetPx}px 0 ${blurPx}px ${spread}px ${tint}`);
+  return out;
+}
+
+function applySelectedSideBorders(
+  style: CSSProperties,
+  sides: PortfolioGlobalSplitTitleFrameBorderSides,
+  widthPx: number,
+  color: string
+) {
+  if (widthPx <= 0) return;
+  style.borderColor = color;
+  style.borderStyle = 'solid';
+  style.borderTopWidth = sides.top ? widthPx : 0;
+  style.borderRightWidth = sides.right ? widthPx : 0;
+  style.borderBottomWidth = sides.bottom ? widthPx : 0;
+  style.borderLeftWidth = sides.left ? widthPx : 0;
+}
+
+function applySelectedSideGapPadding(
+  style: CSSProperties,
+  sides: PortfolioGlobalSplitTitleFrameBorderSides,
+  gapPx: number
+) {
+  style.paddingTop = sides.top ? gapPx : 0;
+  style.paddingRight = sides.right ? gapPx : 0;
+  style.paddingBottom = sides.bottom ? gapPx : 0;
+  style.paddingLeft = sides.left ? gapPx : 0;
+}
+
+function mergeSplitTitleFrameBorderSides(
+  base: PortfolioGlobalSplitTitleFrameBorderSides,
+  patch: unknown
+): PortfolioGlobalSplitTitleFrameBorderSides {
+  if (!patch || typeof patch !== 'object') return { ...base };
+  const record = patch as Record<string, unknown>;
+  return {
+    top: typeof record.top === 'boolean' ? record.top : base.top,
+    right: typeof record.right === 'boolean' ? record.right : base.right,
+    bottom: typeof record.bottom === 'boolean' ? record.bottom : base.bottom,
+    left: typeof record.left === 'boolean' ? record.left : base.left,
+  };
 }
 
 export type ResolvedGlobalTitleChrome = {
@@ -540,6 +1115,107 @@ export function resolveGlobalSectionTitleChrome(
   return { className, style };
 }
 
+export type ResolvedGlobalSplitTitleFrame = {
+  className: string;
+  style: CSSProperties;
+  /** Outer doublure shell — borders + gap only on selected sides. */
+  shellClassName?: string;
+  shellStyle?: CSSProperties;
+  /** Horizontal nudge inside the left rail (px). */
+  offsetX: number;
+};
+
+/** Frame around Split screen title + description + trailing CTA. */
+export function resolveGlobalSplitTitleFrame(
+  global: PortfolioGlobalSettings
+): ResolvedGlobalSplitTitleFrame {
+  const frame = {
+    ...DEFAULT_GLOBAL_SPLIT_TITLE_FRAME,
+    ...(global.splitTitleFrame ?? {}),
+    borderSides: {
+      ...DEFAULT_GLOBAL_SPLIT_TITLE_FRAME_BORDER_SIDES,
+      ...(global.splitTitleFrame?.borderSides ?? {}),
+    },
+  };
+  const offsetX = clampGlobalSplitTitleOffsetX(frame.offsetX, 0);
+  if (!frame.enabled) return { className: '', style: {}, offsetX };
+
+  const sides = frame.borderSides;
+  const anySide = sides.top || sides.right || sides.bottom || sides.left;
+  const widthPx = globalSplitTitleFrameBorderWidthPx(frame.borderWidth);
+  const drawMainBorder =
+    frame.borderEnabled && frame.borderWidth !== 'none' && anySide && widthPx > 0;
+  const hasBlur = frame.borderBlur !== 'none' && anySide;
+  const hasDouble = Boolean(frame.borderDoubleEnabled) && anySide;
+
+  const hasVisual =
+    frame.backgroundEnabled ||
+    drawMainBorder ||
+    hasBlur ||
+    hasDouble ||
+    frame.padding !== 'none' ||
+    frame.borderRadius !== 'none';
+
+  if (!hasVisual) return { className: '', style: {}, offsetX };
+
+  const radiusClass = globalTitleChromeRadiusClass(frame.borderRadius);
+  const borderColor = sanitizeHex(
+    frame.borderColor,
+    DEFAULT_GLOBAL_SPLIT_TITLE_FRAME.borderColor
+  );
+  const doubleColor = sanitizeHex(
+    frame.borderDoubleColor,
+    DEFAULT_GLOBAL_SPLIT_TITLE_FRAME.borderDoubleColor
+  );
+  const gapPx = globalSplitTitleFrameDoubleGapPx(frame.borderDoubleGap ?? 'standard');
+  const doubleLinePx = Math.max(1, widthPx || 1);
+
+  const className = [
+    'relative box-border w-fit max-w-full overflow-visible',
+    globalSplitTitleFramePaddingClass(frame.padding),
+    radiusClass,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const style: CSSProperties = {};
+  if (frame.backgroundEnabled) {
+    style.backgroundColor = sanitizeHex(
+      frame.backgroundColor,
+      DEFAULT_GLOBAL_SPLIT_TITLE_FRAME.backgroundColor
+    );
+  }
+
+  if (drawMainBorder) {
+    applySelectedSideBorders(style, sides, widthPx, borderColor);
+  }
+
+  if (hasBlur) {
+    const shadows = globalSplitTitleFrameSideBlurShadows(sides, frame.borderBlur, borderColor);
+    if (shadows.length > 0) {
+      style.boxShadow = shadows.join(', ');
+    }
+  }
+
+  if (!hasDouble) {
+    return { className, style, offsetX };
+  }
+
+  const shellStyle: CSSProperties = { overflow: 'visible' };
+  applySelectedSideBorders(shellStyle, sides, doubleLinePx, doubleColor);
+  applySelectedSideGapPadding(shellStyle, sides, gapPx);
+
+  return {
+    className,
+    style,
+    shellClassName: ['box-border w-fit max-w-full overflow-visible', radiusClass]
+      .filter(Boolean)
+      .join(' '),
+    shellStyle,
+    offsetX,
+  };
+}
+
 export const PORTFOLIO_GLOBAL_BACKGROUND_IMAGE_SIZE_OPTIONS: {
   value: PortfolioGlobalBackgroundImageSize;
   label: string;
@@ -566,6 +1242,272 @@ export const PORTFOLIO_GLOBAL_BACKGROUND_IMAGE_POSITION_OPTIONS: {
   { value: 'bottom-right', label: 'Bottom right', description: 'Pin to the bottom-right corner.' },
 ];
 
+export const PORTFOLIO_GLOBAL_BACKGROUND_PATTERN_OPTIONS: {
+  value: PortfolioGlobalBackgroundPattern;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'None', description: 'No motif — plain page fill only.' },
+  { value: 'arrows', label: 'Arrows', description: 'Rounded chevrons drifting diagonally.' },
+  { value: 'cubes', label: 'Cubes', description: '3D isometric blocks, branding style.' },
+  { value: 'hexagons', label: 'Hexagons', description: 'Honeycomb outline mesh.' },
+  {
+    value: 'double-hexagon',
+    label: 'Double hexagon',
+    description: 'Two nested hexagons with a central point.',
+  },
+  {
+    value: 'axis-reticle',
+    label: 'Axis reticle',
+    description: 'Vertical and horizontal measuring axes around a ring.',
+  },
+  {
+    value: 'faceted-diamond',
+    label: 'Faceted diamond',
+    description: 'Divided diamond with contrasting facets.',
+  },
+  {
+    value: 'opposed-triangles',
+    label: 'Opposed triangles',
+    description: 'Two opposing triangles joined at the center.',
+  },
+  {
+    value: 'asymmetric-grid',
+    label: 'Asymmetric grid',
+    description: 'Irregular grid crossed by a highlighted vertical axis.',
+  },
+];
+
+export function globalBackgroundPatternUsesSecondaryColor(
+  pattern: PortfolioGlobalBackgroundPattern
+): boolean {
+  return (
+    pattern === 'double-hexagon' ||
+    pattern === 'axis-reticle' ||
+    pattern === 'faceted-diamond' ||
+    pattern === 'opposed-triangles' ||
+    pattern === 'asymmetric-grid'
+  );
+}
+
+/** Base unit markup for each motif (inner SVG content + natural size). */
+function globalBackgroundPatternUnit(
+  pattern: PortfolioGlobalBackgroundPattern,
+  color: string,
+  secondaryColor: string
+): { width: number; height: number; scale: number; content: string } | null {
+  switch (pattern) {
+    case 'arrows':
+      return {
+        width: 120,
+        height: 120,
+        scale: 1,
+        content:
+          `<g fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">` +
+          `<path d="M14 44 L34 24 L54 44"/>` +
+          `<path d="M72 102 L92 82 L112 102"/>` +
+          `<path d="M76 40 L94 22" opacity="0.55"/>` +
+          `<path d="M16 100 L34 82" opacity="0.55"/>` +
+          `</g>`,
+      };
+    case 'cubes':
+      return {
+        width: 112,
+        height: 128,
+        scale: 1,
+        content:
+          `<g fill="${color}">` +
+          `<path d="M56 16 L92 37 L56 58 L20 37 Z" opacity="0.85"/>` +
+          `<path d="M20 37 L56 58 L56 100 L20 79 Z" opacity="0.5"/>` +
+          `<path d="M92 37 L56 58 L56 100 L92 79 Z" opacity="0.28"/>` +
+          `</g>`,
+      };
+    case 'hexagons':
+      // Seamless honeycomb outline (Hero Patterns "hexagons" path, scaled 2x).
+      return {
+        width: 56,
+        height: 98,
+        scale: 2,
+        content:
+          `<path fill="${color}" fill-rule="evenodd" d="M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z"/>`,
+      };
+    case 'double-hexagon':
+      return {
+        width: 120,
+        height: 120,
+        scale: 1,
+        content:
+          `<g fill="none" stroke-width="2.2" stroke-linejoin="round">` +
+          `<path stroke="${color}" d="M60 12 104 37 104 83 60 108 16 83 16 37Z"/>` +
+          `<path stroke="${secondaryColor}" d="M60 32 84 46 84 74 60 88 36 74 36 46Z"/>` +
+          `<circle cx="60" cy="60" r="4" fill="${color}" stroke="none"/>` +
+          `</g>`,
+      };
+    case 'axis-reticle':
+      return {
+        width: 140,
+        height: 140,
+        scale: 1,
+        content:
+          `<g fill="none" stroke="${color}" stroke-width="2" stroke-linecap="square">` +
+          `<path d="M70 10v36M70 94v36M10 70h36M94 70h36"/>` +
+          `<path d="M60 10h20M60 130h20M10 60v20M130 60v20"/>` +
+          `</g>` +
+          `<circle cx="70" cy="70" r="16" fill="none" stroke="${secondaryColor}" stroke-width="2"/>` +
+          `<circle cx="70" cy="70" r="4" fill="${color}"/>`,
+      };
+    case 'faceted-diamond':
+      return {
+        width: 120,
+        height: 120,
+        scale: 1,
+        content:
+          `<g fill="none" stroke-width="2" stroke-linejoin="round">` +
+          `<path stroke="${color}" d="M60 12 108 60 60 108 12 60Z"/>` +
+          `<path stroke="${secondaryColor}" d="M12 60h96M60 12v96"/>` +
+          `<circle cx="60" cy="60" r="4" fill="${color}" stroke="none"/>` +
+          `</g>`,
+      };
+    case 'opposed-triangles':
+      return {
+        width: 120,
+        height: 120,
+        scale: 1,
+        content:
+          `<g fill="none" stroke-width="2.2" stroke-linejoin="round">` +
+          `<path stroke="${color}" d="M60 10 104 60H16Z"/>` +
+          `<path stroke="${secondaryColor}" d="M16 60h88L60 110Z"/>` +
+          `<circle cx="60" cy="60" r="4" fill="${color}" stroke="none"/>` +
+          `</g>`,
+      };
+    case 'asymmetric-grid':
+      return {
+        width: 140,
+        height: 140,
+        scale: 1,
+        content:
+          `<g fill="none" stroke="${color}" stroke-width="1.5" opacity="0.45">` +
+          `<path d="M22 42h96M12 62h116M18 86h104M44 20v100M64 28v84M94 18v104"/>` +
+          `</g>` +
+          `<path d="M70 10v120" stroke="${secondaryColor}" stroke-width="2.5"/>` +
+          `<circle cx="70" cy="10" r="4" fill="none" stroke="${secondaryColor}" stroke-width="2"/>` +
+          `<circle cx="70" cy="130" r="4" fill="none" stroke="${secondaryColor}" stroke-width="2"/>` +
+          `<circle cx="70" cy="72" r="5" fill="${secondaryColor}"/>`,
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Repeating SVG tile for each motif (single-color, opacity applied on the layer).
+ * Optional gaps pad the tile around the unit so repeats spread apart.
+ */
+function globalBackgroundPatternTile(
+  pattern: PortfolioGlobalBackgroundPattern,
+  color: string,
+  secondaryColor: string,
+  gapX = 0,
+  gapY = 0
+): { svg: string; width: number; height: number } | null {
+  const unit = globalBackgroundPatternUnit(pattern, color, secondaryColor);
+  if (!unit) return null;
+  const width = unit.width + Math.max(0, gapX);
+  const height = unit.height + Math.max(0, gapY);
+  const transforms = [
+    `translate(${Math.max(0, gapX) / 2}, ${Math.max(0, gapY) / 2})`,
+    unit.scale !== 1 ? `scale(${unit.scale})` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return {
+    width,
+    height,
+    svg:
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+      `<g transform="${transforms}">${unit.content}</g></svg>`,
+  };
+}
+
+/** Repeating tile only (no opacity/positioning) — settings-panel swatch previews. */
+export function globalBackgroundPatternSwatchStyle(
+  pattern: PortfolioGlobalBackgroundPattern,
+  color = '#ff5a1f',
+  secondaryColor = '#00e5a0'
+): CSSProperties | undefined {
+  const tile = globalBackgroundPatternTile(pattern, color, secondaryColor);
+  if (!tile) return undefined;
+  return {
+    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(tile.svg)}")`,
+    backgroundSize: `${Math.round(tile.width * 0.6)}px ${Math.round(tile.height * 0.6)}px`,
+    backgroundRepeat: 'repeat',
+  };
+}
+
+/** True when a motif should be painted over the page background. */
+export function hasGlobalBackgroundPattern(global: PortfolioGlobalSettings): boolean {
+  return global.backgroundPattern !== 'none' && global.backgroundPatternOpacity > 0;
+}
+
+function sanitizePatternUnitsPerRow(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(GLOBAL_BACKGROUND_PATTERN_UNITS_PER_ROW_MAX, Math.max(0, Math.round(value)));
+}
+
+function sanitizePatternGapPx(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(GLOBAL_BACKGROUND_PATTERN_GAP_MAX, Math.max(0, Math.round(value)));
+}
+
+/** Fixed full-viewport layer with the repeating motif tile. */
+export function globalBackgroundPatternStyle(
+  global: PortfolioGlobalSettings
+): CSSProperties | undefined {
+  if (!hasGlobalBackgroundPattern(global)) return undefined;
+  const color = sanitizeHex(global.backgroundPatternColor, DEFAULT_GLOBAL_BACKGROUND_PATTERN_COLOR);
+  const secondaryColor = sanitizeHex(
+    global.backgroundPatternSecondaryColor,
+    DEFAULT_GLOBAL_BACKGROUND_PATTERN_SECONDARY_COLOR
+  );
+  const gapX = sanitizePatternGapPx(global.backgroundPatternGapX, DEFAULT_GLOBAL_BACKGROUND_PATTERN_GAP);
+  const gapY = sanitizePatternGapPx(global.backgroundPatternGapY, DEFAULT_GLOBAL_BACKGROUND_PATTERN_GAP);
+  const tile = globalBackgroundPatternTile(
+    global.backgroundPattern,
+    color,
+    secondaryColor,
+    gapX,
+    gapY
+  );
+  if (!tile) return undefined;
+  const opacity = sanitizeOpacityPercent(
+    global.backgroundPatternOpacity,
+    DEFAULT_GLOBAL_BACKGROUND_PATTERN_OPACITY
+  );
+  const unitsPerRow = sanitizePatternUnitsPerRow(
+    global.backgroundPatternUnitsPerRow,
+    DEFAULT_GLOBAL_BACKGROUND_PATTERN_UNITS_PER_ROW
+  );
+  /**
+   * Units per row: each tile spans an equal fraction of the viewport width
+   * (percentage background-size, height follows the tile aspect ratio).
+   * 0 keeps the natural pixel size.
+   */
+  const backgroundSize =
+    unitsPerRow > 0
+      ? `${(100 / unitsPerRow).toFixed(4)}% auto`
+      : `${tile.width}px ${tile.height}px`;
+  return {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(tile.svg)}")`,
+    backgroundSize,
+    backgroundRepeat: 'repeat',
+    opacity: opacity / 100,
+  };
+}
+
 function sanitizeBackgroundImageUrl(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
@@ -578,6 +1520,39 @@ function sanitizeBackgroundImageUrl(value: unknown): string {
     return '';
   }
   return '';
+}
+
+/** Normalize + dedupe + cap the shared background image library. */
+export function normalizeBackgroundImageLibrary(
+  value: unknown,
+  seedUrl = ''
+): string[] {
+  const fromArray = Array.isArray(value)
+    ? value
+        .map((item) => sanitizeBackgroundImageUrl(item))
+        .filter(Boolean)
+    : [];
+  const seed = sanitizeBackgroundImageUrl(seedUrl);
+  const merged = seed ? [seed, ...fromArray.filter((url) => url !== seed)] : fromArray;
+  const unique: string[] = [];
+  for (const url of merged) {
+    if (!unique.includes(url)) unique.push(url);
+    if (unique.length >= MAX_PORTFOLIO_BACKGROUND_IMAGES) break;
+  }
+  return unique;
+}
+
+/** Prepend an uploaded URL; drops the oldest entry when over the max. */
+export function addBackgroundImageToLibrary(library: string[], url: string): string[] {
+  const clean = sanitizeBackgroundImageUrl(url);
+  if (!clean) return normalizeBackgroundImageLibrary(library);
+  return normalizeBackgroundImageLibrary([clean, ...library]);
+}
+
+export function removeBackgroundImageFromLibrary(library: string[], url: string): string[] {
+  const clean = sanitizeBackgroundImageUrl(url);
+  if (!clean) return normalizeBackgroundImageLibrary(library);
+  return normalizeBackgroundImageLibrary(library.filter((item) => item !== clean));
 }
 
 function sanitizeInsetPx(value: unknown, fallback: number): number {
@@ -624,21 +1599,29 @@ function backgroundImageSizeCss(size: PortfolioGlobalBackgroundImageSize): strin
   }
 }
 
-/** True when a solid color and/or fixed image should replace default white page chrome. */
-export function hasGlobalPageBackground(global: PortfolioGlobalSettings): boolean {
-  if (global.backgroundEnabled) return true;
+/** Active fixed wallpaper (image wins over solid when both flags are somehow set). */
+export function hasActiveGlobalBackgroundImage(global: PortfolioGlobalSettings): boolean {
   return (
     global.backgroundImageEnabled && Boolean(sanitizeBackgroundImageUrl(global.backgroundImageUrl))
   );
 }
 
-/** Solid page color only — when true, section fills are suppressed so the global color shows through. */
+/** True when a solid color or fixed image should replace default white page chrome. */
+export function hasGlobalPageBackground(global: PortfolioGlobalSettings): boolean {
+  return hasGlobalSolidBackground(global) || hasActiveGlobalBackgroundImage(global);
+}
+
+/**
+ * Solid page color only — mutually exclusive with the fixed image.
+ * Sections without their own fill stay transparent so this color shows through;
+ * an enabled per-section background paints on top for that section only.
+ */
 export function hasGlobalSolidBackground(global: PortfolioGlobalSettings): boolean {
-  return global.backgroundEnabled;
+  return global.backgroundEnabled && !hasActiveGlobalBackgroundImage(global);
 }
 
 export function globalBackgroundStyle(global: PortfolioGlobalSettings): CSSProperties | undefined {
-  if (!global.backgroundEnabled) return undefined;
+  if (!hasGlobalSolidBackground(global)) return undefined;
   return { backgroundColor: sanitizeHex(global.backgroundColor, DEFAULT_GLOBAL_BACKGROUND_COLOR) };
 }
 
@@ -646,6 +1629,8 @@ export function globalBackgroundStyle(global: PortfolioGlobalSettings): CSSPrope
 export function globalFixedBackgroundImageStyle(
   global: PortfolioGlobalSettings
 ): CSSProperties | undefined {
+  // Never stack image under/over solid — solid mode suppresses the wallpaper.
+  if (hasGlobalSolidBackground(global)) return undefined;
   if (!global.backgroundImageEnabled) return undefined;
   const url = sanitizeBackgroundImageUrl(global.backgroundImageUrl);
   if (!url) return undefined;
@@ -656,10 +1641,10 @@ export function globalFixedBackgroundImageStyle(
   );
 
   return {
-    top: sanitizeInsetPx(global.backgroundImageInsetTop, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET),
-    right: sanitizeInsetPx(global.backgroundImageInsetRight, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET),
-    bottom: sanitizeInsetPx(global.backgroundImageInsetBottom, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET),
-    left: sanitizeInsetPx(global.backgroundImageInsetLeft, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET),
+    top: `max(${sanitizeInsetPx(global.backgroundImageInsetTop, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET)}px, env(safe-area-inset-top, 0px))`,
+    right: `max(${sanitizeInsetPx(global.backgroundImageInsetRight, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET)}px, env(safe-area-inset-right, 0px))`,
+    bottom: `max(${sanitizeInsetPx(global.backgroundImageInsetBottom, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET)}px, env(safe-area-inset-bottom, 0px))`,
+    left: `max(${sanitizeInsetPx(global.backgroundImageInsetLeft, DEFAULT_GLOBAL_BACKGROUND_IMAGE_INSET)}px, env(safe-area-inset-left, 0px))`,
     backgroundImage: `url(${JSON.stringify(url)})`,
     backgroundSize: backgroundImageSizeCss(global.backgroundImageSize),
     backgroundPosition: backgroundImagePositionCss(global.backgroundImagePosition),
@@ -668,30 +1653,56 @@ export function globalFixedBackgroundImageStyle(
   };
 }
 
-export function globalContentWidthClass(width: PortfolioGlobalContentWidth): string | undefined {
+/**
+ * Max width of the editorial content column (centered with mx-auto).
+ * Standard was previously undefined — so Standard looked identical to Full.
+ */
+export function globalContentWidthClass(width: PortfolioGlobalContentWidth): string {
   switch (width) {
     case 'wide':
-      return 'max-w-[92rem]';
+      return 'max-w-[100rem]';
     case 'full':
       return 'max-w-none';
     default:
-      return undefined;
+      return 'max-w-[90rem]';
   }
 }
 
-/** Uniform padding-top above section titles (Portfolio → Footer). */
+/** Uniform padding-top above section titles (Portfolio → Footer).
+ *  Grows with the measured top-nav clearance so titles clear a fixed top bar
+ *  without a separate empty white slab above the section.
+ *  Class names must be full static strings so Tailwind JIT keeps them. */
 export function globalSectionTitleTopClass(
   spacing: PortfolioGlobalSectionTitleTopSpacing
 ): string {
   switch (spacing) {
     case 'compact':
-      return 'pt-8 sm:pt-10 lg:pt-12';
+      return 'pt-[max(2rem,var(--portfolio-nav-top-clearance,0px))] sm:pt-[max(2.5rem,var(--portfolio-nav-top-clearance,0px))] lg:pt-[max(3rem,var(--portfolio-nav-top-clearance,0px))] transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
     case 'comfortable':
-      return 'pt-16 sm:pt-20 lg:pt-24';
+      return 'pt-[max(4rem,var(--portfolio-nav-top-clearance,0px))] sm:pt-[max(5rem,var(--portfolio-nav-top-clearance,0px))] lg:pt-[max(6rem,var(--portfolio-nav-top-clearance,0px))] transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
     case 'spacious':
-      return 'pt-20 sm:pt-28 lg:pt-36';
+      return 'pt-[max(5rem,var(--portfolio-nav-top-clearance,0px))] sm:pt-[max(7rem,var(--portfolio-nav-top-clearance,0px))] lg:pt-[max(9rem,var(--portfolio-nav-top-clearance,0px))] transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
     default:
-      return 'pt-12 sm:pt-16 lg:pt-20';
+      return 'pt-[max(3rem,var(--portfolio-nav-top-clearance,0px))] sm:pt-[max(4rem,var(--portfolio-nav-top-clearance,0px))] lg:pt-[max(5rem,var(--portfolio-nav-top-clearance,0px))] transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
+  }
+}
+
+/**
+ * Split screen right column — top padding between content sections.
+ * No nav clearance baked in (titles live on the left rail). Static class strings for Tailwind JIT.
+ */
+export function globalSplitContentTopClass(
+  spacing: PortfolioGlobalSectionTitleTopSpacing
+): string {
+  switch (spacing) {
+    case 'compact':
+      return 'pt-6 sm:pt-8 lg:pt-8 transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
+    case 'comfortable':
+      return 'pt-12 sm:pt-16 lg:pt-20 transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
+    case 'spacious':
+      return 'pt-16 sm:pt-24 lg:pt-28 transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
+    default:
+      return 'pt-10 sm:pt-12 lg:pt-14 transition-[padding-top] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]';
   }
 }
 
@@ -699,26 +1710,35 @@ function globalHeaderFontClass(font: PortfolioGlobalHeaderFont, kind: 'title' | 
   if (kind === 'title') {
     switch (font) {
       case 'serif':
-        return 'font-serif font-bold tracking-[-0.03em]';
+        return 'font-bold tracking-[-0.03em]';
       case 'display':
-        return 'font-black uppercase tracking-[0.08em]';
+        return 'font-normal uppercase tracking-[0.06em]';
+      case 'condensed':
+        return 'font-bold uppercase tracking-[0.04em]';
+      case 'geometric':
+        return 'font-extrabold tracking-[-0.02em]';
       default:
         return 'font-extrabold tracking-[-0.04em]';
     }
   }
   switch (font) {
     case 'serif':
-      return 'font-serif leading-relaxed';
+      return 'leading-relaxed';
     case 'display':
-      return 'font-bold uppercase tracking-[0.12em]';
+      return 'font-normal uppercase tracking-[0.12em]';
+    case 'condensed':
+      return 'font-semibold uppercase tracking-[0.08em]';
+    case 'geometric':
+      return 'font-medium leading-relaxed';
     default:
       return 'leading-relaxed';
   }
 }
 
 function globalHeaderFontStyle(font: PortfolioGlobalHeaderFont): CSSProperties | undefined {
-  if (font === 'serif') return { fontFamily: "'Playfair Display', serif" };
-  return undefined;
+  const preset = PORTFOLIO_GLOBAL_HEADER_FONT_OPTIONS.find((option) => option.value === font);
+  if (!preset) return undefined;
+  return { fontFamily: preset.fontFamily };
 }
 
 function globalTitleSizeClass(size: PortfolioGlobalTitleSize): string {
@@ -728,9 +1748,24 @@ function globalTitleSizeClass(size: PortfolioGlobalTitleSize): string {
     case 'md':
       return 'text-4xl sm:text-5xl lg:text-6xl lg:leading-[0.95]';
     case 'xl':
-      return 'text-6xl sm:text-7xl lg:text-8xl lg:leading-[0.92]';
+      // Cap below lg so chrome + gutters don’t overflow phones/tablets.
+      return 'text-4xl sm:text-5xl lg:text-8xl lg:leading-[0.92]';
     default:
-      return 'text-5xl sm:text-6xl lg:text-7xl lg:leading-[0.95]';
+      return 'text-4xl sm:text-5xl lg:text-7xl lg:leading-[0.95]';
+  }
+}
+
+/** Title sizes capped for the narrow (~40%) split-screen left rail. */
+export function globalSplitRailTitleSizeClass(size: PortfolioGlobalTitleSize): string {
+  switch (size) {
+    case 'sm':
+      return 'text-2xl sm:text-3xl lg:text-4xl lg:leading-[0.95]';
+    case 'md':
+      return 'text-3xl sm:text-4xl lg:text-5xl lg:leading-[0.95]';
+    case 'xl':
+      return 'text-4xl sm:text-5xl lg:text-[3.25rem] lg:leading-[0.92]';
+    default:
+      return 'text-3xl sm:text-4xl lg:text-5xl lg:leading-[0.95]';
   }
 }
 
@@ -742,6 +1777,18 @@ function globalSubtitleSizeClass(size: PortfolioGlobalSubtitleSize): string {
       return 'text-lg sm:text-xl';
     default:
       return 'text-base sm:text-lg';
+  }
+}
+
+/** Subtitle sizes capped for the split-screen left rail. */
+export function globalSplitRailSubtitleSizeClass(size: PortfolioGlobalSubtitleSize): string {
+  switch (size) {
+    case 'sm':
+      return 'text-xs sm:text-sm';
+    case 'lg':
+      return 'text-base sm:text-lg';
+    default:
+      return 'text-sm sm:text-base';
   }
 }
 
@@ -791,13 +1838,19 @@ export type ResolvedGlobalHeaderTypography = {
   customSizing: boolean;
 };
 
+export type GlobalSectionTypographyContext = {
+  /** Narrow split-screen left rail — uses capped sizes that fit ~40% column width. */
+  splitRail?: boolean;
+};
+
 export function resolveGlobalSectionTitleTypography(
   global: PortfolioGlobalSettings,
   section: {
     fontClass: string;
     fontStyle?: CSSProperties;
     colorStyle?: CSSProperties;
-  }
+  },
+  context: GlobalSectionTypographyContext = {}
 ): ResolvedGlobalHeaderTypography {
   if (global.titleTypography.scope === 'section') {
     return {
@@ -809,9 +1862,12 @@ export function resolveGlobalSectionTitleTypography(
   }
 
   const typo = global.titleTypography;
+  const sizeClass = context.splitRail
+    ? globalSplitRailTitleSizeClass(typo.size)
+    : globalTitleSizeClass(typo.size);
   const className = [
     globalHeaderFontClass(typo.font, 'title'),
-    globalTitleSizeClass(typo.size),
+    sizeClass,
     typo.italic ? 'italic' : '',
     typo.uppercase && typo.font !== 'display' ? 'uppercase' : '',
   ]
@@ -835,7 +1891,8 @@ export function resolveGlobalSectionSubtitleTypography(
     fontClass: string;
     fontStyle?: CSSProperties;
     colorStyle?: CSSProperties;
-  }
+  },
+  context: GlobalSectionTypographyContext = {}
 ): ResolvedGlobalHeaderTypography {
   if (global.subtitleTypography.scope === 'section') {
     return {
@@ -847,9 +1904,12 @@ export function resolveGlobalSectionSubtitleTypography(
   }
 
   const typo = global.subtitleTypography;
+  const sizeClass = context.splitRail
+    ? globalSplitRailSubtitleSizeClass(typo.size)
+    : globalSubtitleSizeClass(typo.size);
   const className = [
     globalHeaderFontClass(typo.font, 'subtitle'),
-    globalSubtitleSizeClass(typo.size),
+    sizeClass,
     typo.italic ? 'italic' : '',
     typo.uppercase && typo.font !== 'display' ? 'uppercase' : '',
   ]
@@ -880,7 +1940,7 @@ function mergeTitleTypography(
 
   return {
     scope: scope === 'section' || scope === 'global' ? scope : base.scope,
-    font: font === 'sans' || font === 'serif' || font === 'display' ? font : base.font,
+    font: isPortfolioGlobalHeaderFont(font) ? font : base.font,
     size: size === 'sm' || size === 'md' || size === 'lg' || size === 'xl' ? size : base.size,
     color: sanitizeHex(record.color, base.color),
     decoration:
@@ -906,7 +1966,7 @@ function mergeSubtitleTypography(
 
   return {
     scope: scope === 'section' || scope === 'global' ? scope : base.scope,
-    font: font === 'sans' || font === 'serif' || font === 'display' ? font : base.font,
+    font: isPortfolioGlobalHeaderFont(font) ? font : base.font,
     size: size === 'sm' || size === 'md' || size === 'lg' ? size : base.size,
     color: sanitizeHex(record.color, base.color),
     decoration:
@@ -982,6 +2042,81 @@ function mergeTitleChrome(
   };
 }
 
+function mergeSplitTitleFrame(
+  base: PortfolioGlobalSplitTitleFrame,
+  patch: unknown
+): PortfolioGlobalSplitTitleFrame {
+  if (!patch || typeof patch !== 'object') {
+    return {
+      ...base,
+      borderSides: { ...(base.borderSides ?? DEFAULT_GLOBAL_SPLIT_TITLE_FRAME_BORDER_SIDES) },
+    };
+  }
+  const record = patch as Record<string, unknown>;
+  const borderWidth = record.borderWidth;
+  const borderRadius = record.borderRadius;
+  const padding = record.padding;
+  const borderBlur = record.borderBlur;
+  const borderDoubleGap = record.borderDoubleGap;
+
+  return {
+    enabled: typeof record.enabled === 'boolean' ? record.enabled : base.enabled,
+    backgroundEnabled:
+      typeof record.backgroundEnabled === 'boolean' ? record.backgroundEnabled : base.backgroundEnabled,
+    backgroundColor: sanitizeHex(record.backgroundColor, base.backgroundColor),
+    borderEnabled: typeof record.borderEnabled === 'boolean' ? record.borderEnabled : base.borderEnabled,
+    borderColor: sanitizeHex(record.borderColor, base.borderColor),
+    borderWidth:
+      borderWidth === 'none' ||
+      borderWidth === 'thin' ||
+      borderWidth === 'medium' ||
+      borderWidth === 'thick'
+        ? borderWidth
+        : base.borderWidth,
+    borderSides: mergeSplitTitleFrameBorderSides(
+      base.borderSides ?? DEFAULT_GLOBAL_SPLIT_TITLE_FRAME_BORDER_SIDES,
+      record.borderSides
+    ),
+    borderBlur:
+      borderBlur === 'none' ||
+      borderBlur === 'soft' ||
+      borderBlur === 'medium' ||
+      borderBlur === 'strong'
+        ? borderBlur
+        : base.borderBlur ?? 'none',
+    borderDoubleEnabled:
+      typeof record.borderDoubleEnabled === 'boolean'
+        ? record.borderDoubleEnabled
+        : base.borderDoubleEnabled ?? false,
+    borderDoubleColor: sanitizeHex(
+      record.borderDoubleColor,
+      base.borderDoubleColor ?? DEFAULT_GLOBAL_SPLIT_TITLE_FRAME.borderDoubleColor
+    ),
+    borderDoubleGap:
+      borderDoubleGap === 'tight' ||
+      borderDoubleGap === 'standard' ||
+      borderDoubleGap === 'wide'
+        ? borderDoubleGap
+        : base.borderDoubleGap ?? 'standard',
+    borderRadius:
+      borderRadius === 'none' ||
+      borderRadius === 'sm' ||
+      borderRadius === 'md' ||
+      borderRadius === 'lg' ||
+      borderRadius === 'full'
+        ? borderRadius
+        : base.borderRadius,
+    padding:
+      padding === 'none' ||
+      padding === 'compact' ||
+      padding === 'standard' ||
+      padding === 'comfortable'
+        ? padding
+        : base.padding,
+    offsetX: clampGlobalSplitTitleOffsetX(record.offsetX, base.offsetX ?? 0),
+  };
+}
+
 export function mergeGlobalSettings(base: PortfolioGlobalSettings, patch: unknown): PortfolioGlobalSettings {
   if (!patch || typeof patch !== 'object') return base;
   const record = patch as Record<string, unknown>;
@@ -990,6 +2125,8 @@ export function mergeGlobalSettings(base: PortfolioGlobalSettings, patch: unknow
   const contentWidth = record.contentWidth;
   const contentGutter = record.contentGutter;
   const titleScroll = record.titleScroll;
+  const splitTitleMotion = record.splitTitleMotion;
+  const splitContentTopSpacing = record.splitContentTopSpacing;
   const sectionTitleTopSpacing = record.sectionTitleTopSpacing;
   const titleOrientation =
     record.titleOrientation === 'horizontal' || record.titleOrientation === 'vertical'
@@ -1005,18 +2142,44 @@ export function mergeGlobalSettings(base: PortfolioGlobalSettings, patch: unknow
   const backgroundImageSize = record.backgroundImageSize;
   const backgroundImagePosition = record.backgroundImagePosition;
 
+  let backgroundEnabled =
+    typeof record.backgroundEnabled === 'boolean' ? record.backgroundEnabled : base.backgroundEnabled;
+  let backgroundImageEnabled =
+    typeof record.backgroundImageEnabled === 'boolean'
+      ? record.backgroundImageEnabled
+      : base.backgroundImageEnabled;
+  const backgroundImageUrl =
+    typeof record.backgroundImageUrl === 'string'
+      ? record.backgroundImageUrl.trim()
+      : base.backgroundImageUrl;
+
+  // Color OR fixed image — never both. Enabling one clears the other.
+  if (typeof record.backgroundEnabled === 'boolean' && record.backgroundEnabled) {
+    backgroundImageEnabled = false;
+  } else if (typeof record.backgroundImageEnabled === 'boolean' && record.backgroundImageEnabled) {
+    backgroundEnabled = false;
+  } else if (backgroundEnabled && backgroundImageEnabled) {
+    // Legacy: both flags on — keep image when a URL exists, otherwise solid.
+    if (sanitizeBackgroundImageUrl(backgroundImageUrl)) {
+      backgroundEnabled = false;
+    } else {
+      backgroundImageEnabled = false;
+    }
+  }
+
+  const backgroundImageLibrary = normalizeBackgroundImageLibrary(
+    record.backgroundImageLibrary !== undefined
+      ? record.backgroundImageLibrary
+      : base.backgroundImageLibrary,
+    backgroundImageUrl
+  );
+
   return {
-    backgroundEnabled:
-      typeof record.backgroundEnabled === 'boolean' ? record.backgroundEnabled : base.backgroundEnabled,
+    backgroundEnabled,
     backgroundColor: sanitizeHex(record.backgroundColor, base.backgroundColor),
-    backgroundImageEnabled:
-      typeof record.backgroundImageEnabled === 'boolean'
-        ? record.backgroundImageEnabled
-        : base.backgroundImageEnabled,
-    backgroundImageUrl:
-      typeof record.backgroundImageUrl === 'string'
-        ? record.backgroundImageUrl.trim()
-        : base.backgroundImageUrl,
+    backgroundImageEnabled,
+    backgroundImageUrl,
+    backgroundImageLibrary,
     backgroundImageSize:
       backgroundImageSize === 'cover' ||
       backgroundImageSize === 'contain' ||
@@ -1055,8 +2218,53 @@ export function mergeGlobalSettings(base: PortfolioGlobalSettings, patch: unknow
       record.backgroundImageInsetLeft,
       base.backgroundImageInsetLeft
     ),
+    backgroundPattern:
+      record.backgroundPattern === 'none' ||
+      record.backgroundPattern === 'arrows' ||
+      record.backgroundPattern === 'cubes' ||
+      record.backgroundPattern === 'hexagons' ||
+      record.backgroundPattern === 'double-hexagon' ||
+      record.backgroundPattern === 'axis-reticle' ||
+      record.backgroundPattern === 'faceted-diamond' ||
+      record.backgroundPattern === 'opposed-triangles' ||
+      record.backgroundPattern === 'asymmetric-grid'
+        ? record.backgroundPattern
+        : base.backgroundPattern ?? 'none',
+    backgroundPatternColor: sanitizeHex(
+      record.backgroundPatternColor,
+      base.backgroundPatternColor ?? DEFAULT_GLOBAL_BACKGROUND_PATTERN_COLOR
+    ),
+    backgroundPatternSecondaryColor: sanitizeHex(
+      record.backgroundPatternSecondaryColor,
+      base.backgroundPatternSecondaryColor ??
+        DEFAULT_GLOBAL_BACKGROUND_PATTERN_SECONDARY_COLOR
+    ),
+    backgroundPatternOpacity: sanitizeOpacityPercent(
+      record.backgroundPatternOpacity,
+      base.backgroundPatternOpacity ?? DEFAULT_GLOBAL_BACKGROUND_PATTERN_OPACITY
+    ),
+    backgroundPatternUnitsPerRow: sanitizePatternUnitsPerRow(
+      record.backgroundPatternUnitsPerRow,
+      base.backgroundPatternUnitsPerRow ?? DEFAULT_GLOBAL_BACKGROUND_PATTERN_UNITS_PER_ROW
+    ),
+    backgroundPatternGapX: sanitizePatternGapPx(
+      record.backgroundPatternGapX,
+      base.backgroundPatternGapX ?? DEFAULT_GLOBAL_BACKGROUND_PATTERN_GAP
+    ),
+    backgroundPatternGapY: sanitizePatternGapPx(
+      record.backgroundPatternGapY,
+      base.backgroundPatternGapY ?? DEFAULT_GLOBAL_BACKGROUND_PATTERN_GAP
+    ),
     monochromeUi:
       typeof record.monochromeUi === 'boolean' ? record.monochromeUi : base.monochromeUi,
+    colorMode:
+      record.colorMode === 'dark' || record.colorMode === 'light'
+        ? record.colorMode
+        : (base.colorMode ?? 'dark'),
+    settingsShortcutEnabled:
+      typeof record.settingsShortcutEnabled === 'boolean'
+        ? record.settingsShortcutEnabled
+        : base.settingsShortcutEnabled ?? true,
     titleAlignment:
       titleAlignment === 'section' ||
       titleAlignment === 'left' ||
@@ -1079,6 +2287,23 @@ export function mergeGlobalSettings(base: PortfolioGlobalSettings, patch: unknow
         : base.contentGutter,
     titleScroll:
       titleScroll === 'sticky' || titleScroll === 'static' ? titleScroll : base.titleScroll,
+    splitTitleMotion:
+      splitTitleMotion === 'fade' ||
+      splitTitleMotion === 'fade-up' ||
+      splitTitleMotion === 'fade-scale'
+        ? splitTitleMotion
+        : base.splitTitleMotion,
+    splitTitleFrame: mergeSplitTitleFrame(
+      base.splitTitleFrame ?? DEFAULT_GLOBAL_SPLIT_TITLE_FRAME,
+      record.splitTitleFrame
+    ),
+    splitContentTopSpacing:
+      splitContentTopSpacing === 'compact' ||
+      splitContentTopSpacing === 'standard' ||
+      splitContentTopSpacing === 'comfortable' ||
+      splitContentTopSpacing === 'spacious'
+        ? splitContentTopSpacing
+        : base.splitContentTopSpacing,
     motionProfile: resolveMotionProfileFromStorage(
       record,
       mergeMotionProfile(base.motionProfile, record.motionProfile)
@@ -1091,6 +2316,9 @@ export function mergeGlobalSettings(base: PortfolioGlobalSettings, patch: unknow
         ? sectionTitleTopSpacing
         : base.sectionTitleTopSpacing,
     sectionOrder: mergeSectionOrder(base.sectionOrder, record.sectionOrder),
+    bodyFont: isPortfolioGlobalBodyFont(record.bodyFont)
+      ? record.bodyFont
+      : base.bodyFont ?? 'plusJakarta',
     titleTypography: mergeTitleTypography(base.titleTypography, record.titleTypography),
     subtitleTypography: mergeSubtitleTypography(base.subtitleTypography, record.subtitleTypography),
     titleChrome: mergeTitleChrome(base.titleChrome, record.titleChrome),

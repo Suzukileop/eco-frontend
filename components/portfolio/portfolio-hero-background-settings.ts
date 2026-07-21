@@ -1,7 +1,20 @@
 import type { CSSProperties } from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import {
+  DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_A,
+  DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_B,
+  DEFAULT_SERVICES_CARD_DIVIDER_COLOR,
+  servicesCardSplitBackgroundLayerStyle,
+  type PortfolioServicesCardDividerShape,
+  type PortfolioServicesCardSplitAxis,
+} from '@/components/portfolio/portfolio-services-card-background-settings';
 
-export type HeroBackgroundFill = 'solid' | 'gradient' | 'image';
+/**
+ * 'transparent' = paint strictly nothing (global color + pattern show through).
+ * 'none' = legacy "Global wallpaper": no local fill, but the hero repaints the
+ * global solid color as its own opaque layer.
+ */
+export type HeroBackgroundFill = 'transparent' | 'none' | 'solid' | 'gradient' | 'image' | 'split';
 
 export type HeroBackgroundGradientType = 'linear' | 'radial';
 
@@ -25,7 +38,18 @@ export type PortfolioHeroBackgroundSettings = {
     | 'top-right'
     | 'bottom-left'
     | 'bottom-right';
-  heroMotifFill: Exclude<HeroBackgroundFill, 'image'>;
+  heroSectionBackgroundColorA: string;
+  heroSectionBackgroundColorB: string;
+  heroSectionBackgroundSplitAxis: PortfolioServicesCardSplitAxis;
+  heroSectionBackgroundSplitPosition: number;
+  heroSectionBackgroundDividerEnabled: boolean;
+  heroSectionBackgroundDividerShape: PortfolioServicesCardDividerShape;
+  heroSectionBackgroundDividerAngle: number;
+  heroSectionBackgroundDividerCurveDepth: number;
+  heroSectionBackgroundDividerColor: string;
+  heroSectionBackgroundDividerThickness: number;
+  heroSectionBackgroundDividerOpacity: number;
+  heroMotifFill: Exclude<HeroBackgroundFill, 'image' | 'none' | 'split' | 'transparent'>;
   heroMotifOpacity: number;
   heroMotifGradientType: HeroBackgroundGradientType;
   heroMotifGradientTo: string;
@@ -46,6 +70,17 @@ export const DEFAULT_HERO_BACKGROUND_SETTINGS: PortfolioHeroBackgroundSettings =
   heroSectionBackgroundImageUrl: '',
   heroSectionBackgroundImageSize: 'cover',
   heroSectionBackgroundImagePosition: 'center',
+  heroSectionBackgroundColorA: DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_A,
+  heroSectionBackgroundColorB: DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_B,
+  heroSectionBackgroundSplitAxis: 'y',
+  heroSectionBackgroundSplitPosition: 50,
+  heroSectionBackgroundDividerEnabled: false,
+  heroSectionBackgroundDividerShape: 'straight',
+  heroSectionBackgroundDividerAngle: 135,
+  heroSectionBackgroundDividerCurveDepth: 14,
+  heroSectionBackgroundDividerColor: DEFAULT_SERVICES_CARD_DIVIDER_COLOR,
+  heroSectionBackgroundDividerThickness: 2,
+  heroSectionBackgroundDividerOpacity: 85,
   heroMotifFill: 'solid',
   heroMotifOpacity: 100,
   heroMotifGradientType: 'linear',
@@ -54,7 +89,7 @@ export const DEFAULT_HERO_BACKGROUND_SETTINGS: PortfolioHeroBackgroundSettings =
 };
 
 export const PORTFOLIO_HERO_BACKGROUND_FILL_OPTIONS: {
-  value: Exclude<HeroBackgroundFill, 'image'>;
+  value: Exclude<HeroBackgroundFill, 'image' | 'none' | 'transparent'>;
   label: string;
   description: string;
 }[] = [
@@ -67,8 +102,47 @@ export const PORTFOLIO_HERO_SECTION_BACKGROUND_FILL_OPTIONS: {
   label: string;
   description: string;
 }[] = [
+  {
+    value: 'transparent',
+    label: 'None',
+    description: 'Nothing painted — Global page color and pattern show through.',
+  },
+  {
+    value: 'none',
+    label: 'Global wallpaper',
+    description: 'No hero fill — repaints the Global color / shows the fixed image underneath.',
+  },
   ...PORTFOLIO_HERO_BACKGROUND_FILL_OPTIONS,
-  { value: 'image', label: 'Image', description: 'Upload a photo as the hero backdrop.' },
+  {
+    value: 'split',
+    label: 'Split X / Y',
+    description: 'Two color zones separated by a geometric line — like card fills.',
+  },
+  {
+    value: 'image',
+    label: 'Image',
+    description: 'Section image — overrides the Global wallpaper for Hero only.',
+  },
+];
+
+export const PORTFOLIO_HERO_BACKGROUND_SPLIT_AXIS_OPTIONS: {
+  value: PortfolioServicesCardSplitAxis;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'y', label: 'Axe Y (horizontal)', description: 'Zone haut / zone bas.' },
+  { value: 'x', label: 'Axe X (vertical)', description: 'Zone gauche / zone droite.' },
+];
+
+export const PORTFOLIO_HERO_BACKGROUND_DIVIDER_SHAPE_OPTIONS: {
+  value: PortfolioServicesCardDividerShape;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'straight', label: 'Droite', description: 'Ligne droite horizontale ou verticale.' },
+  { value: 'diagonal', label: 'Diagonale', description: 'Séparation inclinée — angle et position réglables.' },
+  { value: 'curve', label: 'Courbe', description: 'Arc doux entre les deux zones.' },
+  { value: 'wave', label: 'Vague', description: 'Ligne ondulée pour un rendu organique.' },
 ];
 
 export const PORTFOLIO_HERO_BACKGROUND_GRADIENT_TYPE_OPTIONS: {
@@ -87,6 +161,24 @@ function clampPercent(value: number): number {
 function clampAngle(value: number): number {
   const normalized = value % 360;
   return normalized < 0 ? normalized + 360 : normalized;
+}
+
+function clampSplitPercent(value: unknown, fallback: number): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+function clampDividerThickness(value: unknown, fallback: number): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(8, Math.max(1, Math.round(n)));
+}
+
+function clampCurveDepth(value: unknown, fallback: number): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(40, Math.max(0, Math.round(n)));
 }
 
 function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
@@ -143,19 +235,25 @@ function sanitizeOpacity(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? clampPercent(value) : fallback;
 }
 
-export function heroSectionBackgroundStyle(settings: PortfolioHeroBackgroundSettings): CSSProperties {
+export function heroSectionBackgroundStyle(
+  settings: PortfolioHeroBackgroundSettings
+): CSSProperties | undefined {
   const opacity = settings.heroSectionBackgroundOpacity;
+
+  if (
+    settings.heroSectionBackgroundFill === 'none' ||
+    settings.heroSectionBackgroundFill === 'transparent'
+  ) {
+    return undefined;
+  }
 
   if (settings.heroSectionBackgroundFill === 'image') {
     const url =
       typeof settings.heroSectionBackgroundImageUrl === 'string'
         ? settings.heroSectionBackgroundImageUrl.trim()
         : '';
-    if (!url) {
-      return {
-        backgroundColor: colorWithOpacity(settings.heroSectionBackgroundColor, opacity),
-      };
-    }
+    // Image mode is exclusive — no solid fallback when the URL is empty.
+    if (!url) return undefined;
     const size =
       settings.heroSectionBackgroundImageSize === 'contain'
         ? 'contain'
@@ -178,6 +276,29 @@ export function heroSectionBackgroundStyle(settings: PortfolioHeroBackgroundSett
       backgroundSize: size,
       backgroundPosition: positionMap[settings.heroSectionBackgroundImagePosition] ?? 'center center',
       backgroundRepeat: 'no-repeat',
+      backgroundColor: 'transparent',
+      opacity: opacity / 100,
+    };
+  }
+
+  if (settings.heroSectionBackgroundFill === 'split') {
+    const splitStyle = servicesCardSplitBackgroundLayerStyle({
+      cardBackgroundFill: 'split',
+      cardBackgroundColorA: settings.heroSectionBackgroundColorA,
+      cardBackgroundColorB: settings.heroSectionBackgroundColorB,
+      cardBackgroundSplitAxis: settings.heroSectionBackgroundSplitAxis,
+      cardBackgroundSplitPosition: settings.heroSectionBackgroundSplitPosition,
+      cardDividerEnabled: settings.heroSectionBackgroundDividerEnabled,
+      cardDividerShape: settings.heroSectionBackgroundDividerShape,
+      cardDividerAngle: settings.heroSectionBackgroundDividerAngle,
+      cardDividerCurveDepth: settings.heroSectionBackgroundDividerCurveDepth,
+      cardDividerColor: settings.heroSectionBackgroundDividerColor,
+      cardDividerThickness: settings.heroSectionBackgroundDividerThickness,
+      cardDividerOpacity: settings.heroSectionBackgroundDividerOpacity,
+    });
+    if (!splitStyle) return undefined;
+    return {
+      ...splitStyle,
       opacity: opacity / 100,
     };
   }
@@ -235,10 +356,17 @@ export function mergeHeroBackgroundSettings(
   const motifGradientType = record.heroMotifGradientType;
   const imageSize = record.heroSectionBackgroundImageSize;
   const imagePosition = record.heroSectionBackgroundImagePosition;
+  const splitAxis = record.heroSectionBackgroundSplitAxis;
+  const dividerShape = record.heroSectionBackgroundDividerShape;
 
   return {
     heroSectionBackgroundFill:
-      sectionFill === 'solid' || sectionFill === 'gradient' || sectionFill === 'image'
+      sectionFill === 'transparent' ||
+      sectionFill === 'none' ||
+      sectionFill === 'solid' ||
+      sectionFill === 'gradient' ||
+      sectionFill === 'image' ||
+      sectionFill === 'split'
         ? sectionFill
         : base.heroSectionBackgroundFill,
     heroSectionBackgroundColor: sanitizeHex(record.heroSectionBackgroundColor, base.heroSectionBackgroundColor),
@@ -279,6 +407,53 @@ export function mergeHeroBackgroundSettings(
       imagePosition === 'bottom-right'
         ? imagePosition
         : base.heroSectionBackgroundImagePosition,
+    heroSectionBackgroundColorA: sanitizeHex(
+      record.heroSectionBackgroundColorA,
+      base.heroSectionBackgroundColorA ?? DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_A
+    ),
+    heroSectionBackgroundColorB: sanitizeHex(
+      record.heroSectionBackgroundColorB,
+      base.heroSectionBackgroundColorB ?? DEFAULT_SERVICES_CARD_BACKGROUND_ZONE_B
+    ),
+    heroSectionBackgroundSplitAxis:
+      splitAxis === 'x' || splitAxis === 'y'
+        ? splitAxis
+        : (base.heroSectionBackgroundSplitAxis ?? 'y'),
+    heroSectionBackgroundSplitPosition: clampSplitPercent(
+      record.heroSectionBackgroundSplitPosition,
+      base.heroSectionBackgroundSplitPosition ?? 50
+    ),
+    heroSectionBackgroundDividerEnabled:
+      typeof record.heroSectionBackgroundDividerEnabled === 'boolean'
+        ? record.heroSectionBackgroundDividerEnabled
+        : (base.heroSectionBackgroundDividerEnabled ?? false),
+    heroSectionBackgroundDividerShape:
+      dividerShape === 'straight' ||
+      dividerShape === 'diagonal' ||
+      dividerShape === 'curve' ||
+      dividerShape === 'wave'
+        ? dividerShape
+        : (base.heroSectionBackgroundDividerShape ?? 'straight'),
+    heroSectionBackgroundDividerAngle:
+      typeof record.heroSectionBackgroundDividerAngle === 'number'
+        ? clampAngle(record.heroSectionBackgroundDividerAngle)
+        : (base.heroSectionBackgroundDividerAngle ?? 135),
+    heroSectionBackgroundDividerCurveDepth: clampCurveDepth(
+      record.heroSectionBackgroundDividerCurveDepth,
+      base.heroSectionBackgroundDividerCurveDepth ?? 14
+    ),
+    heroSectionBackgroundDividerColor: sanitizeHex(
+      record.heroSectionBackgroundDividerColor,
+      base.heroSectionBackgroundDividerColor ?? DEFAULT_SERVICES_CARD_DIVIDER_COLOR
+    ),
+    heroSectionBackgroundDividerThickness: clampDividerThickness(
+      record.heroSectionBackgroundDividerThickness,
+      base.heroSectionBackgroundDividerThickness ?? 2
+    ),
+    heroSectionBackgroundDividerOpacity: clampSplitPercent(
+      record.heroSectionBackgroundDividerOpacity,
+      base.heroSectionBackgroundDividerOpacity ?? 85
+    ),
     heroMotifFill: motifFill === 'solid' || motifFill === 'gradient' ? motifFill : base.heroMotifFill,
     heroMotifOpacity: sanitizeOpacity(record.heroMotifOpacity, base.heroMotifOpacity),
     heroMotifGradientType:

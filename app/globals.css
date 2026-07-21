@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Montserrat:wght@400;700&family=Oswald:wght@400;700&family=Bebas+Neue&family=Dancing+Script:wght@400;700&family=Pacifico&family=Playfair+Display:wght@400;700&family=Anton&family=Raleway:wght@400;700&family=Permanent+Marker&family=Righteous&family=Lobster&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Oswald:wght@400;700&family=Bebas+Neue&family=Dancing+Script:wght@400;700&family=Pacifico&family=Playfair+Display:wght@400;700&family=Anton&family=Raleway:wght@400;700&family=Permanent+Marker&family=Righteous&family=Lobster&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -1170,6 +1170,17 @@ html.ecosystem-geo-bg [data-dashboard-content] {
   .portfolio-hero-enter,
   .portfolio-hero-image-enter {
     animation: none;
+  }
+}
+
+/* Narrow screens: slower marquees so cards stay readable while scrolling. */
+@media (max-width: 639px) {
+  .portfolio-services-marquee {
+    animation-duration: 48s;
+  }
+
+  .portfolio-skills-marquee {
+    animation-duration: 48s;
   }
 }
 

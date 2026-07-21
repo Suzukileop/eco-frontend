@@ -1,10 +1,313 @@
 import type { CSSProperties } from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import { mergeUseHeroPalette } from '@/components/portfolio/portfolio-section-palette';
 import {
   DEFAULT_SECTION_BACKGROUND,
   mergeSectionBackground,
   type PortfolioSectionBackgroundSettings,
 } from '@/components/portfolio/portfolio-section-background-settings';
+import type { PortfolioNavSettings } from '@/components/portfolio/portfolio-settings-types';
+import { portfolioNavIsVertical } from '@/components/portfolio/portfolio-nav-settings';
+import {
+  createElementTextStyle,
+  normalizeElementStylesRecord,
+  patchElementStylesRecord,
+  type PortfolioElementTextStyle,
+} from '@/components/portfolio/portfolio-element-text-style';
+
+export type PortfolioFooterStyleTarget =
+  | 'brand'
+  | 'description'
+  | 'columnHeading'
+  | 'contactLine'
+  | 'socialLabel'
+  | 'meta'
+  | 'marketplaceLink'
+  | 'ctaTitle'
+  | 'ctaSubtitle'
+  | 'ctaButton';
+
+export type PortfolioFooterElementStyles = Record<PortfolioFooterStyleTarget, PortfolioElementTextStyle>;
+
+export const FOOTER_STYLE_TARGET_IDS: PortfolioFooterStyleTarget[] = [
+  'brand',
+  'description',
+  'columnHeading',
+  'contactLine',
+  'socialLabel',
+  'meta',
+  'marketplaceLink',
+  'ctaTitle',
+  'ctaSubtitle',
+  'ctaButton',
+];
+
+export const PORTFOLIO_FOOTER_STYLE_TARGET_OPTIONS: {
+  value: PortfolioFooterStyleTarget;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'brand', label: 'Brand name', description: 'Creator name in compact and editorial footers.' },
+  { value: 'description', label: 'Description', description: 'Bio or why-me blurb under the brand.' },
+  { value: 'columnHeading', label: 'Column heading', description: '“Networks” and “Contact” labels.' },
+  { value: 'contactLine', label: 'Contact line', description: 'Phone, email, location, and hours text.' },
+  { value: 'socialLabel', label: 'Social label', description: 'Text labels beside social icons.' },
+  { value: 'meta', label: 'Meta line', description: 'Copyright, views count, and design credit.' },
+  { value: 'marketplaceLink', label: 'Marketplace link', description: 'Marketplace profile link text.' },
+  { value: 'ctaTitle', label: 'CTA title', description: 'Minimal design band headline.' },
+  { value: 'ctaSubtitle', label: 'CTA subtitle', description: 'Availability line under the CTA title.' },
+  { value: 'ctaButton', label: 'CTA button', description: 'Contact me button label typography.' },
+];
+
+export const DEFAULT_FOOTER_ELEMENT_STYLES: PortfolioFooterElementStyles = {
+  brand: createElementTextStyle({ color: '#0a0a0a', font: 'serif', size: 'xl', bold: true }),
+  description: createElementTextStyle({ color: '#a3a3a3', font: 'serif', size: 'md' }),
+  columnHeading: createElementTextStyle({
+    color: '#a3a3a3',
+    font: 'serif',
+    size: 'md',
+    bold: true,
+    uppercase: true,
+  }),
+  contactLine: createElementTextStyle({ color: '#0a0a0a', font: 'serif', size: 'md', bold: true }),
+  socialLabel: createElementTextStyle({ color: '#0a0a0a', font: 'serif', size: 'lg', bold: true }),
+  meta: createElementTextStyle({ color: '#a3a3a3', font: 'serif', size: 'md', bold: true }),
+  marketplaceLink: createElementTextStyle({
+    color: '#ea580c',
+    font: 'serif',
+    size: 'lg',
+    bold: true,
+  }),
+  ctaTitle: createElementTextStyle({ color: '#ffffff', font: 'serif', size: 'xl', bold: true }),
+  ctaSubtitle: createElementTextStyle({ color: '#ffffff', font: 'serif', size: 'md' }),
+  ctaButton: createElementTextStyle({
+    color: '#0a0a0a',
+    font: 'serif',
+    size: 'md',
+    bold: true,
+  }),
+};
+
+/** Previous default sizes — used once to migrate saved footers up to the new scale. */
+const LEGACY_FOOTER_ELEMENT_DEFAULT_SIZES: Record<
+  PortfolioFooterStyleTarget,
+  PortfolioElementTextStyle['size']
+> = {
+  brand: 'lg',
+  description: 'sm',
+  columnHeading: 'sm',
+  contactLine: 'sm',
+  socialLabel: 'md',
+  meta: 'sm',
+  marketplaceLink: 'md',
+  ctaTitle: 'xl',
+  ctaSubtitle: 'sm',
+  ctaButton: 'sm',
+};
+
+function migrateFooterElementStyleSizes(
+  styles: PortfolioFooterElementStyles,
+  defaults: PortfolioFooterElementStyles
+): PortfolioFooterElementStyles {
+  let next: PortfolioFooterElementStyles | null = null;
+  for (const id of FOOTER_STYLE_TARGET_IDS) {
+    if (styles[id].size !== LEGACY_FOOTER_ELEMENT_DEFAULT_SIZES[id]) continue;
+    if (styles[id].size === defaults[id].size) continue;
+    if (!next) next = { ...styles };
+    next[id] = { ...styles[id], size: defaults[id].size };
+  }
+  return next ?? styles;
+}
+
+/** Move saved footer typography from plain sans → editorial serif when still at the old default. */
+function migrateFooterElementStyleFonts(
+  styles: PortfolioFooterElementStyles,
+  defaults: PortfolioFooterElementStyles
+): PortfolioFooterElementStyles {
+  // Treat an all-sans footer as never customized for font (old defaults).
+  const untouched = FOOTER_STYLE_TARGET_IDS.every((id) => styles[id].font === 'sans');
+  if (!untouched) return styles;
+
+  let next: PortfolioFooterElementStyles | null = null;
+  for (const id of FOOTER_STYLE_TARGET_IDS) {
+    if (defaults[id].font === 'sans') continue;
+    if (!next) next = { ...styles };
+    next[id] = { ...styles[id], font: defaults[id].font };
+  }
+  return next ?? styles;
+}
+
+export function buildFooterElementStyleDefaults(
+  presentation: Pick<
+    PortfolioFooterPresentationSettings,
+    | 'primaryColor'
+    | 'textColor'
+    | 'ctaTitleColor'
+    | 'ctaSubtitleColor'
+    | 'ctaButtonTextColor'
+    | 'accentColor'
+  >
+): PortfolioFooterElementStyles {
+  return {
+    ...DEFAULT_FOOTER_ELEMENT_STYLES,
+    brand: createElementTextStyle({
+      color: presentation.primaryColor,
+      font: 'serif',
+      size: 'xl',
+      bold: true,
+    }),
+    description: createElementTextStyle({
+      color: presentation.textColor,
+      font: 'serif',
+      size: 'md',
+    }),
+    columnHeading: createElementTextStyle({
+      color: presentation.textColor,
+      font: 'serif',
+      size: 'md',
+      bold: true,
+      uppercase: true,
+    }),
+    contactLine: createElementTextStyle({
+      color: presentation.primaryColor,
+      font: 'serif',
+      size: 'md',
+      bold: true,
+    }),
+    socialLabel: createElementTextStyle({
+      color: presentation.primaryColor,
+      font: 'serif',
+      size: 'lg',
+      bold: true,
+    }),
+    meta: createElementTextStyle({
+      color: presentation.textColor,
+      font: 'serif',
+      size: 'md',
+      bold: true,
+    }),
+    marketplaceLink: createElementTextStyle({
+      color: presentation.accentColor,
+      font: 'serif',
+      size: 'lg',
+      bold: true,
+    }),
+    ctaTitle: createElementTextStyle({
+      color: presentation.ctaTitleColor,
+      font: 'serif',
+      size: 'xl',
+      bold: true,
+    }),
+    ctaSubtitle: createElementTextStyle({
+      color: presentation.ctaSubtitleColor,
+      font: 'serif',
+      size: 'md',
+    }),
+    ctaButton: createElementTextStyle({
+      color: presentation.ctaButtonTextColor,
+      font: 'serif',
+      size: 'md',
+      bold: true,
+    }),
+  };
+}
+
+export function normalizeFooterElementStyles(
+  raw: unknown,
+  presentation: Pick<
+    PortfolioFooterPresentationSettings,
+    | 'primaryColor'
+    | 'textColor'
+    | 'ctaTitleColor'
+    | 'ctaSubtitleColor'
+    | 'ctaButtonTextColor'
+    | 'accentColor'
+  >
+): PortfolioFooterElementStyles {
+  const defaults = buildFooterElementStyleDefaults(presentation);
+  return migrateFooterElementStyleFonts(
+    migrateFooterElementStyleSizes(
+      normalizeElementStylesRecord(raw, defaults, FOOTER_STYLE_TARGET_IDS),
+      defaults
+    ),
+    defaults
+  );
+}
+
+export function patchFooterElementStyle(
+  styles: PortfolioFooterElementStyles,
+  target: PortfolioFooterStyleTarget,
+  patch: Partial<PortfolioElementTextStyle>,
+  presentation: Pick<
+    PortfolioFooterPresentationSettings,
+    | 'primaryColor'
+    | 'textColor'
+    | 'ctaTitleColor'
+    | 'ctaSubtitleColor'
+    | 'ctaButtonTextColor'
+    | 'accentColor'
+  >
+): PortfolioFooterElementStyles {
+  const defaults = buildFooterElementStyleDefaults(presentation);
+  return patchElementStylesRecord(styles, target, patch, defaults, FOOTER_STYLE_TARGET_IDS);
+}
+
+export function syncFooterLegacyTypographyFromElementStyles(
+  styles: PortfolioFooterElementStyles
+): Pick<
+  PortfolioFooterPresentationSettings,
+  'primaryColor' | 'textColor' | 'ctaTitleColor' | 'ctaSubtitleColor' | 'ctaButtonTextColor'
+> {
+  return {
+    primaryColor: styles.brand.color,
+    textColor: styles.meta.color,
+    ctaTitleColor: styles.ctaTitle.color,
+    ctaSubtitleColor: styles.ctaSubtitle.color,
+    ctaButtonTextColor: styles.ctaButton.color,
+  };
+}
+
+export function syncFooterElementStylesFromLegacyPatch(
+  styles: PortfolioFooterElementStyles,
+  patch: unknown,
+  presentation: PortfolioFooterPresentationSettings
+): PortfolioFooterElementStyles {
+  if (!patch || typeof patch !== 'object') return styles;
+  const record = patch as Record<string, unknown>;
+  const defaults = buildFooterElementStyleDefaults(presentation);
+  let next: PortfolioFooterElementStyles = { ...styles };
+
+  if ('primaryColor' in record) {
+    next = {
+      ...next,
+      brand: defaults.brand,
+      contactLine: defaults.contactLine,
+      socialLabel: defaults.socialLabel,
+    };
+  }
+  if ('textColor' in record) {
+    next = {
+      ...next,
+      description: defaults.description,
+      columnHeading: defaults.columnHeading,
+      meta: defaults.meta,
+    };
+  }
+  if ('accentColor' in record) {
+    next = { ...next, marketplaceLink: defaults.marketplaceLink };
+  }
+  if ('ctaTitleColor' in record) {
+    next = { ...next, ctaTitle: defaults.ctaTitle };
+  }
+  if ('ctaSubtitleColor' in record) {
+    next = { ...next, ctaSubtitle: defaults.ctaSubtitle };
+  }
+  if ('ctaButtonTextColor' in record) {
+    next = { ...next, ctaButton: defaults.ctaButton };
+  }
+
+  return normalizeFooterElementStyles(next, presentation);
+}
 
 /**
  * Three footer layouts (mockups):
@@ -26,9 +329,19 @@ export type PortfolioFooterCtaButtonRadius = 'none' | 'sm' | 'md' | 'lg' | 'full
 
 export type PortfolioFooterCtaButtonPadding = 'sm' | 'md' | 'lg';
 
+/** Vertical padding inside the footer content area. */
+export type PortfolioFooterPadding = 'compact' | 'standard' | 'comfortable' | 'spacious';
+
+/** Space above the footer (between last section and footer). */
+export type PortfolioFooterMarginTop = 'none' | 'compact' | 'standard' | 'comfortable' | 'spacious';
+
 export type PortfolioFooterPresentationSettings = PortfolioSectionBackgroundSettings & {
   design: PortfolioFooterDesign;
   alignment: PortfolioFooterAlignment;
+  /** Padding of the footer content block on all sides. */
+  padding: PortfolioFooterPadding;
+  /** Margin above the footer (gap after the last page section). */
+  marginTop: PortfolioFooterMarginTop;
   showBrand: boolean;
   showAvatar: boolean;
   showDescription: boolean;
@@ -72,6 +385,10 @@ export type PortfolioFooterPresentationSettings = PortfolioSectionBackgroundSett
   pattern: PortfolioFooterPattern;
   patternColor: string;
   patternOpacity: number;
+  /** When true, section colors follow the Hero semantic palette. */
+  useHeroPalette: boolean;
+  /** Unified typography for footer text elements. */
+  elementStyles: PortfolioFooterElementStyles;
 };
 
 const LEGACY_FR_CTA_TITLES = new Set(['Un projet en tête ?', 'Un projet en tete ?']);
@@ -109,6 +426,8 @@ export const DEFAULT_FOOTER_PRESENTATION: PortfolioFooterPresentationSettings = 
   sectionBackgroundOpacity: 100,
   design: 'editorial',
   alignment: 'split',
+  padding: 'standard',
+  marginTop: 'none',
   showBrand: true,
   showAvatar: false,
   showDescription: false,
@@ -143,6 +462,8 @@ export const DEFAULT_FOOTER_PRESENTATION: PortfolioFooterPresentationSettings = 
   pattern: 'none',
   patternColor: DEFAULT_FOOTER_PATTERN_COLOR,
   patternOpacity: 18,
+  useHeroPalette: false,
+  elementStyles: DEFAULT_FOOTER_ELEMENT_STYLES,
 };
 
 export const PORTFOLIO_FOOTER_PATTERN_OPTIONS: {
@@ -211,6 +532,29 @@ export const PORTFOLIO_FOOTER_CTA_BUTTON_PADDING_OPTIONS: {
   { value: 'lg', label: 'Large', description: 'Roomier button.' },
 ];
 
+export const PORTFOLIO_FOOTER_PADDING_OPTIONS: {
+  value: PortfolioFooterPadding;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'compact', label: 'Compact', description: 'Tighter space on all sides inside the footer.' },
+  { value: 'standard', label: 'Standard', description: 'Default balanced padding on every side.' },
+  { value: 'comfortable', label: 'Comfortable', description: 'More breathing room on all sides.' },
+  { value: 'spacious', label: 'Spacious', description: 'Maximum padding on all sides.' },
+];
+
+export const PORTFOLIO_FOOTER_MARGIN_TOP_OPTIONS: {
+  value: PortfolioFooterMarginTop;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'None', description: 'Flush with the section above.' },
+  { value: 'compact', label: 'Compact', description: 'Small gap above the footer.' },
+  { value: 'standard', label: 'Standard', description: 'Balanced margin above the footer.' },
+  { value: 'comfortable', label: 'Comfortable', description: 'More space above the footer.' },
+  { value: 'spacious', label: 'Spacious', description: 'Large gap above the footer.' },
+];
+
 export const PORTFOLIO_FOOTER_ALIGNMENT_OPTIONS: {
   value: PortfolioFooterAlignment;
   label: string;
@@ -271,13 +615,16 @@ export function isFooterBackgroundLight(
     | 'sectionBackgroundFill'
     | 'sectionBackgroundColor'
     | 'sectionBackgroundGradientFrom'
-  >
+  > &
+    Partial<Pick<PortfolioSectionBackgroundSettings, 'sectionBackgroundColorA'>>
 ): boolean {
   if (!settings.sectionBackgroundEnabled) return true;
   const sample =
     settings.sectionBackgroundFill === 'gradient'
       ? settings.sectionBackgroundGradientFrom
-      : settings.sectionBackgroundColor;
+      : settings.sectionBackgroundFill === 'split'
+        ? settings.sectionBackgroundColorA || settings.sectionBackgroundColor
+        : settings.sectionBackgroundColor;
   return footerColorLuminance(sample) > 0.55;
 }
 
@@ -318,45 +665,89 @@ export function footerShellClass(
   showTopBorder: boolean,
   lightBackground = false
 ): string {
+  void design;
   const border = showTopBorder
     ? lightBackground
       ? 'border-t border-neutral-200/90'
       : 'border-t border-white/10'
     : '';
-  switch (design) {
-    case 'minimal':
-      return `py-10 sm:py-12 ${border}`;
-    case 'compact':
-      return `py-8 sm:py-10 ${border}`;
-    default:
-      return `py-12 sm:py-14 ${border}`;
-  }
+  return border;
 }
 
-export function footerTopMarginClass(design: PortfolioFooterDesign): string {
-  switch (design) {
-    case 'minimal':
-      return 'mt-12 sm:mt-16';
+/**
+ * Bottom padding so floating bottom-nav doesn't cover the footer.
+ * Side nav (left/right) only needs a small inset on xl+; below xl the nav remaps to bottom.
+ */
+export function portfolioFooterNavClearanceClass(
+  placement: PortfolioNavSettings['placement'],
+  opts?: { navMode?: PortfolioNavSettings['navMode']; enabled?: boolean }
+): string {
+  const enabled = opts?.enabled !== false;
+  const navMode = opts?.navMode ?? 'default';
+  if (!enabled || navMode === 'per-page') {
+    return 'pb-[max(1rem,env(safe-area-inset-bottom,0px))]';
+  }
+
+  // Vertical placements become bottom-center under xl — reserve space there only.
+  if (portfolioNavIsVertical(placement)) {
+    return 'pb-[max(5.5rem,calc(env(safe-area-inset-bottom,0px)+4.5rem))] xl:pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]';
+  }
+
+  return 'pb-[max(5.5rem,calc(env(safe-area-inset-bottom,0px)+4.5rem))]';
+}
+
+export function footerTopMarginClass(
+  marginTop: PortfolioFooterMarginTop = 'none'
+): string {
+  switch (marginTop) {
     case 'compact':
+      return 'mt-6 sm:mt-8';
+    case 'standard':
       return 'mt-10 sm:mt-12';
-    default:
+    case 'comfortable':
+      return 'mt-14 sm:mt-16';
+    case 'spacious':
       return 'mt-16 sm:mt-20';
+    default:
+      return 'mt-0';
   }
 }
 
 export function footerLayoutClass(
   design: PortfolioFooterDesign,
-  _alignment: PortfolioFooterAlignment
+  alignment: PortfolioFooterAlignment
 ): string {
-  void _alignment;
+  void alignment;
+
   switch (design) {
     case 'compact':
-      return 'flex flex-col gap-6 sm:gap-7';
+      return 'flex w-full flex-col gap-6 sm:gap-7';
     case 'minimal':
-      return 'flex flex-col gap-8 sm:gap-10';
+      return 'flex w-full flex-col gap-14 sm:gap-[4.25rem] lg:gap-20';
     default:
-      return 'grid gap-8 sm:gap-10 lg:grid-cols-3 lg:gap-0';
+      // Separated columns — Networks | Contact | meta, all content left-aligned
+      return 'grid w-full gap-10 text-left sm:gap-12 lg:grid-cols-3 lg:gap-0';
   }
+}
+
+/** Padding on every side of the footer content area (settings → Padding). */
+export function footerContentPaddingClass(padding: PortfolioFooterPadding = 'standard'): string {
+  switch (padding) {
+    case 'compact':
+      return 'p-6 sm:p-8';
+    case 'comfortable':
+      return 'p-12 sm:p-16 lg:p-20';
+    case 'spacious':
+      return 'p-16 sm:p-20 lg:p-24';
+    default:
+      return 'p-10 sm:p-12 lg:p-14';
+  }
+}
+
+/** @deprecated Prefer {@link footerContentPaddingClass}. Kept for older call sites. */
+export function footerInnerInsetClass(design: PortfolioFooterDesign): string {
+  void design;
+  return footerContentPaddingClass('standard');
 }
 
 export function footerTextStyle(color: string): CSSProperties {
@@ -591,10 +982,70 @@ export function mergeFooterPresentation(
       ? '#737373'
       : DEFAULT_FOOTER_TEXT_COLOR;
 
+  const ctaTitleColor = sanitizeHex(record.ctaTitleColor, base.ctaTitleColor);
+  const ctaSubtitleColor = sanitizeHex(record.ctaSubtitleColor, base.ctaSubtitleColor);
+  const ctaButtonTextColor = sanitizeHex(record.ctaButtonTextColor, base.ctaButtonTextColor);
+  const accentColor = sanitizeHex(record.accentColor, base.accentColor);
+
+  const typographyContext = {
+    primaryColor,
+    textColor,
+    ctaTitleColor,
+    ctaSubtitleColor,
+    ctaButtonTextColor,
+    accentColor,
+  };
+
+  const hasElementStylesPatch = record.elementStyles !== undefined;
+  const hasLegacyTypographyPatch =
+    'primaryColor' in record ||
+    'textColor' in record ||
+    'ctaTitleColor' in record ||
+    'ctaSubtitleColor' in record ||
+    'ctaButtonTextColor' in record ||
+    'accentColor' in record;
+
+  let elementStyles = normalizeFooterElementStyles(
+    hasElementStylesPatch ? record.elementStyles : base.elementStyles,
+    typographyContext
+  );
+
+  if (hasLegacyTypographyPatch && !hasElementStylesPatch) {
+    elementStyles = syncFooterElementStylesFromLegacyPatch(elementStyles, patch, {
+      ...base,
+      ...mergedBackground,
+      ...typographyContext,
+      elementStyles,
+    });
+  }
+
+  const typographyLegacySync: Partial<
+    Pick<
+      PortfolioFooterPresentationSettings,
+      'primaryColor' | 'textColor' | 'ctaTitleColor' | 'ctaSubtitleColor' | 'ctaButtonTextColor'
+    >
+  > = hasElementStylesPatch ? syncFooterLegacyTypographyFromElementStyles(elementStyles) : {};
+
+  const resolvedPrimaryColor = typographyLegacySync.primaryColor ?? primaryColor;
+  const resolvedTextColor = typographyLegacySync.textColor ?? textColor;
+  const resolvedCtaTitleColor = typographyLegacySync.ctaTitleColor ?? ctaTitleColor;
+  const resolvedCtaSubtitleColor = typographyLegacySync.ctaSubtitleColor ?? ctaSubtitleColor;
+  const resolvedCtaButtonTextColor = typographyLegacySync.ctaButtonTextColor ?? ctaButtonTextColor;
+
   return {
     ...mergedBackground,
     design: pick(record.design, ['editorial', 'minimal', 'compact'], base.design),
     alignment: pick(record.alignment, ['split', 'center', 'left'], base.alignment),
+    padding: pick(
+      record.padding,
+      ['compact', 'standard', 'comfortable', 'spacious'],
+      base.padding ?? 'standard'
+    ),
+    marginTop: pick(
+      record.marginTop,
+      ['none', 'compact', 'standard', 'comfortable', 'spacious'],
+      base.marginTop ?? 'none'
+    ),
     showBrand: typeof record.showBrand === 'boolean' ? record.showBrand : base.showBrand,
     showAvatar: typeof record.showAvatar === 'boolean' ? record.showAvatar : base.showAvatar,
     showDescription:
@@ -628,13 +1079,13 @@ export function mergeFooterPresentation(
       LEGACY_FR_CTA_BUTTONS,
       base.ctaButtonLabel
     ),
-    ctaTitleColor: sanitizeHex(record.ctaTitleColor, base.ctaTitleColor),
-    ctaSubtitleColor: sanitizeHex(record.ctaSubtitleColor, base.ctaSubtitleColor),
+    ctaTitleColor: resolvedCtaTitleColor,
+    ctaSubtitleColor: resolvedCtaSubtitleColor,
     ctaButtonBackgroundColor: sanitizeHex(
       record.ctaButtonBackgroundColor,
       base.ctaButtonBackgroundColor
     ),
-    ctaButtonTextColor: sanitizeHex(record.ctaButtonTextColor, base.ctaButtonTextColor),
+    ctaButtonTextColor: resolvedCtaButtonTextColor,
     ctaButtonBorder: pick(record.ctaButtonBorder, ['none', 'soft', 'solid'], base.ctaButtonBorder),
     ctaButtonBorderColor: sanitizeHex(record.ctaButtonBorderColor, base.ctaButtonBorderColor),
     ctaButtonRadius: pick(
@@ -643,15 +1094,17 @@ export function mergeFooterPresentation(
       base.ctaButtonRadius
     ),
     ctaButtonPadding: pick(record.ctaButtonPadding, ['sm', 'md', 'lg'], base.ctaButtonPadding),
-    textColor,
-    primaryColor,
+    textColor: resolvedTextColor,
+    primaryColor: resolvedPrimaryColor,
     iconColor,
-    accentColor: sanitizeHex(record.accentColor, base.accentColor),
+    accentColor,
     pattern: pick(record.pattern, ['none', 'dots', 'grid', 'diagonal', 'crosshatch'], base.pattern),
     patternColor: sanitizeHex(record.patternColor, base.patternColor),
     patternOpacity:
       typeof record.patternOpacity === 'number' && Number.isFinite(record.patternOpacity)
         ? Math.min(100, Math.max(0, record.patternOpacity))
         : base.patternOpacity,
+    useHeroPalette: mergeUseHeroPalette(base.useHeroPalette, record),
+    elementStyles,
   };
 }

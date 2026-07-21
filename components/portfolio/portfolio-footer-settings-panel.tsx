@@ -7,16 +7,25 @@ import {
   PORTFOLIO_FOOTER_CTA_BUTTON_RADIUS_OPTIONS,
   PORTFOLIO_FOOTER_DESCRIPTION_SOURCE_OPTIONS,
   PORTFOLIO_FOOTER_DESIGN_OPTIONS,
+  PORTFOLIO_FOOTER_MARGIN_TOP_OPTIONS,
+  PORTFOLIO_FOOTER_PADDING_OPTIONS,
   PORTFOLIO_FOOTER_PATTERN_OPTIONS,
+  PORTFOLIO_FOOTER_STYLE_TARGET_OPTIONS,
   footerColorLuminance,
   footerContrastingPrimary,
   isFooterBackgroundLight,
+  normalizeFooterElementStyles,
+  patchFooterElementStyle,
+  syncFooterLegacyTypographyFromElementStyles,
   type PortfolioFooterSectionSettings,
+  type PortfolioFooterStyleTarget,
 } from '@/components/portfolio/portfolio-footer-settings';
+import { PortfolioElementStyleFields } from '@/components/portfolio/portfolio-element-style-fields';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
 import { SectionBackgroundSettingsFields } from '@/components/portfolio/portfolio-section-background-controls';
+import { SectionHeroPaletteToggle } from '@/components/portfolio/SectionHeroPaletteToggle';
 
-type FooterSubSection = 'general' | 'content' | 'background';
+export type FooterSubSection = 'general' | 'content' | 'typography' | 'background';
 
 const FOOTER_SUB_SECTIONS: { id: FooterSubSection; label: string; description: string }[] = [
   { id: 'general', label: 'General', description: 'Visibility, design, and colors.' },
@@ -24,6 +33,11 @@ const FOOTER_SUB_SECTIONS: { id: FooterSubSection; label: string; description: s
     id: 'content',
     label: 'Content',
     description: 'Brand, description, contact details, links, and credit.',
+  },
+  {
+    id: 'typography',
+    label: 'Typography',
+    description: 'Colors, fonts, sizes, and formatting for footer text.',
   },
   {
     id: 'background',
@@ -75,7 +89,7 @@ function FooterOptionGrid<T extends string>({
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
-      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {options.map((option) => {
           const active = option.value === value;
           return (
@@ -135,12 +149,23 @@ function FooterColorField({
 export function FooterSettingsPanel({
   footer,
   onChange,
+  subSection: controlledSubSection,
+  onSubSectionChange,
 }: {
   footer: PortfolioFooterSectionSettings;
   onChange: (patch: Partial<PortfolioFooterSectionSettings>) => void;
+  subSection?: FooterSubSection;
+  onSubSectionChange?: (value: FooterSubSection) => void;
 }) {
-  const [subSection, setSubSection] = useState<FooterSubSection>('general');
+  const [uncontrolledSubSection, setUncontrolledSubSection] = useState<FooterSubSection>('general');
+  const [styleTarget, setStyleTarget] = useState<PortfolioFooterStyleTarget>('brand');
+  const subSection = controlledSubSection ?? uncontrolledSubSection;
+  const setSubSection = (value: FooterSubSection) => {
+    onSubSectionChange?.(value);
+    if (controlledSubSection === undefined) setUncontrolledSubSection(value);
+  };
   const activeMeta = FOOTER_SUB_SECTIONS.find((section) => section.id === subSection) ?? FOOTER_SUB_SECTIONS[0];
+  const elementStyles = normalizeFooterElementStyles(footer.elementStyles, footer);
 
   return (
     <div className="space-y-6">
@@ -170,11 +195,29 @@ export function FooterSettingsPanel({
             checked={footer.enabled}
             onChange={(enabled) => onChange({ enabled })}
           />
+          <SectionHeroPaletteToggle
+            enabled={footer.useHeroPalette}
+            onChange={(useHeroPalette) => onChange({ useHeroPalette })}
+          />
           <FooterOptionGrid
             label="Design"
             options={PORTFOLIO_FOOTER_DESIGN_OPTIONS}
             value={footer.design}
             onChange={(design) => onChange({ design })}
+            columns={2}
+          />
+          <FooterOptionGrid
+            label="Padding"
+            options={PORTFOLIO_FOOTER_PADDING_OPTIONS}
+            value={footer.padding ?? 'standard'}
+            onChange={(padding) => onChange({ padding })}
+            columns={2}
+          />
+          <FooterOptionGrid
+            label="Margin top"
+            options={PORTFOLIO_FOOTER_MARGIN_TOP_OPTIONS}
+            value={footer.marginTop ?? 'none'}
+            onChange={(marginTop) => onChange({ marginTop })}
             columns={2}
           />
           {footer.design === 'minimal' ? (
@@ -220,28 +263,11 @@ export function FooterSettingsPanel({
                       className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900"
                     />
                   </label>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <FooterColorField
-                      label="CTA title color"
-                      value={footer.ctaTitleColor ?? '#ffffff'}
-                      onChange={(ctaTitleColor) => onChange({ ctaTitleColor })}
-                    />
-                    <FooterColorField
-                      label="CTA subtitle color"
-                      value={footer.ctaSubtitleColor ?? '#ffffff'}
-                      onChange={(ctaSubtitleColor) => onChange({ ctaSubtitleColor })}
-                    />
-                  </div>
-                  <p className="text-sm text-neutral-500">
-                    Band background uses the <span className="font-semibold text-neutral-700">Marketplace link / CTA band</span>{' '}
-                    color below. On a light band, pick dark title/subtitle colors.
-                  </p>
-
                   <div className="space-y-4 rounded-2xl border border-neutral-200/70 bg-white/80 p-4">
                     <div>
                       <p className="text-sm font-semibold text-neutral-950">Contact me button</p>
                       <p className="mt-1 text-sm text-neutral-500">
-                        Background, text, border, radius, and size of the CTA button.
+                        Background, border, radius, and size of the CTA button.
                       </p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -250,12 +276,11 @@ export function FooterSettingsPanel({
                         value={footer.ctaButtonBackgroundColor ?? '#ffffff'}
                         onChange={(ctaButtonBackgroundColor) => onChange({ ctaButtonBackgroundColor })}
                       />
-                      <FooterColorField
-                        label="Button text"
-                        value={footer.ctaButtonTextColor ?? '#0a0a0a'}
-                        onChange={(ctaButtonTextColor) => onChange({ ctaButtonTextColor })}
-                      />
                     </div>
+                    <p className="text-sm text-neutral-500">
+                      CTA title, subtitle, and button label typography are edited in the{' '}
+                      <span className="font-semibold text-neutral-700">Typography</span> tab.
+                    </p>
                     <FooterOptionGrid
                       label="Border"
                       options={PORTFOLIO_FOOTER_CTA_BUTTON_BORDER_OPTIONS}
@@ -296,18 +321,8 @@ export function FooterSettingsPanel({
             onChange={(showTopBorder) => onChange({ showTopBorder })}
           />
           <div className="space-y-4 rounded-2xl border border-neutral-200/80 bg-neutral-50/50 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Colors</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Chrome colors</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <FooterColorField
-                label="Primary text"
-                value={footer.primaryColor}
-                onChange={(primaryColor) => onChange({ primaryColor })}
-              />
-              <FooterColorField
-                label="Muted text"
-                value={footer.textColor}
-                onChange={(textColor) => onChange({ textColor })}
-              />
               <FooterColorField
                 label="Icons"
                 value={footer.iconColor}
@@ -319,6 +334,10 @@ export function FooterSettingsPanel({
                 onChange={(accentColor) => onChange({ accentColor })}
               />
             </div>
+            <p className="text-sm text-neutral-500">
+              Text colors for brand, contact lines, meta, and CTA copy are in the{' '}
+              <span className="font-semibold text-neutral-700">Typography</span> tab.
+            </p>
             <button
               type="button"
               onClick={() =>
@@ -330,7 +349,7 @@ export function FooterSettingsPanel({
               }
               className="text-sm font-semibold text-neutral-700 underline-offset-2 hover:underline"
             >
-              Auto-contrast from background
+              Auto-contrast text from background
             </button>
           </div>
         </div>
@@ -438,6 +457,35 @@ export function FooterSettingsPanel({
             />
           </div>
         </div>
+      ) : null}
+
+      {subSection === 'typography' ? (
+        <PortfolioElementStyleFields
+          targets={PORTFOLIO_FOOTER_STYLE_TARGET_OPTIONS}
+          activeTarget={styleTarget}
+          onTargetChange={(value) => setStyleTarget(value as PortfolioFooterStyleTarget)}
+          style={elementStyles[styleTarget]}
+          onStyleChange={(patch) => {
+            const nextStyles = patchFooterElementStyle(elementStyles, styleTarget, patch, footer);
+            onChange({
+              elementStyles: nextStyles,
+              ...syncFooterLegacyTypographyFromElementStyles(nextStyles),
+            });
+          }}
+          extra={
+            styleTarget === 'marketplaceLink' ? (
+              <p className="rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
+                The <span className="font-semibold text-neutral-700">General</span> tab’s accent color also drives
+                the minimal CTA band background — this color is for the link text only.
+              </p>
+            ) : styleTarget === 'ctaButton' ? (
+              <p className="rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
+                Button background, border, radius, and padding stay under{' '}
+                <span className="font-semibold text-neutral-700">General</span>.
+              </p>
+            ) : null
+          }
+        />
       ) : null}
 
       {subSection === 'background' ? (

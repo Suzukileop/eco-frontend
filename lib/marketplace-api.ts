@@ -141,6 +141,22 @@ export function normalizeCreatorSummary(raw: RawRecord): MarketplaceCreatorSumma
   };
 }
 
+function mapProfileStrengthTool(raw: unknown): import('@/types/ecosystem').ProfileStrengthTool | null {
+  if (typeof raw === 'string') {
+    const name = raw.trim();
+    return name ? { name, description: null } : null;
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as RawRecord;
+  const name = String(record.name ?? record.value ?? '').trim();
+  if (!name) return null;
+  const description =
+    typeof record.description === 'string' && record.description.trim()
+      ? record.description.trim()
+      : null;
+  return { name, description };
+}
+
 function mapProfileServiceItem(raw: RawRecord, index: number) {
   return {
     id: raw.id != null ? String(raw.id) : `service-${index}`,
@@ -247,7 +263,9 @@ export function normalizeCreatorProfile(raw: RawRecord): MarketplaceCreatorPubli
       : [],
     yearsOfExperience: raw.yearsOfExperience != null ? Number(raw.yearsOfExperience) : null,
     strengthsToolsMastered: Array.isArray(raw.strengthsToolsMastered)
-      ? raw.strengthsToolsMastered.map((item) => String(item)).filter(Boolean)
+      ? raw.strengthsToolsMastered
+          .map((item) => mapProfileStrengthTool(item))
+          .filter((item): item is import('@/types/ecosystem').ProfileStrengthTool => Boolean(item))
       : [],
     profileVisits:
       typeof raw.profileVisits === 'number' ? raw.profileVisits : Number(raw.profileVisits ?? 0),

@@ -16,7 +16,6 @@ import {
   PORTFOLIO_EXPERIENCE_TITLE_PRESET_OPTIONS,
   PORTFOLIO_EXPERIENCE_SKILLS_TAG_STYLE_OPTIONS,
   PORTFOLIO_EXPERIENCE_STYLE_TARGET_OPTIONS,
-  PORTFOLIO_EXPERIENCE_TEXT_SIZE_OPTIONS,
   PORTFOLIO_EXPERIENCE_TOOLS_DISPLAY_OPTIONS,
   PORTFOLIO_EXPERIENCE_TOOLS_ENTRY_SIDE_OPTIONS,
   PORTFOLIO_EXPERIENCE_TOOLS_ICON_SIZE_OPTIONS,
@@ -38,12 +37,88 @@ import {
   type PortfolioExperienceSectionSettings,
   type PortfolioExperienceStyleTarget,
 } from '@/components/portfolio/portfolio-experience-settings';
+import { PortfolioElementStyleFields } from '@/components/portfolio/portfolio-element-style-fields';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
-import { PortfolioCardFrameSettingsFields } from '@/components/portfolio/portfolio-card-frame-settings-fields';
+import {
+  LIGHT_HERO_PALETTE,
+  PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS,
+  resolveHeroPaletteColor,
+  type HeroPaletteTokenId,
+} from '@/components/portfolio/portfolio-hero-palette-settings';
+import {
+  applyExperiencePaletteToSettings,
+  DARK_EXPERIENCE_PALETTE,
+  DEFAULT_EXPERIENCE_COLOR_BINDINGS,
+  DEFAULT_EXPERIENCE_PALETTE,
+  EXPERIENCE_BLOCK_STYLE_TARGETS,
+  EXPERIENCE_ENTRY_STYLE_TARGETS,
+  EXPERIENCE_STYLE_TARGET_COLOR_SLOT,
+  mergeExperienceColorBindings,
+  mergeExperiencePalette,
+  patchExperienceColorBinding,
+  patchExperienceColorField,
+  patchExperiencePalette,
+  PORTFOLIO_EXPERIENCE_COLOR_SLOT_OPTIONS,
+  type ExperienceColorSlot,
+} from '@/components/portfolio/portfolio-experience-palette-settings';
+import {
+  PortfolioCardFrameSettingsFields,
+  type PortfolioCardFrameColorFieldKey,
+} from '@/components/portfolio/portfolio-card-frame-settings-fields';
 import { SectionBackgroundSettingsFields } from '@/components/portfolio/portfolio-section-background-controls';
+import { SectionHeroPaletteToggle } from '@/components/portfolio/SectionHeroPaletteToggle';
 
-type ExperienceSubSection = 'general' | 'header' | 'years' | 'content' | 'style' | 'frame' | 'background';
 type ExperienceFrameLayer = 'entry' | 'story' | 'details';
+
+const EXPERIENCE_BACKGROUND_LABEL_SLOTS: Record<string, ExperienceColorSlot> = {
+  Color: 'sectionBackground',
+  'Gradient start': 'sectionGradientFrom',
+  'Gradient end': 'sectionGradientTo',
+  'Couleur zone haut': 'sectionSplitA',
+  'Couleur zone gauche': 'sectionSplitA',
+  'Couleur zone bas': 'sectionSplitB',
+  'Couleur zone droite': 'sectionSplitB',
+  'Couleur de la ligne': 'sectionDivider',
+};
+
+const EXPERIENCE_FRAME_SLOTS: Record<
+  ExperienceFrameLayer,
+  Record<PortfolioCardFrameColorFieldKey, ExperienceColorSlot>
+> = {
+  entry: {
+    cardBorderColor: 'entryBorder',
+    cardBackgroundColor: 'entryBackground',
+    cardBackgroundColorA: 'entryBackgroundA',
+    cardBackgroundColorB: 'entryBackgroundB',
+    cardDividerColor: 'entryDivider',
+  },
+  story: {
+    cardBorderColor: 'storyBorder',
+    cardBackgroundColor: 'storyBackground',
+    cardBackgroundColorA: 'storyBackgroundA',
+    cardBackgroundColorB: 'storyBackgroundB',
+    cardDividerColor: 'storyDivider',
+  },
+  details: {
+    cardBorderColor: 'detailsBorder',
+    cardBackgroundColor: 'detailsBackground',
+    cardBackgroundColorA: 'detailsBackgroundA',
+    cardBackgroundColorB: 'detailsBackgroundB',
+    cardDividerColor: 'detailsDivider',
+  },
+};
+
+export type ExperienceSubSection =
+  | 'general'
+  | 'palette'
+  | 'header'
+  | 'years'
+  | 'content'
+  | 'styleEntry'
+  | 'styleYears'
+  | 'styleBlocks'
+  | 'frame'
+  | 'background';
 
 const EXPERIENCE_SUB_SECTIONS: { id: ExperienceSubSection; label: string; description: string }[] = [
   {
@@ -51,6 +126,7 @@ const EXPERIENCE_SUB_SECTIONS: { id: ExperienceSubSection; label: string; descri
     label: 'General',
     description: 'Section visibility, item design, list width, spacing, and accent.',
   },
+  { id: 'palette', label: 'Palette', description: 'Eight semantic tokens and color slot bindings.' },
   { id: 'header', label: 'Header', description: 'Title, subtitle, fonts, and colors.' },
   { id: 'years', label: 'Years', description: 'Years summary phrase and typography.' },
   {
@@ -59,9 +135,19 @@ const EXPERIENCE_SUB_SECTIONS: { id: ExperienceSubSection; label: string; descri
     description: 'Visible fields, move blocks between cards, labels, and display order.',
   },
   {
-    id: 'style',
-    label: 'Style',
-    description: 'Color, font, size, and weight for every entry element.',
+    id: 'styleEntry',
+    label: 'Style entry',
+    description: 'Color, font, size, and weight for title, organization, meta, and description.',
+  },
+  {
+    id: 'styleYears',
+    label: 'Style years',
+    description: 'Years phrase colors (bound under Palette when enabled).',
+  },
+  {
+    id: 'styleBlocks',
+    label: 'Style blocks',
+    description: 'Color, font, size, and weight for labels, tasks, proof, note, skills, and tools.',
   },
   {
     id: 'frame',
@@ -70,6 +156,21 @@ const EXPERIENCE_SUB_SECTIONS: { id: ExperienceSubSection; label: string; descri
   },
   { id: 'background', label: 'Background', description: 'Optional fill behind this section.' },
 ];
+
+/** Legacy saved UI id `style` → Style entry. */
+export function normalizeExperienceSubSection(value: string | undefined): ExperienceSubSection {
+  if (value === 'style') return 'styleEntry';
+  if (EXPERIENCE_SUB_SECTIONS.some((section) => section.id === value)) {
+    return value as ExperienceSubSection;
+  }
+  return 'general';
+}
+
+function asExperiencePatch(
+  patch: Record<string, unknown> | object
+): Partial<PortfolioExperienceSectionSettings> {
+  return patch as Partial<PortfolioExperienceSectionSettings>;
+}
 
 const FRAME_LAYER_OPTIONS: { id: ExperienceFrameLayer; label: string; description: string }[] = [
   {
@@ -132,7 +233,7 @@ function ExperienceOptionGrid<T extends string>({
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
-      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {options.map((option) => {
           const active = option.value === value;
           return (
@@ -156,7 +257,7 @@ function ExperienceOptionGrid<T extends string>({
   );
 }
 
-function ExperienceColorField({
+function ExperienceManualColorField({
   label,
   value,
   onChange,
@@ -189,14 +290,226 @@ function ExperienceColorField({
   );
 }
 
-export function ExperienceSettingsPanel({
+function ExperienceColorField({
+  experience,
+  onChange,
+  slot,
+  label,
+  value,
+}: {
+  experience: PortfolioExperienceSectionSettings;
+  onChange: (patch: Partial<PortfolioExperienceSectionSettings>) => void;
+  slot: ExperienceColorSlot;
+  label: string;
+  value: string;
+}) {
+  if (experience.useHeroPalette === false) {
+    return (
+      <ExperienceManualColorField
+        label={label}
+        value={value}
+        onChange={(hex) => onChange(asExperiencePatch(patchExperienceColorField(experience, slot, hex)))}
+      />
+    );
+  }
+
+  const palette = mergeExperiencePalette(DEFAULT_EXPERIENCE_PALETTE, experience.experiencePalette);
+  const bindings = mergeExperienceColorBindings(
+    DEFAULT_EXPERIENCE_COLOR_BINDINGS,
+    experience.experienceColorBindings
+  );
+  const token = bindings[slot];
+  const resolved = resolveHeroPaletteColor(palette, token);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
+        <span
+          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-neutral-200"
+          style={{ backgroundColor: resolved }}
+          title={resolved}
+          aria-hidden
+        />
+      </div>
+      <select
+        value={token}
+        onChange={(event) =>
+          onChange(
+            asExperiencePatch(
+              patchExperienceColorBinding(experience, slot, event.target.value as HeroPaletteTokenId)
+            )
+          )
+        }
+        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 focus:border-neutral-400 focus:outline-none"
+        aria-label={`${label} palette token`}
+      >
+        {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function ExperiencePalettePanel({
   experience,
   onChange,
 }: {
   experience: PortfolioExperienceSectionSettings;
   onChange: (patch: Partial<PortfolioExperienceSectionSettings>) => void;
 }) {
-  const [subSection, setSubSection] = useState<ExperienceSubSection>('general');
+  const palette = mergeExperiencePalette(DEFAULT_EXPERIENCE_PALETTE, experience.experiencePalette);
+  const bindings = mergeExperienceColorBindings(
+    DEFAULT_EXPERIENCE_COLOR_BINDINGS,
+    experience.experienceColorBindings
+  );
+  const paletteOn = experience.useHeroPalette !== false;
+
+  return (
+    <div className="space-y-6">
+      <SectionHeroPaletteToggle
+        enabled={paletteOn}
+        onChange={(useHeroPalette) =>
+          onChange(
+            asExperiencePatch(
+              useHeroPalette
+                ? { useHeroPalette, ...applyExperiencePaletteToSettings(experience) }
+                : { useHeroPalette }
+            )
+          )
+        }
+        title="Use color palette"
+        description="When on, Experience colors follow these eight tokens. Turn off to edit colors manually in other tabs."
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() =>
+            onChange(
+              asExperiencePatch(
+                paletteOn
+                  ? { ...patchExperiencePalette(experience, DARK_EXPERIENCE_PALETTE), useHeroPalette: true }
+                  : { experiencePalette: { ...DARK_EXPERIENCE_PALETTE } }
+              )
+            )
+          }
+          className="rounded-2xl border border-neutral-200 bg-neutral-950 px-4 py-3 text-left text-sm font-bold text-white"
+        >
+          Dark mode palette
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onChange(
+              asExperiencePatch(
+                paletteOn
+                  ? { ...patchExperiencePalette(experience, LIGHT_HERO_PALETTE), useHeroPalette: true }
+                  : { experiencePalette: { ...LIGHT_HERO_PALETTE } }
+              )
+            )
+          }
+          className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left text-sm font-bold text-neutral-900"
+        >
+          Light mode palette
+        </button>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((token) => (
+          <ExperienceManualColorField
+            key={token.value}
+            label={token.label}
+            value={palette[token.value]}
+            onChange={(color) =>
+              onChange(
+                asExperiencePatch(
+                  paletteOn
+                    ? patchExperiencePalette(experience, { [token.value]: color })
+                    : {
+                        experiencePalette: {
+                          ...mergeExperiencePalette(DEFAULT_EXPERIENCE_PALETTE, experience.experiencePalette),
+                          [token.value]: color,
+                        },
+                      }
+                )
+              )
+            }
+          />
+        ))}
+      </div>
+
+      {paletteOn ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onChange(asExperiencePatch(applyExperiencePaletteToSettings(experience)))}
+            className="inline-flex w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-bold text-neutral-900 transition hover:bg-neutral-50"
+          >
+            Apply palette to all bound colors
+          </button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {PORTFOLIO_EXPERIENCE_COLOR_SLOT_OPTIONS.map((slot) => (
+              <div key={slot.value} className="rounded-2xl border border-neutral-200/80 bg-white px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-neutral-800">{slot.label}</span>
+                  <span
+                    className="h-5 w-5 shrink-0 rounded-full border border-neutral-200"
+                    style={{ backgroundColor: resolveHeroPaletteColor(palette, bindings[slot.value]) }}
+                    aria-hidden
+                  />
+                </div>
+                <select
+                  value={bindings[slot.value]}
+                  onChange={(event) =>
+                    onChange(
+                      asExperiencePatch(
+                        patchExperienceColorBinding(
+                          experience,
+                          slot.value,
+                          event.target.value as HeroPaletteTokenId
+                        )
+                      )
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800"
+                >
+                  {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((token) => (
+                    <option key={token.value} value={token.value}>
+                      {token.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function ExperienceSettingsPanel({
+  experience,
+  onChange,
+  subSection: controlledSubSection,
+  onSubSectionChange,
+}: {
+  experience: PortfolioExperienceSectionSettings;
+  onChange: (patch: Partial<PortfolioExperienceSectionSettings>) => void;
+  subSection?: ExperienceSubSection;
+  onSubSectionChange?: (value: ExperienceSubSection) => void;
+}) {
+  const [uncontrolledSubSection, setUncontrolledSubSection] = useState<ExperienceSubSection>('general');
+  const subSection = normalizeExperienceSubSection(controlledSubSection ?? uncontrolledSubSection);
+  const setSubSection = (value: ExperienceSubSection) => {
+    const next = normalizeExperienceSubSection(value);
+    onSubSectionChange?.(next);
+    if (controlledSubSection === undefined) setUncontrolledSubSection(next);
+  };
   const [frameLayer, setFrameLayer] = useState<ExperienceFrameLayer>('entry');
   const [styleTarget, setStyleTarget] = useState<PortfolioExperienceStyleTarget>('title');
   const activeMeta =
@@ -218,14 +531,10 @@ export function ExperienceSettingsPanel({
   const elementOrder = normalizeExperienceElementOrder(experience.elementOrder);
   const elementZones = normalizeExperienceElementZones(experience.elementZones);
   const elementStyles = normalizeExperienceElementStyles(experience.elementStyles);
-  const activeTextStyle = elementStyles[styleTarget];
-  const patchActiveTextStyle = (patch: Partial<typeof activeTextStyle>) => {
-    onChange({ elementStyles: patchExperienceElementStyle(elementStyles, styleTarget, patch) });
-  };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Experience subsection</p>
           <p className="mt-1 text-sm text-neutral-500">{activeMeta.description}</p>
@@ -233,7 +542,7 @@ export function ExperienceSettingsPanel({
         <select
           value={subSection}
           onChange={(event) => setSubSection(event.target.value as ExperienceSubSection)}
-          className="min-w-[12rem] flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-900 sm:max-w-xs"
+          className="w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-900 sm:min-w-[12rem] sm:max-w-xs sm:flex-1"
         >
           {EXPERIENCE_SUB_SECTIONS.map((section) => (
             <option key={section.id} value={section.id}>
@@ -250,6 +559,18 @@ export function ExperienceSettingsPanel({
             description="Display the experience block on your public portfolio."
             checked={experience.enabled}
             onChange={(enabled) => onChange({ enabled })}
+          />
+          <SectionHeroPaletteToggle
+            enabled={experience.useHeroPalette !== false}
+            onChange={(useHeroPalette) =>
+              onChange(
+                asExperiencePatch(
+                  useHeroPalette
+                    ? { useHeroPalette, ...applyExperiencePaletteToSettings(experience) }
+                    : { useHeroPalette }
+                )
+              )
+            }
           />
           <ExperienceOptionGrid
             label="Item design"
@@ -309,9 +630,11 @@ export function ExperienceSettingsPanel({
             />
           </div>
           <ExperienceColorField
+            experience={experience}
+            onChange={onChange}
+            slot="accent"
             label="Accent color"
             value={experience.accentColor}
-            onChange={(accentColor) => onChange({ accentColor })}
           />
           <p className="rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
             Experience entries are edited in Creator Studio → Information. Use Content and Frame to control what
@@ -561,100 +884,115 @@ export function ExperienceSettingsPanel({
         </div>
       ) : null}
 
-      {subSection === 'style' ? (
+      {subSection === 'palette' ? (
+        <ExperiencePalettePanel experience={experience} onChange={onChange} />
+      ) : null}
+
+      {subSection === 'styleEntry' ? (
+        <PortfolioElementStyleFields
+          targets={PORTFOLIO_EXPERIENCE_STYLE_TARGET_OPTIONS.filter((option) =>
+            EXPERIENCE_ENTRY_STYLE_TARGETS.includes(option.value)
+          )}
+          activeTarget={styleTarget}
+          onTargetChange={(value) => setStyleTarget(value as PortfolioExperienceStyleTarget)}
+          style={elementStyles[styleTarget]}
+          onStyleChange={(patch) => {
+            const next = patchExperienceElementStyle(elementStyles, styleTarget, patch);
+            const slot = EXPERIENCE_STYLE_TARGET_COLOR_SLOT[styleTarget];
+            onChange(
+              asExperiencePatch(
+                experience.useHeroPalette !== false && patch.color
+                  ? { elementStyles: next, ...patchExperienceColorField(experience, slot, patch.color) }
+                  : { elementStyles: next }
+              )
+            );
+          }}
+          renderColorField={({ label, value }) => (
+            <ExperienceColorField
+              experience={experience}
+              onChange={onChange}
+              slot={EXPERIENCE_STYLE_TARGET_COLOR_SLOT[styleTarget]}
+              label={label}
+              value={value}
+            />
+          )}
+        />
+      ) : null}
+
+      {subSection === 'styleYears' ? (
         <div className="space-y-6">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Element</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {PORTFOLIO_EXPERIENCE_STYLE_TARGET_OPTIONS.map((target) => {
-                const active = styleTarget === target.value;
-                return (
-                  <button
-                    key={target.value}
-                    type="button"
-                    onClick={() => setStyleTarget(target.value)}
-                    className={`rounded-2xl border px-4 py-3 text-left transition ${
-                      active
-                        ? 'border-neutral-900 bg-neutral-50 ring-2 ring-neutral-900/10'
-                        : 'border-neutral-200/80 bg-white hover:border-neutral-300'
-                    }`}
-                  >
-                    <p className="text-sm font-semibold text-neutral-950">{target.label}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-neutral-500">{target.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           <ExperienceColorField
-            label="Color"
-            value={activeTextStyle.color}
-            onChange={(color) => patchActiveTextStyle({ color })}
+            experience={experience}
+            onChange={onChange}
+            slot="years"
+            label="Phrase color"
+            value={experience.yearsColor}
           />
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <ExperienceOptionGrid
-              label="Font"
-              options={PORTFOLIO_EXPERIENCE_HEADER_FONT_OPTIONS}
-              value={activeTextStyle.font}
-              onChange={(font) => patchActiveTextStyle({ font })}
-              columns={2}
-            />
-            <ExperienceOptionGrid
-              label="Size"
-              options={PORTFOLIO_EXPERIENCE_TEXT_SIZE_OPTIONS}
-              value={activeTextStyle.size}
-              onChange={(size) => patchActiveTextStyle({ size })}
-              columns={2}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <ExperienceToggleRow
-              label="Bold"
-              checked={activeTextStyle.bold}
-              onChange={(bold) => patchActiveTextStyle({ bold })}
-            />
-            <ExperienceToggleRow
-              label="Italic"
-              checked={activeTextStyle.italic}
-              onChange={(italic) => patchActiveTextStyle({ italic })}
-            />
-            <ExperienceToggleRow
-              label="Uppercase"
-              checked={activeTextStyle.uppercase}
-              onChange={(uppercase) => patchActiveTextStyle({ uppercase })}
-            />
-          </div>
-
-          {styleTarget === 'skills' ? (
-            <ExperienceOptionGrid
-              label="Skills tag chrome"
-              options={PORTFOLIO_EXPERIENCE_SKILLS_TAG_STYLE_OPTIONS}
-              value={experience.skillsTagStyle}
-              onChange={(skillsTagStyle) => onChange({ skillsTagStyle })}
-              columns={2}
-            />
-          ) : null}
-
-          {styleTarget === 'tools' ? (
-            <ExperienceOptionGrid
-              label="Tools icon size"
-              options={PORTFOLIO_EXPERIENCE_TOOLS_ICON_SIZE_OPTIONS}
-              value={experience.toolsIconSize}
-              onChange={(toolsIconSize) => onChange({ toolsIconSize })}
-              columns={2}
-            />
-          ) : null}
+          <ExperienceColorField
+            experience={experience}
+            onChange={onChange}
+            slot="yearsHighlight"
+            label="Years count color"
+            value={experience.yearsHighlightColor}
+          />
         </div>
+      ) : null}
+
+      {subSection === 'styleBlocks' ? (
+        <PortfolioElementStyleFields
+          targets={PORTFOLIO_EXPERIENCE_STYLE_TARGET_OPTIONS.filter((option) =>
+            EXPERIENCE_BLOCK_STYLE_TARGETS.includes(option.value)
+          )}
+          activeTarget={styleTarget}
+          onTargetChange={(value) => setStyleTarget(value as PortfolioExperienceStyleTarget)}
+          style={elementStyles[styleTarget]}
+          onStyleChange={(patch) => {
+            const next = patchExperienceElementStyle(elementStyles, styleTarget, patch);
+            const slot = EXPERIENCE_STYLE_TARGET_COLOR_SLOT[styleTarget];
+            onChange(
+              asExperiencePatch(
+                experience.useHeroPalette !== false && patch.color
+                  ? { elementStyles: next, ...patchExperienceColorField(experience, slot, patch.color) }
+                  : { elementStyles: next }
+              )
+            );
+          }}
+          renderColorField={({ label, value }) => (
+            <ExperienceColorField
+              experience={experience}
+              onChange={onChange}
+              slot={EXPERIENCE_STYLE_TARGET_COLOR_SLOT[styleTarget]}
+              label={label}
+              value={value}
+            />
+          )}
+          extra={
+            styleTarget === 'skills' ? (
+              <ExperienceOptionGrid
+                label="Skills tag chrome"
+                options={PORTFOLIO_EXPERIENCE_SKILLS_TAG_STYLE_OPTIONS}
+                value={experience.skillsTagStyle}
+                onChange={(skillsTagStyle) => onChange({ skillsTagStyle })}
+                columns={2}
+              />
+            ) : styleTarget === 'tools' ? (
+              <ExperienceOptionGrid
+                label="Tools icon size"
+                options={PORTFOLIO_EXPERIENCE_TOOLS_ICON_SIZE_OPTIONS}
+                value={experience.toolsIconSize}
+                onChange={(toolsIconSize) => onChange({ toolsIconSize })}
+                columns={2}
+              />
+            ) : null
+          }
+        />
       ) : null}
 
       {subSection === 'frame' ? (
         <div className="space-y-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Layer</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {FRAME_LAYER_OPTIONS.map((layer) => {
                 const active = frameLayer === layer.id;
                 return (
@@ -698,6 +1036,15 @@ export function ExperienceSettingsPanel({
             onChange={patchActiveFrame}
             heading={FRAME_LAYER_OPTIONS.find((layer) => layer.id === frameLayer)?.label ?? 'Frame'}
             description="Border, fill, radius, and padding for this layer only."
+            renderColorField={({ field, label, value }) => (
+              <ExperienceColorField
+                experience={experience}
+                onChange={onChange}
+                slot={EXPERIENCE_FRAME_SLOTS[frameLayer][field]}
+                label={label}
+                value={value}
+              />
+            )}
           />
         </div>
       ) : null}
@@ -771,14 +1118,18 @@ export function ExperienceSettingsPanel({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <ExperienceColorField
+              experience={experience}
+              onChange={onChange}
+              slot="title"
               label="Title color"
               value={experience.titleColor}
-              onChange={(titleColor) => onChange({ titleColor })}
             />
             <ExperienceColorField
+              experience={experience}
+              onChange={onChange}
+              slot="subtitle"
               label="Subtitle color"
               value={experience.subtitleColor}
-              onChange={(subtitleColor) => onChange({ subtitleColor })}
             />
           </div>
 
@@ -863,14 +1214,18 @@ export function ExperienceSettingsPanel({
                 columns={3}
               />
               <ExperienceColorField
+                experience={experience}
+                onChange={onChange}
+                slot="years"
                 label="Phrase color"
                 value={experience.yearsColor}
-                onChange={(yearsColor) => onChange({ yearsColor })}
               />
               <ExperienceColorField
+                experience={experience}
+                onChange={onChange}
+                slot="yearsHighlight"
                 label="Years count color"
                 value={experience.yearsHighlightColor}
-                onChange={(yearsHighlightColor) => onChange({ yearsHighlightColor })}
               />
               <ExperienceToggleRow
                 label="Bold years count"
@@ -888,7 +1243,27 @@ export function ExperienceSettingsPanel({
       ) : null}
 
       {subSection === 'background' ? (
-        <SectionBackgroundSettingsFields settings={experience} onChange={onChange} />
+        <SectionBackgroundSettingsFields
+          settings={experience}
+          onChange={onChange}
+          renderColorField={({ label, value, onChange: onBgColorChange }) => {
+            const slot = EXPERIENCE_BACKGROUND_LABEL_SLOTS[label];
+            if (!slot) {
+              return (
+                <ExperienceManualColorField label={label} value={value} onChange={onBgColorChange} />
+              );
+            }
+            return (
+              <ExperienceColorField
+                experience={experience}
+                onChange={onChange}
+                slot={slot}
+                label={label}
+                value={value}
+              />
+            );
+          }}
+        />
       ) : null}
     </div>
   );

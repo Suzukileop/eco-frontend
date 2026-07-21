@@ -136,7 +136,9 @@ function buildPatternSvg(pattern: Exclude<PortfolioHeroLeftMotifPattern, 'none' 
     case 'hexagons':
       return `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="48" viewBox="0 0 56 48"><path d="M14 4L42 4L56 24L42 44L14 44L0 24Z" fill="none" stroke="${color}" stroke-width="1.2"/></svg>`;
     default:
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="4" cy="4" r="2.5" fill="${color}"/></svg>`;
+      // Small centered tile — with background-position on the copy edge,
+      // dots sit flush enough to match Contact / text (no hollow strip).
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" fill="${color}"/></svg>`;
   }
 }
 
@@ -154,7 +156,7 @@ function patternSize(pattern: Exclude<PortfolioHeroLeftMotifPattern, 'none' | 'c
     case 'hexagons':
       return '56px 48px';
     default:
-      return '24px 24px';
+      return '16px 16px';
   }
 }
 
@@ -166,7 +168,11 @@ export function shouldRenderLeftMotif(settings: PortfolioHeroLeftMotifSettings):
   return settings.leftMotifEnabled && settings.leftMotifPattern !== 'none';
 }
 
-export function leftMotifInnerStyle(settings: PortfolioHeroLeftMotifSettings): CSSProperties {
+export function leftMotifInnerStyle(
+  settings: PortfolioHeroLeftMotifSettings,
+  /** Align the repeating tile to the copy column edge so dots meet Contact / text. */
+  tileAlign: 'left' | 'right' | 'center' = 'left'
+): CSSProperties {
   const color = isValidProfileHexColor(settings.leftMotifColor)
     ? settings.leftMotifColor.trim()
     : DEFAULT_HERO_LEFT_MOTIF_SETTINGS.leftMotifColor;
@@ -185,11 +191,14 @@ export function leftMotifInnerStyle(settings: PortfolioHeroLeftMotifSettings): C
   const pattern = settings.leftMotifPattern;
   const svg = buildPatternSvg(pattern, color);
   const size = patternSize(pattern);
+  const backgroundPosition =
+    tileAlign === 'right' ? 'right bottom' : tileAlign === 'center' ? 'center bottom' : 'left bottom';
 
   return {
     backgroundImage: svgDataUrl(svg),
     backgroundSize: size,
     backgroundRepeat: 'repeat',
+    backgroundPosition,
     maskImage: 'linear-gradient(to top, black 0%, black 60%, transparent 100%)',
     WebkitMaskImage: 'linear-gradient(to top, black 0%, black 60%, transparent 100%)',
   };

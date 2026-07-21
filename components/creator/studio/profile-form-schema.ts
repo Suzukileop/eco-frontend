@@ -50,6 +50,8 @@ export const taskItemSchema = z.object({
 
 export const strengthItemSchema = z.object({
   value: z.string().min(1, 'Strength is required.').max(80),
+  /** Optional portfolio card blurb — empty keeps the auto-generated description. */
+  description: z.string().max(280).optional().or(z.literal('')),
 });
 
 export const experienceStatusEnum = z.enum(['ONGOING', 'FINISHED']);
@@ -499,17 +501,24 @@ export function parseExperienceBlocks(raw: unknown): ProfileMediaBlockForm[] {
   });
 }
 
-export function parseStrengthsTools(raw: unknown): Array<{ value: string }> {
+export function parseStrengthsTools(raw: unknown): Array<{ value: string; description?: string }> {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => {
-      if (typeof item === 'string') return { value: item.trim() };
-      if (item && typeof item === 'object' && 'value' in item) {
-        return { value: String((item as { value: unknown }).value).trim() };
-      }
-      return null;
-    })
-    .filter((item): item is { value: string } => Boolean(item?.value));
+  const parsed: Array<{ value: string; description?: string }> = [];
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      const value = item.trim();
+      if (value) parsed.push({ value, description: '' });
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const value = String(record.value ?? record.name ?? '').trim();
+    if (!value) continue;
+    const description =
+      typeof record.description === 'string' ? record.description.trim() : '';
+    parsed.push({ value, description });
+  }
+  return parsed;
 }
 
 export function inferProfileMediaType(url: string): 'IMAGE' | 'VIDEO' {
@@ -626,9 +635,12 @@ function normalizeProfileComparable(values: ProfileFormValues, availabilityHours
     experienceBlocks: serializeProfileBlocks(values.experienceBlocks),
     yearsOfExperience: values.yearsOfExperience ?? null,
     strengthsTools: values.strengthsTools
-      .map((item) => trimOptional(item.value))
-      .filter(Boolean)
-      .sort(),
+      .map((item) => ({
+        value: trimOptional(item.value),
+        description: trimOptional(item.description ?? ''),
+      }))
+      .filter((item) => Boolean(item.value))
+      .sort((a, b) => a.value.localeCompare(b.value)),
   };
 }
 

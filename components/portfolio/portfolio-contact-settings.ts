@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import { mergeUseHeroPalette } from '@/components/portfolio/portfolio-section-palette';
 import {
   DEFAULT_SOLID_CARD_BACKGROUND_SETTINGS,
   mergeServicesCardBackgroundSettings,
@@ -18,6 +19,99 @@ import {
   type PortfolioSectionBackgroundSettings,
 } from '@/components/portfolio/portfolio-section-background-settings';
 import type { PortfolioSectionCopy } from '@/components/portfolio/portfolio-settings-types';
+import {
+  createElementTextStyle,
+  normalizeElementStylesRecord,
+  patchElementStylesRecord,
+  type PortfolioElementTextStyle,
+} from '@/components/portfolio/portfolio-element-text-style';
+
+export type PortfolioContactStyleTarget =
+  | 'channelValue'
+  | 'linksHeading'
+  | 'linkLabel'
+  | 'linkUrl'
+  | 'locationValue'
+  | 'ctaLabel';
+
+export type PortfolioContactElementStyles = Record<PortfolioContactStyleTarget, PortfolioElementTextStyle>;
+
+export const CONTACT_STYLE_TARGET_IDS: PortfolioContactStyleTarget[] = [
+  'channelValue',
+  'linksHeading',
+  'linkLabel',
+  'linkUrl',
+  'locationValue',
+  'ctaLabel',
+];
+
+export const DEFAULT_CONTACT_CHANNEL_VALUE_COLOR = '#0a0a0a';
+export const DEFAULT_CONTACT_LINKS_HEADING_COLOR = '#a3a3a3';
+export const DEFAULT_CONTACT_LINK_LABEL_COLOR = '#0a0a0a';
+export const DEFAULT_CONTACT_LINK_URL_COLOR = '#737373';
+export const DEFAULT_CONTACT_LOCATION_VALUE_COLOR = '#0a0a0a';
+export const DEFAULT_CONTACT_CTA_LABEL_COLOR = '#ffffff';
+
+export const DEFAULT_CONTACT_ELEMENT_STYLES: PortfolioContactElementStyles = {
+  channelValue: createElementTextStyle({
+    color: DEFAULT_CONTACT_CHANNEL_VALUE_COLOR,
+    size: 'lg',
+    bold: true,
+  }),
+  linksHeading: createElementTextStyle({
+    color: DEFAULT_CONTACT_LINKS_HEADING_COLOR,
+    size: 'sm',
+    bold: true,
+    uppercase: true,
+  }),
+  linkLabel: createElementTextStyle({
+    color: DEFAULT_CONTACT_LINK_LABEL_COLOR,
+    size: 'md',
+    bold: true,
+  }),
+  linkUrl: createElementTextStyle({ color: DEFAULT_CONTACT_LINK_URL_COLOR, size: 'sm' }),
+  locationValue: createElementTextStyle({
+    color: DEFAULT_CONTACT_LOCATION_VALUE_COLOR,
+    size: 'lg',
+    bold: true,
+  }),
+  ctaLabel: createElementTextStyle({
+    color: DEFAULT_CONTACT_CTA_LABEL_COLOR,
+    size: 'sm',
+    bold: true,
+  }),
+};
+
+export const PORTFOLIO_CONTACT_STYLE_TARGET_OPTIONS: {
+  value: PortfolioContactStyleTarget;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'channelValue', label: 'Channel value', description: 'Email and phone display text.' },
+  { value: 'locationValue', label: 'Location', description: 'Location line in the contact card.' },
+  { value: 'linksHeading', label: 'Links heading', description: '“Links & social” section label.' },
+  { value: 'linkLabel', label: 'Link label', description: 'Social row title (Instagram, Website…).' },
+  { value: 'linkUrl', label: 'Link URL', description: 'Muted URL under each social row.' },
+  { value: 'ctaLabel', label: 'CTA label', description: 'Contact button text typography.' },
+];
+
+export function normalizeContactElementStyles(raw: unknown): PortfolioContactElementStyles {
+  return normalizeElementStylesRecord(raw, DEFAULT_CONTACT_ELEMENT_STYLES, CONTACT_STYLE_TARGET_IDS);
+}
+
+export function patchContactElementStyle(
+  styles: PortfolioContactElementStyles,
+  target: PortfolioContactStyleTarget,
+  patch: Partial<PortfolioElementTextStyle>
+): PortfolioContactElementStyles {
+  return patchElementStylesRecord(
+    styles,
+    target,
+    patch,
+    DEFAULT_CONTACT_ELEMENT_STYLES,
+    CONTACT_STYLE_TARGET_IDS
+  );
+}
 
 export type PortfolioContactTitlePreset = 'contact' | 'get-in-touch' | 'lets-talk' | 'start-a-project' | 'custom';
 
@@ -68,6 +162,10 @@ export type PortfolioContactPresentationSettings = PortfolioSectionBackgroundSet
   showSocialLinks: boolean;
   showCta: boolean;
   showResponseTimeInSubtitle: boolean;
+  /** When true, section colors follow the Hero semantic palette. */
+  useHeroPalette: boolean;
+  /** Unified typography for contact card body text. */
+  elementStyles: PortfolioContactElementStyles;
 };
 
 export type PortfolioContactSectionSettings = PortfolioSectionCopy & PortfolioContactPresentationSettings;
@@ -110,6 +208,8 @@ export const DEFAULT_CONTACT_PRESENTATION: PortfolioContactPresentationSettings 
   showSocialLinks: true,
   showCta: true,
   showResponseTimeInSubtitle: true,
+  useHeroPalette: false,
+  elementStyles: DEFAULT_CONTACT_ELEMENT_STYLES,
 };
 
 export const PORTFOLIO_CONTACT_TITLE_PRESET_OPTIONS: {
@@ -420,6 +520,12 @@ export function mergeContactPresentation(
 
   const background = mergeSectionBackground(base, patch);
   const cardBackground = mergeServicesCardBackgroundSettings(base, patch);
+  const ctaColor = sanitizeHex(record.ctaColor, base.ctaColor);
+
+  const elementStyles =
+    record.elementStyles !== undefined
+      ? normalizeContactElementStyles(record.elementStyles)
+      : normalizeContactElementStyles(base.elementStyles);
 
   return {
     ...background,
@@ -445,7 +551,7 @@ export function mergeContactPresentation(
     cardDesign: pick(record.cardDesign, ['editorial', 'minimal', 'split', 'stacked'], base.cardDesign),
     ctaDesign: pick(record.ctaDesign, ['pill-dark', 'pill-outline', 'pill-accent', 'full-width'], base.ctaDesign),
     ctaLabel: typeof record.ctaLabel === 'string' ? record.ctaLabel : base.ctaLabel,
-    ctaColor: sanitizeHex(record.ctaColor, base.ctaColor),
+    ctaColor,
     blockOrder: pick(record.blockOrder, ['primary-first', 'links-first'], base.blockOrder),
     cardMaxWidth: pick(record.cardMaxWidth, ['md', 'lg', 'xl', 'full'], base.cardMaxWidth),
     cardPlacement: pick(record.cardPlacement, ['left', 'center', 'right'], base.cardPlacement),
@@ -465,5 +571,7 @@ export function mergeContactPresentation(
       typeof record.showResponseTimeInSubtitle === 'boolean'
         ? record.showResponseTimeInSubtitle
         : base.showResponseTimeInSubtitle,
+    useHeroPalette: mergeUseHeroPalette(base.useHeroPalette, record),
+    elementStyles,
   };
 }

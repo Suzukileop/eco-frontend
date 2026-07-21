@@ -63,6 +63,17 @@ export function formatAvailabilityHours(schedule: AvailabilitySchedule, timezone
   return tz ? `${daysLabel} · ${start}–${end} (${tz})` : `${daysLabel} · ${start}–${end}`;
 }
 
+/** Days + hours as separate lines — no timezone (used by About profile frame). */
+export function formatAvailabilityHoursLines(schedule: AvailabilitySchedule): string[] {
+  const daysLabel =
+    schedule.preset === 'custom'
+      ? formatDayRange(schedule.customDays)
+      : formatDayRange(PRESET_DAYS[schedule.preset]);
+  const start = normalizeTime(schedule.start);
+  const end = normalizeTime(schedule.end);
+  return [daysLabel, `${start}–${end}`];
+}
+
 export function parseAvailabilityHours(raw: string | null | undefined): AvailabilitySchedule {
   const fallback = defaultSchedule();
   const trimmed = raw?.trim();

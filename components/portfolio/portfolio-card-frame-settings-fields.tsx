@@ -1,5 +1,6 @@
 'use client';
 
+import type React from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
 import {
   PORTFOLIO_SERVICES_CARD_BACKGROUND_FILL_OPTIONS,
@@ -42,7 +43,7 @@ function FrameOptionGrid<T extends string>({
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
-      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {options.map((option) => {
           const active = option.value === value;
           return (
@@ -68,15 +69,37 @@ function FrameOptionGrid<T extends string>({
   );
 }
 
-function FrameColorField({
-  label,
-  value,
-  onChange,
-}: {
+export type PortfolioCardFrameColorFieldKey =
+  | 'cardBorderColor'
+  | 'cardBackgroundColor'
+  | 'cardBackgroundColorA'
+  | 'cardBackgroundColorB'
+  | 'cardDividerColor';
+
+export type PortfolioCardFrameColorFieldRenderer = (props: {
+  field: PortfolioCardFrameColorFieldKey;
   label: string;
   value: string;
   onChange: (value: string) => void;
+}) => React.ReactNode;
+
+function FrameColorField({
+  field,
+  label,
+  value,
+  onChange,
+  render,
+}: {
+  field: PortfolioCardFrameColorFieldKey;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  render?: PortfolioCardFrameColorFieldRenderer;
 }) {
+  if (render) {
+    return <>{render({ field, label, value, onChange })}</>;
+  }
+
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
@@ -134,11 +157,13 @@ export function PortfolioCardFrameSettingsFields({
   onChange,
   heading = 'Cadre & fond',
   description = 'Bordure, couleur, fond, arrondi et padding des cartes.',
+  renderColorField,
 }: {
   settings: PortfolioCardFrameSettings;
   onChange: (patch: Partial<PortfolioCardFrameSettings>) => void;
   heading?: string;
   description?: string;
+  renderColorField?: PortfolioCardFrameColorFieldRenderer;
 }) {
   return (
     <div className="space-y-4 rounded-2xl border border-neutral-200/80 bg-neutral-50/40 p-4">
@@ -157,9 +182,11 @@ export function PortfolioCardFrameSettingsFields({
 
       {settings.cardBorder === 'soft' || settings.cardBorder === 'solid' ? (
         <FrameColorField
+          field="cardBorderColor"
           label="Couleur de bordure"
           value={settings.cardBorderColor}
           onChange={(cardBorderColor) => onChange({ cardBorderColor })}
+          render={renderColorField}
         />
       ) : null}
 
@@ -182,9 +209,11 @@ export function PortfolioCardFrameSettingsFields({
 
           {settings.cardBackgroundEnabled ? (
             <FrameColorField
+              field="cardBackgroundColor"
               label="Couleur de fond"
               value={settings.cardBackgroundColor}
               onChange={(cardBackgroundColor) => onChange({ cardBackgroundColor })}
+              render={renderColorField}
             />
           ) : null}
         </>
@@ -207,18 +236,22 @@ export function PortfolioCardFrameSettingsFields({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <FrameColorField
+              field="cardBackgroundColorA"
               label={
                 settings.cardBackgroundSplitAxis === 'y' ? 'Couleur zone haut' : 'Couleur zone gauche'
               }
               value={settings.cardBackgroundColorA}
               onChange={(cardBackgroundColorA) => onChange({ cardBackgroundColorA })}
+              render={renderColorField}
             />
             <FrameColorField
+              field="cardBackgroundColorB"
               label={
                 settings.cardBackgroundSplitAxis === 'y' ? 'Couleur zone bas' : 'Couleur zone droite'
               }
               value={settings.cardBackgroundColorB}
               onChange={(cardBackgroundColorB) => onChange({ cardBackgroundColorB })}
+              render={renderColorField}
             />
           </div>
 
@@ -309,9 +342,11 @@ export function PortfolioCardFrameSettingsFields({
           {settings.cardDividerEnabled ? (
             <div className="space-y-4">
               <FrameColorField
+                field="cardDividerColor"
                 label="Couleur de la ligne"
                 value={settings.cardDividerColor}
                 onChange={(cardDividerColor) => onChange({ cardDividerColor })}
+                render={renderColorField}
               />
               <div>
                 <div className="flex items-center justify-between gap-4">

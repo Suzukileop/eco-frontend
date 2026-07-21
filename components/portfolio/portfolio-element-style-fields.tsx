@@ -72,11 +72,16 @@ function StyleColorField({
   label,
   value,
   onChange,
+  render,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  render?: (props: { label: string; value: string; onChange: (value: string) => void }) => ReactNode;
 }) {
+  if (render) {
+    return <>{render({ label, value, onChange })}</>;
+  }
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
@@ -105,6 +110,9 @@ export function PortfolioElementStyleFields({
   style,
   onStyleChange,
   extra,
+  hideTargetPicker = false,
+  title,
+  renderColorField,
 }: {
   targets: { value: string; label: string; description: string }[];
   activeTarget: string;
@@ -112,34 +120,56 @@ export function PortfolioElementStyleFields({
   style: PortfolioElementTextStyle;
   onStyleChange: (patch: Partial<PortfolioElementTextStyle>) => void;
   extra?: ReactNode;
+  /** When true, skip the multi-target picker (single element already known). */
+  hideTargetPicker?: boolean;
+  /** Optional heading above the typography fields. */
+  title?: string;
+  renderColorField?: (props: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+  }) => ReactNode;
 }) {
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Element</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {targets.map((target) => {
-            const active = activeTarget === target.value;
-            return (
-              <button
-                key={target.value}
-                type="button"
-                onClick={() => onTargetChange(target.value)}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  active
-                    ? 'border-neutral-900 bg-neutral-50 ring-2 ring-neutral-900/10'
-                    : 'border-neutral-200/80 bg-white hover:border-neutral-300'
-                }`}
-              >
-                <p className="text-sm font-semibold text-neutral-950">{target.label}</p>
-                <p className="mt-1 text-xs leading-relaxed text-neutral-500">{target.description}</p>
-              </button>
-            );
-          })}
+      {title ? (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{title}</p>
         </div>
-      </div>
+      ) : null}
 
-      <StyleColorField label="Color" value={style.color} onChange={(color) => onStyleChange({ color })} />
+      {!hideTargetPicker ? (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Element</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {targets.map((target) => {
+              const active = activeTarget === target.value;
+              return (
+                <button
+                  key={target.value}
+                  type="button"
+                  onClick={() => onTargetChange(target.value)}
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    active
+                      ? 'border-neutral-900 bg-neutral-50 ring-2 ring-neutral-900/10'
+                      : 'border-neutral-200/80 bg-white hover:border-neutral-300'
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-neutral-950">{target.label}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-neutral-500">{target.description}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <StyleColorField
+        label="Color"
+        value={style.color}
+        onChange={(color) => onStyleChange({ color })}
+        render={renderColorField}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <StyleOptionGrid

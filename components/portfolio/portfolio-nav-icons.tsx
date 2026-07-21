@@ -21,6 +21,15 @@ function NavIconBase({ className, children }: { className?: string; children: Re
   );
 }
 
+function HomeIcon({ className }: { className?: string }) {
+  return (
+    <NavIconBase className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 11.5L12 4l8 7.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.5 10.5V19a1 1 0 001 1h3.5v-5h2v5H16.5a1 1 0 001-1v-8.5" />
+    </NavIconBase>
+  );
+}
+
 function GridIcon({ className }: { className?: string }) {
   return (
     <NavIconBase className={className}>
@@ -176,6 +185,7 @@ function PhoneIcon({ className }: { className?: string }) {
 }
 
 const ICON_RENDERERS: Record<PortfolioNavIconVariant, (props: { className?: string }) => ReactNode> = {
+  home: HomeIcon,
   grid: GridIcon,
   briefcase: BriefcaseIcon,
   image: ImageIcon,

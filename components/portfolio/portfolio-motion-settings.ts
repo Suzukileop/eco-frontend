@@ -68,10 +68,19 @@ export function motionProfileEntryOffset(profile: PortfolioGlobalMotionProfile):
 
 export function motionProfileItemHoverClass(profile: PortfolioGlobalMotionProfile): string {
   if (profile === 'dynamic') {
-    // Keep hover on the item box itself (rounded cards), not a full-bleed section wrapper.
+    // Prefer Framer whileHover on PortfolioMotionItem; keep class for non-FM wrappers.
     return 'rounded-[inherit] transition duration-200 hover:-translate-y-1 hover:shadow-[0_18px_40px_-24px_rgba(249,115,22,0.35)]';
   }
   return '';
+}
+
+/** CSS enter classes for hero — only when a motion profile is active. */
+export function motionProfileHeroEnterClass(profile: PortfolioGlobalMotionProfile): string {
+  return isMotionProfileActive(profile) ? 'portfolio-hero-enter' : '';
+}
+
+export function motionProfileHeroImageEnterClass(profile: PortfolioGlobalMotionProfile): string {
+  return isMotionProfileActive(profile) ? 'portfolio-hero-image-enter' : '';
 }
 
 export function motionProfileEnablesHeroGeomFade(profile: PortfolioGlobalMotionProfile): boolean {

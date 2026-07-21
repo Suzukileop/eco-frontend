@@ -17,20 +17,95 @@ import {
   type PortfolioFaqStyleTarget,
 } from '@/components/portfolio/portfolio-faq-settings';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
-import { PortfolioCardFrameSettingsFields } from '@/components/portfolio/portfolio-card-frame-settings-fields';
+import {
+  LIGHT_HERO_PALETTE,
+  PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS,
+  resolveHeroPaletteColor,
+  type HeroPaletteTokenId,
+} from '@/components/portfolio/portfolio-hero-palette-settings';
+import {
+  applyFaqPaletteToSettings,
+  DARK_FAQ_PALETTE,
+  DEFAULT_FAQ_COLOR_BINDINGS,
+  DEFAULT_FAQ_PALETTE,
+  FAQ_STYLE_TARGET_COLOR_SLOT,
+  mergeFaqColorBindings,
+  mergeFaqPalette,
+  patchFaqColorBinding,
+  patchFaqColorField,
+  patchFaqPalette,
+  PORTFOLIO_FAQ_COLOR_SLOT_OPTIONS,
+  type FaqColorSlot,
+} from '@/components/portfolio/portfolio-faq-palette-settings';
+import {
+  PortfolioCardFrameSettingsFields,
+  type PortfolioCardFrameColorFieldKey,
+} from '@/components/portfolio/portfolio-card-frame-settings-fields';
 import { PortfolioElementStyleFields } from '@/components/portfolio/portfolio-element-style-fields';
 import { SectionBackgroundSettingsFields } from '@/components/portfolio/portfolio-section-background-controls';
+import { SectionHeroPaletteToggle } from '@/components/portfolio/SectionHeroPaletteToggle';
 
-type FaqSubSection = 'general' | 'header' | 'frame' | 'items' | 'style' | 'background';
+const FAQ_BACKGROUND_LABEL_SLOTS: Record<string, FaqColorSlot> = {
+  Color: 'sectionBackground',
+  'Gradient start': 'sectionGradientFrom',
+  'Gradient end': 'sectionGradientTo',
+  'Couleur zone haut': 'sectionSplitA',
+  'Couleur zone gauche': 'sectionSplitA',
+  'Couleur zone bas': 'sectionSplitB',
+  'Couleur zone droite': 'sectionSplitB',
+  'Couleur de la ligne': 'sectionDivider',
+};
+
+const FAQ_FRAME_SLOTS: Record<PortfolioCardFrameColorFieldKey, FaqColorSlot> = {
+  cardBorderColor: 'cardBorder',
+  cardBackgroundColor: 'cardBackground',
+  cardBackgroundColorA: 'cardBackgroundA',
+  cardBackgroundColorB: 'cardBackgroundB',
+  cardDividerColor: 'cardDivider',
+};
+
+export type FaqSubSection =
+  | 'general'
+  | 'palette'
+  | 'header'
+  | 'frame'
+  | 'items'
+  | 'styleQuestion'
+  | 'styleAnswer'
+  | 'styleNumber'
+  | 'background';
 
 const FAQ_SUB_SECTIONS: { id: FaqSubSection; label: string; description: string }[] = [
   { id: 'general', label: 'General', description: 'Section visibility, item design, spacing, and accent color.' },
+  { id: 'palette', label: 'Palette', description: 'Eight semantic tokens and color slot bindings.' },
   { id: 'header', label: 'Header', description: 'Title, subtitle, fonts, and colors.' },
   { id: 'frame', label: 'Frame', description: 'Complete card frame controls (border, split background, radius).' },
   { id: 'items', label: 'Items', description: 'Alignment, visibility toggles, icons, and accent colors.' },
-  { id: 'style', label: 'Style', description: 'Color, font, size, and weight for question, answer, and number.' },
+  { id: 'styleQuestion', label: 'Style question', description: 'Color, font, size, and weight for question text.' },
+  { id: 'styleAnswer', label: 'Style answer', description: 'Color, font, size, and weight for answer text.' },
+  { id: 'styleNumber', label: 'Style number', description: 'Color, font, size, and weight for item numbers.' },
   { id: 'background', label: 'Background', description: 'Optional fill behind this section.' },
 ];
+
+/** Legacy saved UI id `style` → Style question. */
+export function normalizeFaqSubSection(value: string | undefined): FaqSubSection {
+  if (value === 'style') return 'styleQuestion';
+  if (FAQ_SUB_SECTIONS.some((section) => section.id === value)) return value as FaqSubSection;
+  return 'header';
+}
+
+const FAQ_STYLE_BY_SUBSECTION: Record<
+  Extract<FaqSubSection, 'styleQuestion' | 'styleAnswer' | 'styleNumber'>,
+  PortfolioFaqStyleTarget
+> = {
+  styleQuestion: 'question',
+  styleAnswer: 'answer',
+  styleNumber: 'number',
+};
+
+function asFaqPatch(patch: Record<string, unknown> | object): Partial<PortfolioFaqSectionSettings> {
+  return patch as Partial<PortfolioFaqSectionSettings>;
+}
 
 function FaqToggleRow({
   label,
@@ -75,7 +150,7 @@ function FaqOptionGrid<T extends string>({
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
-      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      <div className={`mt-3 grid gap-2 ${columns === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {options.map((option) => {
           const active = option.value === value;
           return (
@@ -99,7 +174,7 @@ function FaqOptionGrid<T extends string>({
   );
 }
 
-function FaqColorField({
+function FaqManualColorField({
   label,
   value,
   onChange,
@@ -132,20 +207,220 @@ function FaqColorField({
   );
 }
 
-export function FaqSettingsPanel({
+function FaqColorField({
+  faq,
+  onChange,
+  slot,
+  label,
+  value,
+}: {
+  faq: PortfolioFaqSectionSettings;
+  onChange: (patch: Partial<PortfolioFaqSectionSettings>) => void;
+  slot: FaqColorSlot;
+  label: string;
+  value: string;
+}) {
+  if (faq.useHeroPalette === false) {
+    return (
+      <FaqManualColorField
+        label={label}
+        value={value}
+        onChange={(hex) => onChange(asFaqPatch(patchFaqColorField(faq, slot, hex)))}
+      />
+    );
+  }
+
+  const palette = mergeFaqPalette(DEFAULT_FAQ_PALETTE, faq.faqPalette);
+  const bindings = mergeFaqColorBindings(DEFAULT_FAQ_COLOR_BINDINGS, faq.faqColorBindings);
+  const token = bindings[slot];
+  const resolved = resolveHeroPaletteColor(palette, token);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{label}</p>
+        <span
+          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-neutral-200"
+          style={{ backgroundColor: resolved }}
+          title={resolved}
+          aria-hidden
+        />
+      </div>
+      <select
+        value={token}
+        onChange={(event) =>
+          onChange(asFaqPatch(patchFaqColorBinding(faq, slot, event.target.value as HeroPaletteTokenId)))
+        }
+        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 focus:border-neutral-400 focus:outline-none"
+        aria-label={`${label} palette token`}
+      >
+        {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function FaqPalettePanel({
   faq,
   onChange,
 }: {
   faq: PortfolioFaqSectionSettings;
   onChange: (patch: Partial<PortfolioFaqSectionSettings>) => void;
 }) {
-  const [subSection, setSubSection] = useState<FaqSubSection>('header');
-  const [styleTarget, setStyleTarget] = useState<PortfolioFaqStyleTarget>('question');
-  const activeMeta = FAQ_SUB_SECTIONS.find((section) => section.id === subSection) ?? FAQ_SUB_SECTIONS[0];
+  const palette = mergeFaqPalette(DEFAULT_FAQ_PALETTE, faq.faqPalette);
+  const bindings = mergeFaqColorBindings(DEFAULT_FAQ_COLOR_BINDINGS, faq.faqColorBindings);
+  const paletteOn = faq.useHeroPalette !== false;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <SectionHeroPaletteToggle
+        enabled={paletteOn}
+        onChange={(useHeroPalette) =>
+          onChange(
+            asFaqPatch(
+              useHeroPalette ? { useHeroPalette, ...applyFaqPaletteToSettings(faq) } : { useHeroPalette }
+            )
+          )
+        }
+        title="Use color palette"
+        description="When on, FAQ colors follow these eight tokens. Turn off to edit colors manually in other tabs."
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() =>
+            onChange(
+              asFaqPatch(
+                paletteOn
+                  ? { ...patchFaqPalette(faq, DARK_FAQ_PALETTE), useHeroPalette: true }
+                  : { faqPalette: { ...DARK_FAQ_PALETTE } }
+              )
+            )
+          }
+          className="rounded-2xl border border-neutral-200 bg-neutral-950 px-4 py-3 text-left text-sm font-bold text-white"
+        >
+          Dark mode palette
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onChange(
+              asFaqPatch(
+                paletteOn
+                  ? { ...patchFaqPalette(faq, LIGHT_HERO_PALETTE), useHeroPalette: true }
+                  : { faqPalette: { ...LIGHT_HERO_PALETTE } }
+              )
+            )
+          }
+          className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left text-sm font-bold text-neutral-900"
+        >
+          Light mode palette
+        </button>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((token) => (
+          <FaqManualColorField
+            key={token.value}
+            label={token.label}
+            value={palette[token.value]}
+            onChange={(color) =>
+              onChange(
+                asFaqPatch(
+                  paletteOn
+                    ? patchFaqPalette(faq, { [token.value]: color })
+                    : {
+                        faqPalette: {
+                          ...mergeFaqPalette(DEFAULT_FAQ_PALETTE, faq.faqPalette),
+                          [token.value]: color,
+                        },
+                      }
+                )
+              )
+            }
+          />
+        ))}
+      </div>
+
+      {paletteOn ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onChange(asFaqPatch(applyFaqPaletteToSettings(faq)))}
+            className="inline-flex w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-bold text-neutral-900 transition hover:bg-neutral-50"
+          >
+            Apply palette to all bound colors
+          </button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {PORTFOLIO_FAQ_COLOR_SLOT_OPTIONS.map((slot) => (
+              <div key={slot.value} className="rounded-2xl border border-neutral-200/80 bg-white px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-neutral-800">{slot.label}</span>
+                  <span
+                    className="h-5 w-5 shrink-0 rounded-full border border-neutral-200"
+                    style={{ backgroundColor: resolveHeroPaletteColor(palette, bindings[slot.value]) }}
+                    aria-hidden
+                  />
+                </div>
+                <select
+                  value={bindings[slot.value]}
+                  onChange={(event) =>
+                    onChange(
+                      asFaqPatch(
+                        patchFaqColorBinding(faq, slot.value, event.target.value as HeroPaletteTokenId)
+                      )
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800"
+                >
+                  {PORTFOLIO_HERO_PALETTE_TOKEN_OPTIONS.map((token) => (
+                    <option key={token.value} value={token.value}>
+                      {token.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function FaqSettingsPanel({
+  faq,
+  onChange,
+  subSection: controlledSubSection,
+  onSubSectionChange,
+}: {
+  faq: PortfolioFaqSectionSettings;
+  onChange: (patch: Partial<PortfolioFaqSectionSettings>) => void;
+  subSection?: FaqSubSection;
+  onSubSectionChange?: (value: FaqSubSection) => void;
+}) {
+  const [uncontrolledSubSection, setUncontrolledSubSection] = useState<FaqSubSection>('header');
+  const subSection = normalizeFaqSubSection(controlledSubSection ?? uncontrolledSubSection);
+  const setSubSection = (value: FaqSubSection) => {
+    const next = normalizeFaqSubSection(value);
+    onSubSectionChange?.(next);
+    if (controlledSubSection === undefined) setUncontrolledSubSection(next);
+  };
+  const activeMeta = FAQ_SUB_SECTIONS.find((section) => section.id === subSection) ?? FAQ_SUB_SECTIONS[0];
+
+  const styleSubsection = subSection === 'styleQuestion' || subSection === 'styleAnswer' || subSection === 'styleNumber'
+    ? subSection
+    : null;
+  const styleTarget = styleSubsection ? FAQ_STYLE_BY_SUBSECTION[styleSubsection] : 'question';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">FAQ subsection</p>
           <p className="mt-1 text-sm text-neutral-500">{activeMeta.description}</p>
@@ -153,7 +428,7 @@ export function FaqSettingsPanel({
         <select
           value={subSection}
           onChange={(event) => setSubSection(event.target.value as FaqSubSection)}
-          className="min-w-[12rem] flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-900 sm:max-w-xs"
+          className="w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-900 sm:min-w-[12rem] sm:max-w-xs sm:flex-1"
         >
           {FAQ_SUB_SECTIONS.map((section) => (
             <option key={section.id} value={section.id}>
@@ -170,6 +445,16 @@ export function FaqSettingsPanel({
             description="Display the FAQ block on your public portfolio."
             checked={faq.enabled}
             onChange={(enabled) => onChange({ enabled })}
+          />
+          <SectionHeroPaletteToggle
+            enabled={faq.useHeroPalette !== false}
+            onChange={(useHeroPalette) =>
+              onChange(
+                asFaqPatch(
+                  useHeroPalette ? { useHeroPalette, ...applyFaqPaletteToSettings(faq) } : { useHeroPalette }
+                )
+              )
+            }
           />
           <FaqOptionGrid
             label="Item design"
@@ -201,16 +486,11 @@ export function FaqSettingsPanel({
             onChange={(listPlacement) => onChange({ listPlacement })}
             columns={3}
           />
-          <FaqColorField
-            label="Accent color"
-            value={faq.accentColor}
-            onChange={(accentColor) => onChange({ accentColor })}
-          />
-          <p className="rounded-2xl border border-dashed border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
-            FAQ entries are edited in Creator Studio → Information. These settings control visibility and presentation.
-          </p>
+          <FaqColorField faq={faq} onChange={onChange} slot="accent" label="Accent color" value={faq.accentColor} />
         </div>
       ) : null}
+
+      {subSection === 'palette' ? <FaqPalettePanel faq={faq} onChange={onChange} /> : null}
 
       {subSection === 'header' ? (
         <div className="space-y-6">
@@ -276,11 +556,13 @@ export function FaqSettingsPanel({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <FaqColorField label="Title color" value={faq.titleColor} onChange={(titleColor) => onChange({ titleColor })} />
+            <FaqColorField faq={faq} onChange={onChange} slot="title" label="Title color" value={faq.titleColor} />
             <FaqColorField
+              faq={faq}
+              onChange={onChange}
+              slot="subtitle"
               label="Subtitle color"
               value={faq.subtitleColor}
-              onChange={(subtitleColor) => onChange({ subtitleColor })}
             />
           </div>
 
@@ -317,6 +599,15 @@ export function FaqSettingsPanel({
           onChange={onChange}
           heading="FAQ frame"
           description="Border color, full frame background, split X/Y, radius, and item shell spacing."
+          renderColorField={({ field, label, value }) => (
+            <FaqColorField
+              faq={faq}
+              onChange={onChange}
+              slot={FAQ_FRAME_SLOTS[field]}
+              label={label}
+              value={value}
+            />
+          )}
         />
       ) : null}
 
@@ -355,9 +646,11 @@ export function FaqSettingsPanel({
           <div className="space-y-4 rounded-2xl border border-neutral-200/80 bg-neutral-50/50 p-4">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">Accents & icon</p>
             <FaqColorField
+              faq={faq}
+              onChange={onChange}
+              slot="answerAccentBorder"
               label="Answer border color"
               value={faq.answerAccentBorderColor}
-              onChange={(answerAccentBorderColor) => onChange({ answerAccentBorderColor })}
             />
             <FaqOptionGrid
               label="Expand icon style"
@@ -367,28 +660,59 @@ export function FaqSettingsPanel({
               columns={2}
             />
             <FaqColorField
+              faq={faq}
+              onChange={onChange}
+              slot="expandIcon"
               label="Expand icon color"
               value={faq.expandIconColor}
-              onChange={(expandIconColor) => onChange({ expandIconColor })}
             />
           </div>
         </div>
       ) : null}
 
-      {subSection === 'style' ? (
+      {styleSubsection ? (
         <PortfolioElementStyleFields
-          targets={PORTFOLIO_FAQ_STYLE_TARGET_OPTIONS}
+          targets={PORTFOLIO_FAQ_STYLE_TARGET_OPTIONS.filter((option) => option.value === styleTarget)}
           activeTarget={styleTarget}
-          onTargetChange={(value) => setStyleTarget(value as PortfolioFaqStyleTarget)}
+          onTargetChange={() => undefined}
           style={faq.elementStyles[styleTarget]}
-          onStyleChange={(patch) =>
-            onChange({ elementStyles: patchFaqElementStyle(faq.elementStyles, styleTarget, patch) })
-          }
+          onStyleChange={(patch) => {
+            const next = patchFaqElementStyle(faq.elementStyles, styleTarget, patch);
+            const slot = FAQ_STYLE_TARGET_COLOR_SLOT[styleTarget];
+            onChange(
+              asFaqPatch(
+                faq.useHeroPalette !== false && patch.color
+                  ? { elementStyles: next, ...patchFaqColorField(faq, slot, patch.color) }
+                  : { elementStyles: next }
+              )
+            );
+          }}
+          renderColorField={({ label, value }) => (
+            <FaqColorField
+              faq={faq}
+              onChange={onChange}
+              slot={FAQ_STYLE_TARGET_COLOR_SLOT[styleTarget]}
+              label={label}
+              value={value}
+            />
+          )}
         />
       ) : null}
 
       {subSection === 'background' ? (
-        <SectionBackgroundSettingsFields settings={faq} onChange={onChange} />
+        <SectionBackgroundSettingsFields
+          settings={faq}
+          onChange={onChange}
+          renderColorField={({ label, value, onChange: onBgColorChange }) => {
+            const slot = FAQ_BACKGROUND_LABEL_SLOTS[label];
+            if (!slot) {
+              return <FaqManualColorField label={label} value={value} onChange={onBgColorChange} />;
+            }
+            return (
+              <FaqColorField faq={faq} onChange={onChange} slot={slot} label={label} value={value} />
+            );
+          }}
+        />
       ) : null}
     </div>
   );

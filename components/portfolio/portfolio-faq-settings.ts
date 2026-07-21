@@ -1,5 +1,15 @@
 import type { CSSProperties } from 'react';
 import { isValidProfileHexColor } from '@/components/portfolio/portfolio-hero-profile-settings';
+import { mergeUseHeroPalette } from '@/components/portfolio/portfolio-section-palette';
+import {
+  DEFAULT_FAQ_COLOR_BINDINGS,
+  DEFAULT_FAQ_PALETTE,
+  applyFaqPaletteToSettings,
+  mergeFaqColorBindings,
+  mergeFaqPalette,
+  type PortfolioFaqColorBindings,
+  type PortfolioFaqPalette,
+} from '@/components/portfolio/portfolio-faq-palette-settings';
 import {
   DEFAULT_SOLID_CARD_BACKGROUND_SETTINGS,
   mergeServicesCardBackgroundSettings,
@@ -97,6 +107,12 @@ export type PortfolioFaqPresentationSettings = PortfolioSectionBackgroundSetting
   showItemNumbers: boolean;
   showAnswerAccentBorder: boolean;
   showExpandIcon: boolean;
+  /** When true, section colors follow the Hero semantic palette. */
+  useHeroPalette: boolean;
+  /** FAQ-owned palette copy (same 8 tokens as Hero). */
+  faqPalette?: PortfolioFaqPalette;
+  /** Which token each FAQ color slot uses. */
+  faqColorBindings?: PortfolioFaqColorBindings;
   /** Per-element color, font, size, and weight for question, answer, and item number. */
   elementStyles: PortfolioFaqElementStyles;
 };
@@ -194,8 +210,20 @@ export const DEFAULT_FAQ_PRESENTATION: PortfolioFaqPresentationSettings = {
   showItemNumbers: true,
   showAnswerAccentBorder: true,
   showExpandIcon: true,
+  useHeroPalette: true,
+  faqPalette: { ...DEFAULT_FAQ_PALETTE },
+  faqColorBindings: { ...DEFAULT_FAQ_COLOR_BINDINGS },
   elementStyles: DEFAULT_FAQ_ELEMENT_STYLES,
 };
+
+Object.assign(
+  DEFAULT_FAQ_PRESENTATION,
+  applyFaqPaletteToSettings({
+    faqPalette: DEFAULT_FAQ_PALETTE,
+    faqColorBindings: DEFAULT_FAQ_COLOR_BINDINGS,
+    elementStyles: DEFAULT_FAQ_ELEMENT_STYLES,
+  })
+);
 
 export const PORTFOLIO_FAQ_TITLE_PRESET_OPTIONS: {
   value: PortfolioFaqTitlePreset;
@@ -661,7 +689,7 @@ export function mergeFaqPresentation(
           FAQ_STYLE_TARGET_IDS
         );
 
-  return {
+  const merged: PortfolioFaqPresentationSettings = {
     ...background,
     ...faqFrameBackground,
     titlePreset: pick(record.titlePreset, ['faq', 'questions', 'common-questions', 'q-and-a', 'custom'], base.titlePreset),
@@ -709,7 +737,26 @@ export function mergeFaqPresentation(
         ? record.showAnswerAccentBorder
         : base.showAnswerAccentBorder,
     showExpandIcon: typeof record.showExpandIcon === 'boolean' ? record.showExpandIcon : base.showExpandIcon,
+    useHeroPalette: mergeUseHeroPalette(base.useHeroPalette, record),
+    faqPalette: mergeFaqPalette(
+      mergeFaqPalette(DEFAULT_FAQ_PALETTE, base.faqPalette),
+      record.faqPalette
+    ),
+    faqColorBindings: mergeFaqColorBindings(
+      mergeFaqColorBindings(DEFAULT_FAQ_COLOR_BINDINGS, base.faqColorBindings),
+      record.faqColorBindings
+    ),
     elementStyles,
+  };
+
+  if (merged.useHeroPalette === false) {
+    return merged;
+  }
+
+  return {
+    ...merged,
+    ...(applyFaqPaletteToSettings(merged) as Partial<PortfolioFaqPresentationSettings>),
+    useHeroPalette: true,
   };
 }
 

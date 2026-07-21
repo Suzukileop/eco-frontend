@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   NeutralIconBadge,
   normalizeSocialPlatformKey,
@@ -11,7 +12,11 @@ import {
 import { ProductThumbnailMedia } from '@/components/marketplace/ProductThumbnailMedia';
 import { ContentMediaPreview } from '@/components/creator/creator-content-media';
 import { CreatorToolLogo } from '@/components/creator/studio/CreatorToolLogo';
-import { getSkillUsageDescription } from '@/components/portfolio/skill-usage-descriptions';
+import {
+  resolveSkillDescription,
+  resolveSkillName,
+  type PortfolioSkillRef,
+} from '@/components/portfolio/skill-usage-descriptions';
 import { formatPhoneDisplay } from '@/lib/phone';
 import type {
   ExperienceBlockStatus,
@@ -23,6 +28,7 @@ import type {
 } from '@/types/ecosystem';
 import type { MarketplaceContentItem } from '@/types/marketplace';
 import { PortfolioMotionItem } from '@/components/portfolio/PortfolioMotionItem';
+import { PortfolioSplitScreenTitle } from '@/components/portfolio/portfolio-split-screen';
 import type { PortfolioGlobalMotionProfile } from '@/components/portfolio/portfolio-motion-settings';
 import { DEFAULT_MOTION_PROFILE } from '@/components/portfolio/portfolio-motion-settings';
 import type { PortfolioNavSettings } from '@/components/portfolio/portfolio-settings-types';
@@ -37,11 +43,44 @@ import {
   portfolioNavItemActiveClass,
   portfolioNavItemBaseClass,
   portfolioNavItemColorStyles,
+  portfolioNavItemHoverClass,
+  portfolioNavItemHoverCssVars,
+  portfolioNavItemHoverIconClass,
+  portfolioNavItemHoverTextClass,
+  portfolioNavActiveItemStyle,
+  portfolioNavDockGlyphClass,
   portfolioNavPlacementClass,
   portfolioNavRailDividerClass,
+  portfolioNavBarHostsInlineExtras,
+  portfolioNavItemGapClass,
+  resolvePortfolioNavMobileChrome,
+  type PortfolioNavMenuControlAlign,
+  type PortfolioNavMenuControlIcon,
 } from '@/components/portfolio/portfolio-nav-settings';
+import {
+  DEFAULT_NAV_PALETTE,
+  mergeNavPalette,
+} from '@/components/portfolio/portfolio-nav-palette-settings';
+import { resolveHeroPaletteColor } from '@/components/portfolio/portfolio-hero-palette-settings';
 import { PortfolioNavIcon } from '@/components/portfolio/portfolio-nav-icons';
+import {
+  portfolioNavTopClearanceActive,
+  portfolioNavTopScrollMarginClass,
+  usePortfolioNavTopClearanceSync,
+} from '@/components/portfolio/portfolio-nav-top-clearance';
+import {
+  sectionHeaderOuterLayoutClass,
+  sectionHeaderSubtitleAlignClass,
+  sectionHeaderTitleTextAlignClass,
+  sectionHeaderTitleWrapClass,
+  sectionHeaderTrailingLayoutClass,
+} from '@/components/portfolio/portfolio-global-settings';
 import type { PortfolioNavIconVariant } from '@/components/portfolio/portfolio-nav-items';
+import {
+  PortfolioNavFreeSpaceLinks,
+  PortfolioNavInlineExtras,
+  type PortfolioNavChromeLink,
+} from '@/components/portfolio/portfolio-nav-extras';
 import {
   DEFAULT_ABOUT_PRESENTATION,
   aboutAccentColor,
@@ -133,6 +172,9 @@ import {
 } from '@/components/portfolio/portfolio-experience-settings';
 import {
   DEFAULT_WORK_PRESENTATION,
+  DEFAULT_WORK_OVERLAY_ELEMENT_PLACEMENTS,
+  DEFAULT_WORK_ELEMENT_CHROMES,
+  PORTFOLIO_WORK_OVERLAY_ELEMENT_IDS,
   WORK_CATEGORY_ALL_KEY,
   collectWorkCategories,
   filterWorkItemsByCategory,
@@ -140,27 +182,52 @@ import {
   normalizeWorkElementStyles,
   workCardContentAlignClass,
   workCardContentOrderClass,
+  workCardEdgeClass,
+  workCardEdgeStyle,
   workCardFrameClass,
   workCardFrameStyle,
   workCardGapClass,
   workCardGridStyle,
+  workCardIsStacked,
+  workCardMaxWidthClass,
+  workCardMaxWidthFlexAlignClass,
+  workCardMaxWidthJustifyClass,
+  workCategoryBarAlignClass,
+  workContentFrameClass,
+  workContentFrameGapClass,
+  workContentFrameStyle,
+  workElementChromeClass,
+  workElementChromeStyle,
   workCardMediaAspectClass,
   workCardMediaAspectStyle,
-  workCardMediaClass,
+  workCardMediaBehaviorClass,
   workCardMediaOrderClass,
   workCardShellClass,
   workCategoryChipClass,
   workCategoryNavClass,
+  workCompactGalleryGap,
   workCtaAlignClass,
   workCtaClassName,
   workCtaIconShellClass,
+  workCtaIconShellStyle,
   workCtaStyle,
+  workEffectiveContentPlacement,
+  workNoMediaInfoWidthClass,
+  workOverlayCellAbsoluteStyle,
+  workOverlayCellAlignClass,
+  workOverlayCellRowAlignClass,
+  workOverlayReadableColor,
+  workToolIconShellStyle,
   resolveWorkItemsPerRow,
   workItemsPerRowGridClass,
+  type PortfolioWorkOverlayCellPlacement,
+  type PortfolioWorkOverlayElementId,
   type PortfolioWorkPresentationSettings,
 } from '@/components/portfolio/portfolio-work-settings';
 import {
   DEFAULT_SERVICES_PRESENTATION,
+  DEFAULT_SERVICES_ACCENT_COLOR,
+  DEFAULT_SERVICES_CARD_BORDER_COLOR,
   normalizeServicesElementStyles,
   resolveServicesServicesSubheadingLabel,
   resolveServicesSkillsSubheadingLabel,
@@ -179,9 +246,13 @@ import {
   servicesPricingHeroShellClass,
   servicesServiceCardMinHeight,
   servicesSkillCardMinHeight,
+  pickServicesStageChrome,
   servicesStageShellClass,
+  servicesStageShellStyle,
   resolveServicesCardTone,
   type PortfolioServicesPresentationSettings,
+  type PortfolioServicesStageChromeSettings,
+  type PortfolioServicesStageDesign,
 } from '@/components/portfolio/portfolio-services-settings';
 import {
   resolveServicesBlockPresentation,
@@ -216,28 +287,26 @@ import {
   contactCtaClassName,
   contactCtaStyle,
   contactLinksBlockClass,
+  normalizeContactElementStyles,
   type PortfolioContactCardDesign,
+  type PortfolioContactElementStyles,
   type PortfolioContactPresentationSettings,
 } from '@/components/portfolio/portfolio-contact-settings';
 import {
   DEFAULT_FOOTER_PRESENTATION,
-  footerAccentStyle,
   footerDividerClass,
   footerIconStyle,
   footerLayoutClass,
+  footerContentPaddingClass,
   footerPatternStyle,
-  footerPrimaryStyle,
-  footerCtaSubtitleStyle,
-  footerCtaTitleStyle,
   footerCtaButtonClass,
   footerCtaButtonStyle,
   footerShellClass,
-  footerTextStyle,
   footerTopMarginClass,
   isFooterBackgroundLight,
+  normalizeFooterElementStyles,
   resolveFooterCtaSubtitle,
   resolveFooterDescription,
-  resolveFooterPrimaryColor,
   type PortfolioFooterPresentationSettings,
 } from '@/components/portfolio/portfolio-footer-settings';
 import { sectionBackgroundStyle } from '@/components/portfolio/portfolio-section-background-settings';
@@ -266,6 +335,22 @@ export const PORTFOLIO_FLOATING_CHROME =
 export const PORTFOLIO_FLOATING_CHROME_LABEL =
   'px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em]';
 
+/** Nearest scrollable ancestor (pages mode uses nested overflow-y-auto). */
+function getScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node && node !== document.body) {
+    const { overflowY } = getComputedStyle(node);
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function useSectionTitleStuck(enabled: boolean) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isStuck, setIsStuck] = useState(false);
@@ -279,9 +364,14 @@ function useSectionTitleStuck(enabled: boolean) {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
 
+    const scrollRoot = getScrollParent(sentinel);
     const observer = new IntersectionObserver(
       ([entry]) => setIsStuck(!entry.isIntersecting),
-      { threshold: 0, rootMargin: '-72px 0px 0px 0px' }
+      {
+        root: scrollRoot,
+        threshold: 0,
+        rootMargin: scrollRoot ? '0px 0px 0px 0px' : '-72px 0px 0px 0px',
+      }
     );
 
     observer.observe(sentinel);
@@ -293,8 +383,7 @@ function useSectionTitleStuck(enabled: boolean) {
 
 /**
  * Tracks whether the section enclosing the returned ref currently spans the
- * vertical center of the viewport. Used to show a single floating vertical
- * title at a time — only while its own section owns the middle of the screen.
+ * vertical center of the viewport (or pages-mode scroll pane).
  */
 function useSectionCenterActive(enabled: boolean) {
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -313,21 +402,30 @@ function useSectionCenterActive(enabled: boolean) {
     let frame = 0;
     const update = () => {
       frame = 0;
+      const scrollRoot = getScrollParent(section as HTMLElement);
       const rect = section.getBoundingClientRect();
-      const centerY = window.innerHeight / 2;
-      setActive(rect.top <= centerY && rect.bottom >= centerY);
+      if (scrollRoot) {
+        const rootRect = scrollRoot.getBoundingClientRect();
+        const centerY = rootRect.top + rootRect.height / 2;
+        setActive(rect.top <= centerY && rect.bottom >= centerY);
+      } else {
+        const centerY = window.innerHeight / 2;
+        setActive(rect.top <= centerY && rect.bottom >= centerY);
+      }
     };
     const onScroll = () => {
       if (frame) return;
       frame = window.requestAnimationFrame(update);
     };
 
+    const scrollRoot = getScrollParent(section as HTMLElement);
     update();
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const scrollTarget: HTMLElement | Window = scrollRoot ?? window;
+    scrollTarget.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', onScroll);
+      scrollTarget.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
     };
   }, [enabled]);
@@ -346,6 +444,120 @@ function wrapSectionTitleChrome(
   return (
     <div className={chromeClass} style={chromeStyle}>
       {node}
+    </div>
+  );
+}
+
+/**
+ * Split-screen left rail: one word per line (title only).
+ * We intentionally avoid breaking a single word into multiple lines (letter-wrap).
+ * If the word doesn't fit, the auto-fit logic reduces font-size instead.
+ */
+function SplitRailTitleLines({
+  title,
+  decorationStyle,
+}: {
+  title: string;
+  decorationStyle?: React.CSSProperties;
+}) {
+  const words = title.trim().split(/\s+/).filter(Boolean);
+  const hasDecoration = Boolean(decorationStyle && Object.keys(decorationStyle).length > 0);
+
+  if (words.length <= 1) {
+    const content = hasDecoration ? <span style={decorationStyle}>{title}</span> : <>{title}</>;
+    return (
+      <span className="block max-w-full whitespace-nowrap text-balance">
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {words.map((word, index) => (
+        <span
+          key={`${word}-${index}`}
+          className="block max-w-full whitespace-nowrap text-balance"
+        >
+          {hasDecoration ? <span style={decorationStyle}>{word}</span> : word}
+        </span>
+      ))}
+    </>
+  );
+}
+
+const SPLIT_RAIL_DEFAULT_TITLE_CLASS =
+  'text-3xl font-extrabold tracking-[-0.04em] text-neutral-950 sm:text-4xl lg:text-5xl lg:leading-[0.95] dark:text-white';
+
+function useSplitRailAutoFitTitle(
+  titleRef: React.RefObject<HTMLElement | null>,
+  containerRef: React.RefObject<HTMLElement | null>,
+  deps: unknown[]
+) {
+  useLayoutEffect(() => {
+    const title = titleRef.current;
+    const container = containerRef.current;
+    if (!title || !container) return;
+
+    const fit = () => {
+      title.style.fontSize = '';
+      const computed = window.getComputedStyle(title);
+      let sizePx = Number.parseFloat(computed.fontSize);
+      if (!Number.isFinite(sizePx)) return;
+
+      const minPx = 14;
+      const maxWidth = container.clientWidth;
+      if (maxWidth <= 0) return;
+
+      let guard = 0;
+      while (title.scrollWidth > maxWidth && sizePx > minPx && guard < 96) {
+        sizePx -= 1;
+        title.style.fontSize = `${sizePx}px`;
+        guard += 1;
+      }
+    };
+
+    fit();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    ro?.observe(container);
+    window.addEventListener('resize', fit);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, deps);
+}
+
+function SplitRailAutoFitHeading({
+  className,
+  style,
+  children,
+  chromeClass,
+  chromeStyle,
+}: {
+  className: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+  chromeClass?: string;
+  chromeStyle?: React.CSSProperties;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useSplitRailAutoFitTitle(titleRef, containerRef, [className, style, children]);
+
+  return (
+    <div ref={containerRef} className="w-full max-w-full">
+      {wrapSectionTitleChrome(
+        <h2
+          ref={titleRef}
+          className={`max-w-full ${className}`}
+          style={style}
+        >
+          {children}
+        </h2>,
+        chromeClass,
+        chromeStyle
+      )}
     </div>
   );
 }
@@ -402,9 +614,23 @@ function ServicesCheckIcon({ className }: { className?: string }) {
   );
 }
 
-export function ArrowUpRight({ className }: { className?: string }) {
+export function ArrowUpRight({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <svg
+      className={className}
+      style={style}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M17 7H7M17 7v10" />
     </svg>
   );
@@ -486,13 +712,13 @@ export function SectionHeading({
 }) {
   return (
     <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+      <div className="mx-auto max-w-2xl text-center xl:mx-0 xl:max-w-none xl:text-left">
         <h2 className="text-3xl font-bold tracking-tight text-neutral-950 dark:text-white sm:text-4xl lg:text-[2.75rem] lg:leading-tight">
           {title}
         </h2>
         {subtitle ? (
           <p
-            className="mt-3 max-w-2xl text-base italic leading-relaxed text-neutral-500 dark:text-neutral-400 sm:text-lg"
+            className="mt-3 max-w-2xl text-base italic leading-relaxed text-neutral-500 dark:text-neutral-400 sm:text-lg xl:mx-0"
             style={{ fontFamily: SERIF }}
           >
             {subtitle}
@@ -527,6 +753,8 @@ export function EditorialSectionStickyHeader({
   customTitleSizing = false,
   customSubtitleSizing = false,
   orientation = 'horizontal',
+  /** Split-screen left rail: title + subtitle + trailing as one atomic block (no staggered motion). */
+  splitRailBundle = false,
 }: {
   title: string;
   subtitle?: React.ReactNode;
@@ -558,6 +786,7 @@ export function EditorialSectionStickyHeader({
   customSubtitleSizing?: boolean;
   /** Global title orientation — horizontal (default) or rotated vertical rail. */
   orientation?: 'horizontal' | 'vertical';
+  splitRailBundle?: boolean;
 }) {
   const spacingClass = className || 'mb-12 lg:mb-16';
   const stickyEnabled = scrollBehavior !== 'static';
@@ -607,30 +836,67 @@ export function EditorialSectionStickyHeader({
     );
   }
 
+  // Split left rail: one compact cadre — title, description, trailing (not a tall column).
+  if (splitRailBundle) {
+    return (
+      <div className="flex w-full max-w-full flex-col items-center px-1 text-center sm:px-2">
+        <SplitRailAutoFitHeading
+          className={`${titleTypographyClass} ${
+            customTitleSizing
+              ? 'text-neutral-950 dark:text-white'
+              : SPLIT_RAIL_DEFAULT_TITLE_CLASS
+          }`}
+          style={titleTypographyStyle}
+          chromeClass={titleChromeClass}
+          chromeStyle={titleChromeStyle}
+        >
+          <SplitRailTitleLines title={title} decorationStyle={titleDecorationStyle} />
+        </SplitRailAutoFitHeading>
+        {subtitle ? (
+          <p
+            className={`mt-4 w-full max-w-full leading-relaxed ${
+              customSubtitleSizing ? '' : 'text-base text-neutral-500 sm:text-lg dark:text-neutral-400'
+            } ${subtitleTypographyClass}`}
+            style={{
+              ...(subtitleSerif ? { fontFamily: SERIF } : undefined),
+              ...subtitleTypographyStyle,
+            }}
+          >
+            {subtitleDecorationStyle && Object.keys(subtitleDecorationStyle).length > 0 ? (
+              <span style={subtitleDecorationStyle}>{subtitle}</span>
+            ) : (
+              subtitle
+            )}
+          </p>
+        ) : null}
+        {trailing ? <div className="mt-5 flex justify-center">{trailing}</div> : null}
+      </div>
+    );
+  }
+
   return (
     <>
       <div ref={sentinelRef} className="h-px w-full" aria-hidden />
       <div
-        className={`z-40 w-full transition-all duration-300 ease-out ${
-          centerContent ? 'flex justify-center' : rightContent ? 'flex justify-end' : ''
-        } ${positionClass}`}
+        className={`z-40 w-full transition-all duration-300 ease-out ${sectionHeaderOuterLayoutClass(
+          centerContent,
+          rightContent
+        )} ${positionClass}`}
       >
         <div
-          className={
-            showPill
-              ? `w-fit max-w-full ${PORTFOLIO_FLOATING_CHROME}`
-              : centerContent
-                ? 'mx-auto w-fit max-w-full'
-                : rightContent
-                  ? 'ml-auto w-fit max-w-full'
-                  : 'w-fit max-w-full'
-          }
+          className={sectionHeaderTitleWrapClass(
+            showPill,
+            centered,
+            alignRight,
+            PORTFOLIO_FLOATING_CHROME
+          )}
         >
           {wrapSectionTitleChrome(
             <h2
-              className={`transition-all duration-300 ease-out ${
-                centerContent ? 'text-center' : rightContent ? 'text-right' : ''
-              } ${titleTypographyClass} ${titleSizeClass}`}
+              className={`transition-all duration-300 ease-out ${sectionHeaderTitleTextAlignClass(
+                centered,
+                alignRight
+              )} ${titleTypographyClass} ${titleSizeClass}`}
               style={titleTypographyStyle}
             >
               {titleDecorationStyle && Object.keys(titleDecorationStyle).length > 0 ? (
@@ -648,9 +914,9 @@ export function EditorialSectionStickyHeader({
         <p
           className={`mt-4 max-w-2xl leading-relaxed ${
             customSubtitleSizing ? '' : 'text-base text-neutral-500 sm:text-lg dark:text-neutral-400'
-          } ${
-            centered ? 'mx-auto text-center' : alignRight ? 'ml-auto text-right' : ''
-          } ${subtitleTypographyClass} ${trailing ? 'mb-4' : spacingClass}`}
+          } ${sectionHeaderSubtitleAlignClass(centered, alignRight)} ${subtitleTypographyClass} ${
+            trailing ? 'mb-4' : spacingClass
+          }`}
           style={{
             ...(subtitleSerif ? { fontFamily: SERIF } : undefined),
             ...subtitleTypographyStyle,
@@ -664,11 +930,7 @@ export function EditorialSectionStickyHeader({
         </p>
       ) : null}
       {trailing ? (
-        <div
-          className={`${spacingClass}${
-            centered ? ' flex justify-center' : alignRight ? ' flex justify-end' : ''
-          }`}
-        >
+        <div className={`${spacingClass} ${sectionHeaderTrailingLayoutClass(centered, alignRight)}`}>
           {trailing}
         </div>
       ) : null}
@@ -743,11 +1005,12 @@ function VerticalSectionTitle({
   const verticalTitleDecoration = toVerticalDecoration(titleDecorationStyle);
   const verticalSubtitleDecoration = toVerticalDecoration(subtitleDecorationStyle);
 
-  const flowJustify = centered
+  const flowJustify = 'justify-center xl:justify-start';
+  const flowJustifyResolved = centered
     ? 'justify-center'
     : alignRight
-      ? 'justify-end'
-      : 'justify-start';
+      ? 'justify-center xl:justify-end'
+      : flowJustify;
 
   const fixedPositionClass = centered
     ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'
@@ -780,7 +1043,7 @@ function VerticalSectionTitle({
     <>
       <div ref={anchorRef} className="h-px w-full" aria-hidden />
       {/* In-flow on small screens */}
-      <div className={`mb-10 flex w-full items-start ${flowJustify} lg:hidden`}>{titleNode}</div>
+      <div className={`mb-10 flex w-full items-start ${flowJustifyResolved} lg:hidden`}>{titleNode}</div>
       {/* Fixed & centered on large screens, visible only while the section owns the viewport center */}
       <div
         className={`pointer-events-none fixed z-30 hidden transition-opacity duration-500 ease-out lg:flex ${fixedPositionClass} ${
@@ -793,9 +1056,9 @@ function VerticalSectionTitle({
         <p
           className={`mt-4 max-w-2xl leading-relaxed ${
             customSubtitleSizing ? '' : 'text-base text-neutral-500 sm:text-lg dark:text-neutral-400'
-          } ${
-            centered ? 'mx-auto text-center' : alignRight ? 'ml-auto text-right' : ''
-          } ${subtitleTypographyClass} ${trailing ? 'mb-4' : spacingClass}`}
+          } ${sectionHeaderSubtitleAlignClass(centered, alignRight)} ${subtitleTypographyClass} ${
+            trailing ? 'mb-4' : spacingClass
+          }`}
           style={{
             ...(subtitleSerif ? { fontFamily: SERIF } : undefined),
             ...subtitleTypographyStyle,
@@ -809,11 +1072,7 @@ function VerticalSectionTitle({
         </p>
       ) : null}
       {trailing ? (
-        <div
-          className={`${spacingClass} ${
-            centered ? 'flex justify-center' : alignRight ? 'flex justify-end' : ''
-          }`}
-        >
+        <div className={`${spacingClass} ${sectionHeaderTrailingLayoutClass(centered, alignRight)}`}>
           {trailing}
         </div>
       ) : null}
@@ -823,11 +1082,15 @@ function VerticalSectionTitle({
 
 type NavItem = { id: string; label: string; icon: PortfolioNavIconVariant };
 
-function useNavVisibility(displayMode: PortfolioNavSettings['displayMode']) {
-  const [visible, setVisible] = useState(displayMode === 'always');
+function useNavVisibility(
+  displayMode: PortfolioNavSettings['displayMode'],
+  /** Pages mode locks body scroll — force always-visible chrome. */
+  forceAlways = false
+) {
+  const [visible, setVisible] = useState(displayMode === 'always' || forceAlways);
 
   useEffect(() => {
-    if (displayMode === 'always') {
+    if (forceAlways || displayMode === 'always') {
       setVisible(true);
       return;
     }
@@ -843,9 +1106,243 @@ function useNavVisibility(displayMode: PortfolioNavSettings['displayMode']) {
     update();
     window.addEventListener('scroll', update, { passive: true });
     return () => window.removeEventListener('scroll', update);
-  }, [displayMode]);
+  }, [displayMode, forceAlways]);
 
   return visible;
+}
+
+/** Match Tailwind `lg` / `xl` for layout remaps that need JS. */
+function usePortfolioMinWidth(px: number) {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${px}px)`);
+    const update = () => setMatches(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, [px]);
+  return matches;
+}
+
+/** lg breakpoint (1024) — used to remap side nav / icon labels on small–mid screens. */
+function usePortfolioLgUp() {
+  return usePortfolioMinWidth(1024);
+}
+
+/** xl breakpoint (1280) — reserved for hero dual-column if JS gating is needed. */
+function usePortfolioXlUp() {
+  return usePortfolioMinWidth(1280);
+}
+
+type NavPresenceState = {
+  /** Combined with display visibility — false when reveal mode is collapsed. */
+  expanded: boolean;
+  /** Opacity for the bar chrome (0–1). */
+  chromeOpacity: number;
+  /** Show the peek / menu handle. */
+  showHandle: boolean;
+  /** Dim mode: currently brightened by interaction. */
+  isDimActive: boolean;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+  onFocusCapture: () => void;
+  onBlurCapture: (event: FocusEvent<HTMLElement>) => void;
+  onPointerDown: () => void;
+  onToggle: () => void;
+  onCollapse: () => void;
+  onInteract: () => void;
+};
+
+const DIM_IDLE_MS = 1600;
+const DIM_REST_OPACITY = 0.32;
+/** Time to cross the gap between a detached nav rail and free-space link icons. */
+const HOVER_LEAVE_GRACE_MS = 1200;
+
+function NavMenuControlGlyph({
+  icon,
+  expanded = false,
+}: {
+  icon: PortfolioNavMenuControlIcon;
+  expanded?: boolean;
+}) {
+  if (icon === 'dots-v') {
+    return (
+      <span className="inline-flex flex-col items-center gap-0.5" aria-hidden>
+        <span className="h-1 w-1 rounded-full bg-current" />
+        <span className="h-1 w-1 rounded-full bg-current" />
+        <span className="h-1 w-1 rounded-full bg-current" />
+      </span>
+    );
+  }
+  if (icon === 'x') {
+    return (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+        <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    );
+  }
+  if (icon === 'chevron') {
+    return (
+      <svg
+        className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        aria-hidden
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+      </svg>
+    );
+  }
+  if (icon === 'menu') {
+    return (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+        <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
+      </svg>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1" aria-hidden>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+    </span>
+  );
+}
+
+function useNavPresence(
+  presence: PortfolioNavSettings['presence'] | undefined,
+  displayVisible: boolean
+): NavPresenceState {
+  const mode = presence ?? 'full';
+  const [expanded, setExpanded] = useState(mode === 'full' || mode === 'dim');
+  const [hovered, setHovered] = useState(false);
+  const [engaged, setEngaged] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearIdle = () => {
+    if (idleTimer.current) {
+      clearTimeout(idleTimer.current);
+      idleTimer.current = null;
+    }
+  };
+
+  const clearHoverLeave = () => {
+    if (hoverLeaveTimer.current) {
+      clearTimeout(hoverLeaveTimer.current);
+      hoverLeaveTimer.current = null;
+    }
+  };
+
+  const scheduleIdle = () => {
+    clearIdle();
+    if (mode !== 'dim') return;
+    idleTimer.current = setTimeout(() => setEngaged(false), DIM_IDLE_MS);
+  };
+
+  const scheduleHoverCollapse = () => {
+    clearHoverLeave();
+    if (mode !== 'hover') return;
+    hoverLeaveTimer.current = setTimeout(() => {
+      setExpanded(false);
+      hoverLeaveTimer.current = null;
+    }, HOVER_LEAVE_GRACE_MS);
+  };
+
+  useEffect(() => {
+    if (mode === 'full' || mode === 'dim') {
+      setExpanded(true);
+      setHovered(false);
+      setEngaged(false);
+      clearIdle();
+      clearHoverLeave();
+    } else {
+      setExpanded(false);
+      setHovered(false);
+      setEngaged(false);
+      clearIdle();
+      clearHoverLeave();
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    return () => {
+      clearIdle();
+      clearHoverLeave();
+    };
+  }, []);
+
+  const bumpEngaged = () => {
+    setEngaged(true);
+    scheduleIdle();
+  };
+
+  // Dim must NOT treat "expanded" as active — the bar is always expanded in dim mode.
+  const isDimActive = hovered || engaged;
+  const isRevealed =
+    mode === 'full' || mode === 'dim' || expanded || (mode === 'hover' && hovered);
+  const showHandle =
+    displayVisible && (mode === 'tap' || mode === 'hover') && !isRevealed;
+
+  let chromeOpacity = 1;
+  if (!displayVisible) {
+    chromeOpacity = 0;
+  } else if (mode === 'dim') {
+    chromeOpacity = isDimActive ? 1 : DIM_REST_OPACITY;
+  } else if (mode === 'hover' || mode === 'tap') {
+    chromeOpacity = isRevealed || showHandle ? 1 : 0;
+  }
+
+  return {
+    expanded: isRevealed,
+    chromeOpacity,
+    showHandle,
+    isDimActive,
+    onMouseEnter: () => {
+      clearHoverLeave();
+      setHovered(true);
+      if (mode === 'hover') setExpanded(true);
+      if (mode === 'dim') {
+        setEngaged(true);
+        clearIdle();
+      }
+    },
+    onMouseLeave: () => {
+      setHovered(false);
+      if (mode === 'hover') scheduleHoverCollapse();
+      if (mode === 'dim') scheduleIdle();
+    },
+    onFocusCapture: () => {
+      clearHoverLeave();
+      if (mode === 'dim') {
+        setEngaged(true);
+        clearIdle();
+      }
+      if (mode === 'hover') setExpanded(true);
+    },
+    onBlurCapture: (event) => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && event.currentTarget.contains(next)) return;
+      if (mode === 'hover') scheduleHoverCollapse();
+      if (mode === 'dim') scheduleIdle();
+    },
+    onPointerDown: () => {
+      bumpEngaged();
+    },
+    onToggle: () => {
+      clearHoverLeave();
+      if (mode === 'tap' || mode === 'hover') {
+        setExpanded((prev) => !prev);
+      }
+    },
+    onCollapse: () => {
+      clearHoverLeave();
+      if (mode === 'tap' || mode === 'hover') setExpanded(false);
+    },
+    onInteract: bumpEngaged,
+  };
 }
 
 export function PortfolioFloatingNav({
@@ -853,6 +1350,10 @@ export function PortfolioFloatingNav({
   settings,
   activeId: controlledActiveId,
   onNavigate,
+  chromeLinks = [],
+  monochrome,
+  contactHref = '#contact',
+  onContactNavigate,
 }: {
   items: NavItem[];
   settings: PortfolioNavSettings;
@@ -860,16 +1361,54 @@ export function PortfolioFloatingNav({
   activeId?: string;
   /** When set, nav buttons switch pages instead of scrolling to hash anchors. */
   onNavigate?: (id: string) => void;
+  /** Mail / social icons (+ optional Contact) for free-space or in-bar extras. */
+  chromeLinks?: PortfolioNavChromeLink[];
+  monochrome?: boolean;
+  contactHref?: string;
+  onContactNavigate?: () => void;
 }) {
   const [observedActiveId, setObservedActiveId] = useState(items[0]?.id ?? '');
-  const visible = useNavVisibility(settings.displayMode);
   const isControlled = typeof onNavigate === 'function';
+  // Pages mode uses an inner scroller — window.scrollY never moves.
+  const visible = useNavVisibility(settings.displayMode, isControlled);
+  const isLgUp = usePortfolioLgUp();
+  const isXlUp = usePortfolioXlUp();
+  const presence = useNavPresence(settings.presence, visible);
+  const presenceMode = settings.presence ?? 'full';
+  const contactButtonEnabled = settings.contactButtonEnabled ?? false;
+  const sectionItems = contactButtonEnabled
+    ? items.filter((item) => item.id !== 'contact')
+    : items;
+
+  // Close reveal menus after choosing a page/section.
+  const handleNavigate = (id: string) => {
+    presence.onInteract();
+    onNavigate?.(id);
+  };
   const activeId = isControlled
-    ? (controlledActiveId ?? items[0]?.id ?? '')
+    ? (controlledActiveId ?? sectionItems[0]?.id ?? items[0]?.id ?? '')
     : observedActiveId;
+  const innerRef = useRef<HTMLDivElement>(null);
+  const navRootRef = useRef<HTMLElement>(null);
+  const [autoNeedsScroll, setAutoNeedsScroll] = useState(false);
+
+  const mobileChrome = resolvePortfolioNavMobileChrome(settings, isLgUp, isXlUp);
+  const contentMode = mobileChrome.contentMode;
+  const effectivePlacement = mobileChrome.placement;
+  const itemGap = mobileChrome.itemGap;
+  const barWidth = mobileChrome.barWidth;
+  const compact = mobileChrome.compact;
+  const allowWrap = mobileChrome.allowWrap;
+  const allowScroll = mobileChrome.allowScroll || autoNeedsScroll;
+  const navPalette = useMemo(
+    () => mergeNavPalette(DEFAULT_NAV_PALETTE, settings.navPalette),
+    [settings.navPalette]
+  );
+  const navStrongTextColor = resolveHeroPaletteColor(navPalette, 'texteFort');
+  const navPageFillColor = resolveHeroPaletteColor(navPalette, 'fond');
 
   useEffect(() => {
-    if (isControlled || items.length === 0) return;
+    if (isControlled || sectionItems.length === 0) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -883,37 +1422,100 @@ export function PortfolioFloatingNav({
       { rootMargin: '-40% 0px -50% 0px', threshold: [0, 0.25, 0.5] }
     );
 
-    for (const item of items) {
+    for (const item of sectionItems) {
       const node = document.getElementById(item.id);
       if (node) observer.observe(node);
     }
 
     return () => observer.disconnect();
-  }, [items, isControlled]);
+  }, [sectionItems, isControlled]);
+
+  // Auto mode: if icons still overflow after tight gap, enable swipe.
+  useEffect(() => {
+    const isAuto = (settings.mobileLayout ?? 'auto') === 'auto';
+    if (isLgUp || !isAuto || allowWrap) {
+      setAutoNeedsScroll(false);
+      return;
+    }
+    const el = innerRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      setAutoNeedsScroll(el.scrollWidth > el.clientWidth + 2);
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [isLgUp, settings.mobileLayout, allowWrap, sectionItems.length, itemGap, contentMode, barWidth]);
+
+  /**
+   * Keep the outer shell at bar size while the bar is fading out, then hug the handle.
+   * Expanding grows the shell immediately so the bar has room — avoids a layout jump mid-fold.
+   */
+  const [shellHugged, setShellHugged] = useState(presence.showHandle);
+  useEffect(() => {
+    if (presence.showHandle) {
+      const t = window.setTimeout(() => setShellHugged(true), 420);
+      return () => window.clearTimeout(t);
+    }
+    setShellHugged(false);
+    return undefined;
+  }, [presence.showHandle]);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const topClearanceActive = portfolioNavTopClearanceActive(settings, effectivePlacement);
+  usePortfolioNavTopClearanceSync({
+    rootRef: navRootRef,
+    active: topClearanceActive,
+    visible:
+      visible &&
+      presence.chromeOpacity > 0.05 &&
+      (presence.expanded || presence.showHandle),
+  });
 
   if (!settings.enabled) return null;
-  if (settings.hideWhenSingle && items.length <= 1) return null;
-  if (items.length === 0) return null;
+  if (settings.hideWhenSingle && sectionItems.length <= 1) return null;
+  if (sectionItems.length === 0) return null;
+  if (!mounted) return null;
 
-  const vertical = portfolioNavIsVertical(settings.placement);
+  const vertical = portfolioNavIsVertical(effectivePlacement);
+  /** Collapsed reveal handle must hug its content so top-center stays centered (wide bars otherwise pin the handle left). */
+  const collapsedToHandle = shellHugged && presence.showHandle;
   const placementClass = portfolioNavPlacementClass(
-    settings.placement,
+    effectivePlacement,
     settings.edgeOffset,
-    settings.barWidth
+    collapsedToHandle ? 'hug' : barWidth,
+    settings.edgeOffsetCloseOnMobile ?? true
   );
-  const widthClass = portfolioNavBarWidthClass(settings.barWidth, vertical);
+  const widthClass = collapsedToHandle
+    ? 'w-fit max-w-[calc(100vw-1.5rem)]'
+    : portfolioNavBarWidthClass(barWidth, vertical);
   const innerWidthClass = portfolioNavBarInnerClass(
-    settings.barWidth,
+    barWidth,
     vertical,
-    settings.itemGap,
-    settings.placement
+    itemGap,
+    effectivePlacement,
+    { wrap: allowWrap, scroll: allowScroll }
   );
   const containerClass = portfolioNavBarContainerClass(
     settings.barDesign,
     settings.glassEffect,
     vertical,
     settings.barPadding ?? 'md',
-    settings.barWidth
+    barWidth,
+    settings.barBorderEnabled ?? true,
+    settings.barShadowEnabled ?? true,
+    settings.barBlurStrength ?? 'md',
+    settings.barShadowStrength ?? 'md'
   );
   const shellStyle =
     settings.barDesign === 'dock'
@@ -921,30 +1523,177 @@ export function PortfolioFloatingNav({
       : portfolioNavBarShellStyle(
           settings.barBackgroundColor,
           settings.barBorderColor,
-          settings.glassEffect
+          settings.glassEffect,
+          settings.barBorderEnabled ?? true
         );
   const itemBaseClass = portfolioNavItemBaseClass(
     settings.barDesign,
-    settings.contentMode,
+    contentMode,
     settings.buttonDesign,
     settings.labelCase,
-    settings.compactOnMobile,
+    compact,
     vertical,
-    settings.barThickness
+    settings.barThickness,
+    settings.buttonPadding ?? 'md'
   );
   const iconGlyphClass = portfolioNavIconGlyphClass(settings.barThickness);
-  const showRailDividers = settings.barDesign === 'rail' && items.length > 1;
+  const showRailDividers = settings.barDesign === 'rail' && sectionItems.length > 1 && !allowWrap;
+  const menuHandleContent = settings.menuHandleContent ?? 'both';
+  const showMenuIcon = menuHandleContent === 'icon' || menuHandleContent === 'both';
+  const showMenuText = menuHandleContent === 'text' || menuHandleContent === 'both';
+  const menuControlIcon = (settings.menuControlIcon ?? 'dots-h') as PortfolioNavMenuControlIcon;
+  const menuControlAlign = (settings.menuControlAlign ?? 'right') as PortfolioNavMenuControlAlign;
+  const showExpandedToggle = presenceMode === 'tap' && presence.expanded;
+  const handleChromeStyle = {
+    backgroundColor: settings.menuHandleBackgroundColor ?? '#ffffff',
+    color: settings.menuHandleIconColor ?? '#171717',
+    borderColor:
+      (settings.menuHandleBorderEnabled ?? true)
+        ? settings.menuHandleBorderColor ?? '#d4d4d4'
+        : 'transparent',
+    borderWidth: (settings.menuHandleBorderEnabled ?? true) ? 1 : 0,
+    borderStyle: 'solid' as const,
+  };
+  const handleChromeClass =
+    'inline-flex shrink-0 items-center justify-center rounded-full shadow-[0_6px_20px_rgba(0,0,0,0.12)] backdrop-blur-md transition hover:opacity-90';
+  const inlineExtras = portfolioNavBarHostsInlineExtras(barWidth, effectivePlacement);
+  const placementIsStart =
+    effectivePlacement === 'top-left' || effectivePlacement === 'bottom-left';
+  const placementIsEnd =
+    effectivePlacement === 'top-right' || effectivePlacement === 'bottom-right';
+  const placementIsCentered = !vertical && !placementIsStart && !placementIsEnd;
+  const itemsGapClass = portfolioNavItemGapClass(itemGap, vertical);
 
-  return (
-    <nav
-      className={`pointer-events-none fixed z-50 transition-opacity duration-300 ease-out ${placementClass} ${widthClass} ${
-        visible ? 'opacity-100' : 'opacity-0'
-      }`}
-      aria-label="Portfolio navigation"
-      aria-hidden={!visible}
+  const expandedToggleButton = showExpandedToggle ? (
+    <button
+      type="button"
+      onClick={presence.onCollapse}
+      aria-label="Hide navigation"
+      title="Hide menu"
+      className={`${handleChromeClass} h-10 w-10 min-h-10`}
+      style={handleChromeStyle}
     >
-      <div className={`pointer-events-auto ${innerWidthClass} ${containerClass}`} style={shellStyle}>
-        {items.map((item, index) => {
+      <NavMenuControlGlyph icon={menuControlIcon} expanded />
+    </button>
+  ) : null;
+
+  const foldExitClass = vertical
+    ? effectivePlacement === 'right-center'
+      ? 'translate-x-3 scale-[0.9] opacity-0'
+      : '-translate-x-3 scale-[0.9] opacity-0'
+    : effectivePlacement.startsWith('bottom')
+      ? 'translate-y-3 scale-[0.92] opacity-0'
+      : placementIsStart
+        ? '-translate-x-2 -translate-y-1 scale-[0.92] opacity-0'
+        : placementIsEnd
+          ? 'translate-x-2 -translate-y-1 scale-[0.92] opacity-0'
+          : '-translate-y-3 scale-[0.92] opacity-0';
+  /** Edge-align the crossfade stack so the handle doesn’t jump to the center of a tall/wide bar. */
+  const foldStackAlign = vertical
+    ? effectivePlacement === 'right-center'
+      ? 'justify-items-end items-center'
+      : 'justify-items-start items-center'
+    : placementIsStart
+      ? 'justify-items-start items-center'
+      : placementIsEnd
+        ? 'justify-items-end items-center'
+        : 'place-items-center';
+  /** Full-width bars must stretch the fold stack — centering shrink-wraps and collapses free-space slots. */
+  const foldStackWidthClass = !vertical && barWidth === 'full' && !collapsedToHandle ? 'w-full' : '';
+  const foldMotion =
+    'transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform';
+
+  return createPortal(
+    <>
+    <nav
+      ref={navRootRef}
+      className={`pointer-events-none fixed z-[100] ${placementClass} ${widthClass}`}
+      aria-label="Portfolio navigation"
+      aria-hidden={!visible || (!presence.expanded && !presence.showHandle)}
+    >
+      <div
+        data-portfolio-nav-clearance-box
+        className={`pointer-events-auto transition-opacity duration-500 ease-out ${
+          foldStackWidthClass
+            ? 'w-full'
+            : placementIsCentered || collapsedToHandle
+              ? 'flex justify-center'
+              : ''
+        }`}
+        style={{ opacity: presence.chromeOpacity }}
+        onMouseEnter={presence.onMouseEnter}
+        onMouseLeave={presence.onMouseLeave}
+        onFocusCapture={presence.onFocusCapture}
+        onBlurCapture={presence.onBlurCapture}
+        onPointerDown={presence.onPointerDown}
+      >
+        <div className={`grid ${foldStackAlign} ${foldStackWidthClass}`}>
+          {/* Collapsed handle — crossfades with the bar (no abrupt mount jump). */}
+          <button
+            type="button"
+            onClick={presence.onToggle}
+            className={`${handleChromeClass} ${foldMotion} col-start-1 row-start-1 z-[1] min-h-11 ${
+              showMenuText && showMenuIcon
+                ? 'gap-2 px-3.5 py-2'
+                : showMenuText
+                  ? 'px-4 py-2'
+                  : 'h-11 w-11'
+            } ${
+              presence.showHandle
+                ? 'relative scale-100 opacity-100 delay-100'
+                : 'pointer-events-none absolute scale-90 opacity-0 delay-0'
+            }`}
+            style={handleChromeStyle}
+            aria-expanded={presence.expanded}
+            aria-label="Show navigation"
+            tabIndex={presence.showHandle ? 0 : -1}
+          >
+            {showMenuIcon ? <NavMenuControlGlyph icon={menuControlIcon} /> : null}
+            {showMenuText ? (
+              <span className="text-xs font-bold uppercase tracking-[0.14em]">Menu</span>
+            ) : null}
+          </button>
+
+          <div
+            ref={innerRef}
+            className={`${foldMotion} col-start-1 row-start-1 ${innerWidthClass} ${containerClass} ${
+              inlineExtras ? '!justify-start' : ''
+            } ${
+              presence.expanded
+                ? 'relative z-0 translate-x-0 translate-y-0 scale-100 opacity-100 delay-75'
+                : `pointer-events-none absolute z-0 delay-0 ${foldExitClass}`
+            }`}
+            style={shellStyle}
+            aria-hidden={!presence.expanded}
+          >
+          {inlineExtras ? (
+            <div
+              className={`flex min-w-0 items-center gap-2 ${
+                placementIsCentered || placementIsEnd ? 'flex-1' : 'shrink-0'
+              }`}
+            >
+              {menuControlAlign === 'left' ? expandedToggleButton : null}
+              <PortfolioNavInlineExtras
+                settings={settings}
+                links={chromeLinks}
+                monochrome={monochrome}
+                contactHref={contactHref}
+                onContactNavigate={onContactNavigate}
+                side="left"
+              />
+            </div>
+          ) : menuControlAlign === 'left' ? (
+            expandedToggleButton
+          ) : null}
+
+          <div
+            className={`flex items-center ${itemsGapClass} ${inlineExtras ? 'shrink-0' : 'contents'} ${
+              inlineExtras && allowScroll
+                ? 'min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+                : ''
+            }`}
+          >
+          {sectionItems.map((item, index) => {
           const active = activeId === item.id;
           const label = formatNavLabel(item.label, settings.labelCase);
           const itemColors = portfolioNavItemColorStyles(
@@ -952,29 +1701,155 @@ export function PortfolioFloatingNav({
             settings.itemTextColor ?? '#525252',
             settings.itemBackgroundColor ?? '#ffffff',
             settings.itemBorderColor ?? '#e5e5e5',
-            active
-          );
-          const itemClassName = `${itemBaseClass} ${portfolioNavItemActiveClass(
-            settings.barDesign,
-            settings.buttonDesign,
-            settings.activeStyle,
             active,
-            vertical
-          )}`;
+            settings.itemBorderEnabled ?? true
+          );
+          const itemHoverVars = portfolioNavItemHoverCssVars({
+            active,
+            backgroundColor: settings.itemBackgroundColor ?? '#ffffff',
+            borderColor: settings.itemBorderColor ?? '#e5e5e5',
+            iconColor: settings.itemIconColor ?? '#525252',
+            textColor: settings.itemTextColor ?? '#525252',
+            hoverIconColor: settings.itemHoverIconColor ?? settings.activeAccentColor ?? '#ff5a1f',
+            hoverTextColor: settings.itemHoverTextColor ?? '#f4f3ef',
+            hoverBackgroundColor:
+              settings.itemHoverBackgroundColor ?? settings.activeAccentColor ?? '#ff5a1f',
+            hoverBorderColor:
+              settings.itemHoverBorderColor ?? settings.activeAccentColor ?? '#ff5a1f',
+            borderEnabled: settings.itemBorderEnabled ?? true,
+          });
+          const dockWithLabel =
+            settings.barDesign === 'dock' && contentMode === 'both';
+          const activeAccentStyle = portfolioNavActiveItemStyle({
+            active,
+            design: settings.barDesign,
+            buttonDesign: settings.buttonDesign,
+            activeStyle: settings.activeStyle,
+            accentColor: settings.activeAccentColor ?? '#f97316',
+            surfaceColor: settings.itemBackgroundColor ?? '#ffffff',
+            strongTextColor: navStrongTextColor,
+            pageFillColor: navPageFillColor,
+            vertical,
+          });
+          // Inactive: CSS vars + Tailwind classes (no inline hex bg — that blocked hover).
+          // Active: keep accent inline styles so they always win.
+          const itemShellStyle = dockWithLabel
+            ? active
+              ? undefined
+              : ({
+                  ...itemHoverVars,
+                  borderWidth: settings.itemBorderEnabled === false ? 0 : 1,
+                  borderStyle: 'solid',
+                } as CSSProperties)
+            : active
+              ? { ...itemColors.shell, ...activeAccentStyle }
+              : ({
+                  ...itemHoverVars,
+                  borderWidth: settings.itemBorderEnabled === false ? 0 : 1,
+                  borderStyle: 'solid',
+                } as CSSProperties);
+          const activeTextStyle =
+            active &&
+            (settings.activeStyle === 'accent-text' ||
+              settings.activeStyle === 'outline' ||
+              settings.activeStyle === 'soft-badge' ||
+              settings.activeStyle === 'accent-fill' ||
+              settings.activeStyle === 'filled-pill' ||
+              settings.activeStyle === 'dot') &&
+            activeAccentStyle?.color
+              ? { color: activeAccentStyle.color }
+              : undefined;
+          const itemClassName = `${itemBaseClass} ${
+            dockWithLabel
+              ? ''
+              : portfolioNavItemActiveClass(
+                  settings.barDesign,
+                  settings.buttonDesign,
+                  settings.activeStyle,
+                  active,
+                  vertical
+                )
+          } ${portfolioNavItemHoverClass(active)} ${allowScroll ? 'shrink-0' : ''}`.trim();
+          const activeDot =
+            active && settings.barDesign === 'classic' && settings.activeStyle === 'dot' ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
+                style={{
+                  backgroundColor: settings.activeAccentColor ?? '#f97316',
+                }}
+              />
+            ) : null;
           const itemContent =
-            settings.contentMode === 'icons' ? (
-              <span className="inline-flex" style={itemColors.icon}>
+            contentMode === 'icons' ? (
+              <span
+                className={portfolioNavItemHoverIconClass(active)}
+                style={
+                  active && activeAccentStyle?.color
+                    ? { color: activeAccentStyle.color }
+                    : undefined
+                }
+              >
                 <PortfolioNavIcon variant={item.icon} className={iconGlyphClass} />
               </span>
-            ) : settings.contentMode === 'both' ? (
-              <>
-                <span className="inline-flex" style={itemColors.icon}>
-                  <PortfolioNavIcon variant={item.icon} className={iconGlyphClass} />
-                </span>
-                <span style={itemColors.text}>{label}</span>
-              </>
+            ) : contentMode === 'both' ? (
+              dockWithLabel ? (
+                <>
+                  <span
+                    className={`${portfolioNavDockGlyphClass(
+                      settings.barThickness,
+                      compact,
+                      active
+                    )} ${
+                      active
+                        ? ''
+                        : 'bg-[var(--nav-item-bg)] border-[color:var(--nav-item-border)] transition-colors duration-200 group-hover:bg-[var(--nav-item-hover-bg)] group-hover:border-[color:var(--nav-item-hover-border)]'
+                    }`}
+                    style={
+                      active
+                        ? undefined
+                        : ({
+                            ...itemHoverVars,
+                            borderWidth: settings.itemBorderEnabled === false ? 0 : 1,
+                            borderStyle: 'solid',
+                          } as CSSProperties)
+                    }
+                  >
+                    <span className={portfolioNavItemHoverIconClass(active)}>
+                      <PortfolioNavIcon variant={item.icon} className={iconGlyphClass} />
+                    </span>
+                  </span>
+                  <span
+                    className={`max-w-[4.5rem] truncate text-center leading-tight ${portfolioNavItemHoverTextClass(active)}`}
+                    style={active ? { color: '#0a0a0a' } : undefined}
+                  >
+                    {label}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span
+                    className={portfolioNavItemHoverIconClass(active)}
+                    style={
+                      active && activeAccentStyle?.color
+                        ? { color: activeAccentStyle.color }
+                        : undefined
+                    }
+                  >
+                    <PortfolioNavIcon variant={item.icon} className={iconGlyphClass} />
+                  </span>
+                  <span
+                    className={portfolioNavItemHoverTextClass(active)}
+                    style={activeTextStyle}
+                  >
+                    {label}
+                  </span>
+                </>
+              )
             ) : (
-              <span style={itemColors.text}>{label}</span>
+              <span className={portfolioNavItemHoverTextClass(active)} style={activeTextStyle}>
+                {label}
+              </span>
             );
 
           return (
@@ -985,31 +1860,75 @@ export function PortfolioFloatingNav({
               {isControlled ? (
                 <button
                   type="button"
-                  onClick={() => onNavigate?.(item.id)}
+                  onClick={() => handleNavigate(item.id)}
                   aria-label={label}
                   aria-current={active ? 'page' : undefined}
-                  title={settings.contentMode === 'icons' ? label : undefined}
+                  title={contentMode === 'icons' ? label : undefined}
                   className={itemClassName}
-                  style={itemColors.shell}
+                  style={itemShellStyle}
                 >
                   {itemContent}
+                  {activeDot}
                 </button>
               ) : (
                 <a
                   href={`#${item.id}`}
                   aria-label={label}
-                  title={settings.contentMode === 'icons' ? label : undefined}
+                  title={contentMode === 'icons' ? label : undefined}
                   className={itemClassName}
-                  style={itemColors.shell}
+                  style={itemShellStyle}
+                  onClick={() => {
+                    presence.onInteract();
+                  }}
                 >
                   {itemContent}
+                  {activeDot}
                 </a>
               )}
             </Fragment>
           );
         })}
+          </div>
+
+          {inlineExtras ? (
+            <div
+              className={`flex min-w-0 items-center justify-end gap-2 ${
+                placementIsCentered || placementIsStart ? 'flex-1' : 'shrink-0'
+              }`}
+            >
+              <PortfolioNavInlineExtras
+                settings={settings}
+                links={chromeLinks}
+                monochrome={monochrome}
+                contactHref={contactHref}
+                onContactNavigate={onContactNavigate}
+                side="right"
+              />
+              {menuControlAlign === 'right' ? expandedToggleButton : null}
+            </div>
+          ) : menuControlAlign === 'right' ? (
+            expandedToggleButton
+          ) : null}
+      </div>
+        </div>
       </div>
     </nav>
+      {!inlineExtras ? (
+        <PortfolioNavFreeSpaceLinks
+          settings={settings}
+          links={chromeLinks}
+          monochrome={monochrome}
+          contactHref={contactHref}
+          onContactNavigate={onContactNavigate}
+          navRevealed={presence.expanded}
+          onMouseEnter={presence.onMouseEnter}
+          onMouseLeave={presence.onMouseLeave}
+          onFocusCapture={presence.onFocusCapture}
+          onBlurCapture={presence.onBlurCapture}
+        />
+      ) : null}
+    </>,
+    document.body
   );
 }
 
@@ -1074,7 +1993,7 @@ export function PortfolioPerPageNav({
 
   return (
     <nav
-      className={`pointer-events-none fixed bottom-5 right-4 z-50 flex flex-col items-end gap-3 transition-opacity duration-300 sm:bottom-8 sm:right-6 ${
+      className={`pointer-events-none fixed bottom-5 right-4 z-50 flex flex-col items-end gap-3 transition-opacity duration-300 sm:bottom-8 sm:right-6 pb-[env(safe-area-inset-bottom,0px)] ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       aria-label="Page navigation"
@@ -1207,28 +2126,87 @@ export function EditorialWorkCard({
     presentation.showCardToolList &&
     (presentation.toolsDisplay === 'list' || presentation.toolsDisplay === 'both');
   const isOverlay = presentation.cardDesign === 'overlay';
-  const shellClass = workCardShellClass(presentation.cardDesign, presentation.contentPlacement);
+  const isCompact = presentation.cardDesign === 'compact';
+  const showMedia = presentation.showCardMedia !== false;
+  const effectivePlacement = workEffectiveContentPlacement(presentation);
+  /** Overlay without media → plain text card (no empty scrim). */
+  const useOverlayChrome = isOverlay && showMedia;
+  const shellClass = workCardShellClass(
+    useOverlayChrome ? 'overlay' : showMedia ? presentation.cardDesign : 'stacked',
+    effectivePlacement
+  );
   const gridStyle = workCardGridStyle(
-    presentation.cardDesign,
-    presentation.contentPlacement,
+    showMedia ? presentation.cardDesign : 'stacked',
+    effectivePlacement,
     presentation.mediaRatio
   );
-  const mediaOrderClass = workCardMediaOrderClass(presentation.cardDesign, presentation.contentPlacement);
-  const contentOrderClass = workCardContentOrderClass(presentation.cardDesign, presentation.contentPlacement);
-  const borderClass = workCardFrameClass(presentation);
-  const borderStyle = workCardFrameStyle(presentation);
+  const mediaOrderClass = workCardMediaOrderClass(presentation.cardDesign, effectivePlacement);
+  const contentOrderClass = workCardContentOrderClass(presentation.cardDesign, effectivePlacement);
+  const edgeClass = workCardEdgeClass(presentation);
+  const edgeStyle = workCardEdgeStyle(presentation);
+  const frameClass = workCardFrameClass(presentation);
+  const frameStyle = workCardFrameStyle(presentation);
+  const edgeOnShell =
+    !showMedia ||
+    workCardIsStacked(
+      useOverlayChrome ? 'overlay' : presentation.cardDesign,
+      effectivePlacement
+    );
   const contentAlign = workCardContentAlignClass(presentation.cardContentAlignment);
-  const ctaAlign = workCtaAlignClass(presentation.ctaAlignment);
+  const ctaAlign =
+    !showMedia && presentation.noMediaInfoLayout === 'centered'
+      ? 'justify-center'
+      : workCtaAlignClass(presentation.ctaAlignment);
+  const contentGapClass = isCompact ? 'gap-3' : 'gap-5';
+  const framed = presentation.contentFrameEnabled;
   const mediaAspectClass = workCardMediaAspectClass(
     presentation.cardDesign,
-    presentation.contentPlacement,
+    effectivePlacement,
     presentation.mediaRatio
   );
   const mediaAspectStyle = workCardMediaAspectStyle(
     presentation.cardDesign,
-    presentation.contentPlacement,
+    effectivePlacement,
     presentation.mediaRatio
   );
+  const infoWidthClass = showMedia
+    ? framed
+      ? 'w-full max-w-full'
+      : isCompact
+        ? 'w-full max-w-full space-y-2'
+        : 'w-full max-w-full space-y-3 sm:max-w-xl'
+    : `${workNoMediaInfoWidthClass(presentation.noMediaInfoLayout)} ${framed ? '' : 'space-y-3'}`;
+  const toolsWidthClass = showMedia
+    ? `min-w-0 ${contentAlign.block}`
+    : `min-w-0 ${workNoMediaInfoWidthClass(presentation.noMediaInfoLayout)} ${
+        presentation.noMediaInfoLayout === 'centered' ? '' : contentAlign.block
+      }`;
+  const infoShellClass = framed
+    ? `flex w-full min-w-0 flex-col ${workContentFrameGapClass(presentation.contentFrameGap)} ${workContentFrameClass(presentation)} ${
+        showMedia
+          ? contentAlign.container
+          : presentation.noMediaInfoLayout === 'centered'
+            ? 'items-center'
+            : contentAlign.container
+      }`
+    : `flex w-full min-w-0 flex-col ${contentGapClass} ${
+        showMedia
+          ? contentAlign.container
+          : presentation.noMediaInfoLayout === 'centered'
+            ? 'items-center'
+            : contentAlign.container
+      }`;
+  const infoShellStyle = framed ? workContentFrameStyle(presentation) : undefined;
+  const descTopGap = framed ? '' : isCompact ? 'mt-1.5 line-clamp-3' : 'mt-2';
+  const toolsIconsTopGap = framed ? '' : presentation.showToolsLabel ? 'mt-1.5' : '';
+  const toolsListTopGap = framed ? '' : showIcons ? 'mt-2' : presentation.showToolsLabel ? 'mt-1.5' : '';
+  const ctaTopGap = framed ? '' : 'pt-1';
+  const cardWidthClass = workCardMaxWidthClass(presentation.cardMaxWidth);
+  const chromes = presentation.elementChromes ?? DEFAULT_WORK_ELEMENT_CHROMES;
+  const categoryChrome = chromes.categoryOnCard;
+  const titleChrome = chromes.cardTitle;
+  const descriptionChrome = chromes.cardDescription;
+  const toolsChrome = chromes.tools;
 
   const mediaInner = item.mediaUrl ? (
     <ProductThumbnailMedia
@@ -1245,90 +2223,188 @@ export function EditorialWorkCard({
     </div>
   );
 
-  const mediaBlock = (
-    <Link href={href} className={`${workCardMediaClass(presentation.cardDesign)} ${mediaOrderClass}`.trim()}>
+  const mediaBlock = showMedia ? (
+    <Link
+      href={href}
+      className={`${workCardMediaBehaviorClass(presentation.cardDesign)} ${
+        edgeOnShell ? '' : edgeClass
+      } ${mediaOrderClass}`.trim()}
+      style={edgeOnShell ? undefined : edgeStyle}
+    >
       <div className={`${mediaAspectClass} w-full`} style={mediaAspectStyle}>
         {mediaInner}
       </div>
     </Link>
-  );
+  ) : null;
 
   const contentBlock = (
     <div
-      className={`flex min-w-0 flex-col gap-5 lg:min-h-0 lg:py-0 ${contentOrderClass} ${contentAlign.container}`.trim()}
+      className={`flex min-w-0 flex-col lg:min-h-0 lg:py-0 ${contentOrderClass} ${
+        framed
+          ? contentAlign.container
+          : showMedia
+            ? contentAlign.container
+            : presentation.noMediaInfoLayout === 'centered'
+              ? 'items-center'
+              : contentAlign.container
+      }`.trim()}
     >
+      <div className={infoShellClass} style={infoShellStyle}>
       {presentation.showCategoryOnCard && item.genre?.trim() ? (
-        <p
-          className={`${elementTextStyleClass(styles.categoryOnCard, 'label')} ${contentAlign.text}`}
-          style={elementTextInlineStyle(styles.categoryOnCard)}
+        <div
+          className={`${workElementChromeClass(categoryChrome)} ${
+            showMedia
+              ? contentAlign.block
+              : presentation.noMediaInfoLayout === 'centered'
+                ? ''
+                : contentAlign.block
+          } ${showMedia ? '' : workNoMediaInfoWidthClass(presentation.noMediaInfoLayout)}`.trim()}
+          style={workElementChromeStyle(categoryChrome, presentation.ctaColor)}
         >
-          {item.genre.trim()}
-        </p>
+          <p
+            className={`${elementTextStyleClass(styles.categoryOnCard, 'label')} ${
+              showMedia
+                ? contentAlign.text
+                : presentation.noMediaInfoLayout === 'centered'
+                  ? 'text-center'
+                  : contentAlign.text
+            }`}
+            style={elementTextInlineStyle(styles.categoryOnCard)}
+          >
+            {item.genre.trim()}
+          </p>
+        </div>
       ) : null}
       {presentation.showCardTitle || (presentation.showCardDescription && description) ? (
-        <div className={`w-fit max-w-full space-y-3 sm:max-w-xl ${contentAlign.block}`}>
+        <div
+          className={`${infoWidthClass} ${
+            framed ? `flex flex-col ${workContentFrameGapClass(presentation.contentFrameGap)}` : ''
+          } ${
+            showMedia
+              ? contentAlign.block
+              : presentation.noMediaInfoLayout === 'centered'
+                ? ''
+                : contentAlign.block
+          }`.trim()}
+        >
           {presentation.showCardTitle ? (
-            <h3
-              className={`leading-tight tracking-[-0.02em] ${elementTextStyleClass(styles.cardTitle, 'title')} ${contentAlign.text}`}
-              style={elementTextInlineStyle(styles.cardTitle)}
+            <div
+              className={workElementChromeClass(titleChrome)}
+              style={workElementChromeStyle(titleChrome, presentation.ctaColor)}
             >
-              <Link href={href} className="transition hover:opacity-80">
-                {title}
-              </Link>
-            </h3>
+              <h3
+                className={`break-words leading-tight tracking-[-0.02em] ${elementTextStyleClass(styles.cardTitle, 'title')} ${
+                  showMedia
+                    ? contentAlign.text
+                    : presentation.noMediaInfoLayout === 'centered'
+                      ? 'text-center'
+                      : contentAlign.text
+                }`}
+                style={elementTextInlineStyle(styles.cardTitle)}
+              >
+                <Link href={href} className="transition hover:opacity-80">
+                  {title}
+                </Link>
+              </h3>
+            </div>
           ) : null}
           {presentation.showCardDescription && description ? (
-            <p
-              className={`leading-relaxed ${elementTextStyleClass(styles.cardDescription, 'body')} ${contentAlign.text}`}
-              style={elementTextInlineStyle(styles.cardDescription)}
+            <div
+              className={workElementChromeClass(descriptionChrome)}
+              style={workElementChromeStyle(descriptionChrome, presentation.ctaColor)}
             >
-              {description}
-            </p>
+              <p
+                className={`break-words leading-relaxed [overflow-wrap:anywhere] ${descTopGap} ${elementTextStyleClass(styles.cardDescription, 'body')} ${
+                  showMedia
+                    ? contentAlign.text
+                    : presentation.noMediaInfoLayout === 'centered'
+                      ? 'text-center'
+                      : contentAlign.text
+                }`}
+                style={elementTextInlineStyle(styles.cardDescription)}
+              >
+                {description}
+              </p>
+            </div>
           ) : null}
         </div>
       ) : null}
 
       {showIcons || showList ? (
-        <div className={`min-w-0 ${contentAlign.block}`}>
+        <div
+          className={`${toolsWidthClass} flex flex-col gap-1.5 ${workElementChromeClass(toolsChrome)}`.trim()}
+          style={workElementChromeStyle(toolsChrome, presentation.ctaColor)}
+        >
           {presentation.showToolsLabel && (showIcons || showList) ? (
             <p
-              className={`${elementTextStyleClass(styles.toolsLabel, 'label')} ${contentAlign.text}`}
+              className={`${elementTextStyleClass(styles.toolsLabel, 'label')} ${
+                showMedia
+                  ? contentAlign.text
+                  : presentation.noMediaInfoLayout === 'centered'
+                    ? 'text-center'
+                    : contentAlign.text
+              }`}
               style={elementTextInlineStyle(styles.toolsLabel)}
             >
               {toolsLabelText}
             </p>
           ) : null}
           {showIcons ? (
-            <div className={`flex flex-wrap gap-3 ${contentAlign.row} ${presentation.showToolsLabel ? 'mt-3' : ''}`}>
-              {tools.map((tool) => (
-                <div
-                  key={`icon-${tool}`}
-                  title={tool}
-                  aria-label={tool}
-                  className={`flex items-center justify-center rounded-full border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900 ${iconShellClass}`}
-                >
-                  <CreatorToolLogo label={tool} size={iconPixelSize} className="rounded-full" />
-                </div>
-              ))}
+            <div className={`flex flex-wrap gap-2.5 sm:gap-3 ${contentAlign.row} ${toolsIconsTopGap}`}>
+              {tools.map((tool) => {
+                const _iconShellStyle = workToolIconShellStyle(presentation);
+                return (
+                  <div
+                    key={`icon-${tool}`}
+                    title={tool}
+                    aria-label={tool}
+                    className={`flex shrink-0 items-center justify-center rounded-full border shadow-sm ${iconShellClass}`}
+                    style={_iconShellStyle}
+                  >
+                    <CreatorToolLogo
+                      label={tool}
+                      size={iconPixelSize}
+                      className="rounded-full"
+                      bgColor={(_iconShellStyle.backgroundColor as string | undefined) ?? undefined}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : null}
           {showList ? (
             <>
-              <div className={`${showIcons ? 'mt-4' : presentation.showToolsLabel ? 'mt-3' : ''} lg:hidden`}>
-                <EditorialWorkToolsList tools={tools} textStyle={styles.toolsList} />
+              <div className={`${toolsListTopGap} lg:hidden`}>
+                <EditorialWorkToolsList
+                  tools={tools}
+                  textStyle={styles.toolsList}
+                  accentColor={presentation.ctaColor}
+                />
               </div>
               {useSplitToolsList ? (
                 <div
-                  className={`${showIcons ? 'mt-4' : presentation.showToolsLabel ? 'mt-3' : ''} hidden gap-x-8 lg:grid lg:grid-cols-2`}
+                  className={`${toolsListTopGap} hidden gap-x-8 lg:grid lg:grid-cols-2`}
                 >
-                  <EditorialWorkToolsList tools={primaryTools} textStyle={styles.toolsList} />
-                  <EditorialWorkToolsList tools={overflowTools} textStyle={styles.toolsList} />
+                  <EditorialWorkToolsList
+                    tools={primaryTools}
+                    textStyle={styles.toolsList}
+                    accentColor={presentation.ctaColor}
+                  />
+                  <EditorialWorkToolsList
+                    tools={overflowTools}
+                    textStyle={styles.toolsList}
+                    accentColor={presentation.ctaColor}
+                  />
                 </div>
               ) : (
                 <div
-                  className={`${showIcons ? 'mt-4' : presentation.showToolsLabel ? 'mt-3' : ''} hidden lg:block`}
+                  className={`${toolsListTopGap} hidden lg:block`}
                 >
-                  <EditorialWorkToolsList tools={tools} textStyle={styles.toolsList} />
+                  <EditorialWorkToolsList
+                    tools={tools}
+                    textStyle={styles.toolsList}
+                    accentColor={presentation.ctaColor}
+                  />
                 </div>
               )}
             </>
@@ -1337,162 +2413,330 @@ export function EditorialWorkCard({
       ) : null}
 
       {presentation.showCardCta ? (
-        <div className={`flex w-full pt-1 ${ctaAlign}`}>
+        <div className={`flex w-full min-w-0 ${ctaTopGap} ${ctaAlign}`}>
           <Link
             href={href}
-            className={workCtaClassName(presentation.ctaDesign)}
-            style={workCtaStyle(presentation.ctaDesign, presentation.ctaColor)}
+            className={workCtaClassName(presentation.ctaDesign, presentation)}
+            style={workCtaStyle(presentation.ctaDesign, presentation)}
           >
-            <span className={elementTextStyleClass(styles.cta, 'body')} style={elementTextInlineStyle(styles.cta)}>
+            <span
+              className={`min-w-0 break-words ${elementTextStyleClass(styles.cta, 'body')}`}
+              style={(() => {
+                const fontOnly = { ...elementTextInlineStyle(styles.cta) };
+                delete fontOnly.color;
+                return fontOnly;
+              })()}
+            >
               {presentation.ctaLabel}
             </span>
             <span
-              className={workCtaIconShellClass(presentation.ctaDesign)}
-              style={
-                presentation.ctaDesign === 'circle-icon'
-                  ? {
-                      color: presentation.ctaColor,
-                      borderColor: `${presentation.ctaColor}33`,
-                      backgroundColor: `${presentation.ctaColor}14`,
-                    }
-                  : undefined
-              }
+              className={`shrink-0 ${workCtaIconShellClass(presentation.ctaDesign, presentation)}`}
+              style={workCtaIconShellStyle(presentation.ctaDesign, presentation)}
             >
               <ArrowUpRight className="h-4 w-4" />
             </span>
           </Link>
         </div>
       ) : null}
+      </div>
     </div>
   );
 
-  if (isOverlay) {
+  if (useOverlayChrome) {
+    const overlayTools = tools.slice(0, Math.min(presentation.maxToolsShown, 6));
+    const overlayIconShell = toolsIconShellClass('sm');
+    const overlayIconPx = toolsIconPixelSize('sm');
+    const titleStyle = {
+      ...elementTextInlineStyle(styles.cardTitle),
+      color: workOverlayReadableColor(styles.cardTitle.color),
+    };
+    const descStyle = {
+      ...elementTextInlineStyle(styles.cardDescription),
+      color: workOverlayReadableColor(styles.cardDescription.color, 'rgba(255,255,255,0.88)'),
+    };
+    const toolsListStyle = {
+      ...elementTextInlineStyle(styles.toolsList),
+      color: workOverlayReadableColor(styles.toolsList.color, 'rgba(255,255,255,0.85)'),
+    };
+    const ctaInk = workOverlayReadableColor(styles.cta.color);
+    const ctaFontStyle = (() => {
+      const fontOnly = { ...elementTextInlineStyle(styles.cta) };
+      delete fontOnly.color;
+      return fontOnly;
+    })();
+    const ctaSurfaceStyle = (() => {
+      const base = workCtaStyle(presentation.ctaDesign, presentation) ?? {};
+      // Filled pills already use page `fond` — don't force overlay-white ink.
+      if (presentation.ctaDesign === 'pill-accent' || presentation.ctaDesign === 'pill-dark') {
+        return base;
+      }
+      // Outline / circle / text on dark scrim: keep readable resting label.
+      return {
+        ...base,
+        ['--work-cta-text' as string]: ctaInk,
+        ['--work-cta-hover-text' as string]:
+          presentation.ctaDesign === 'pill-outline'
+            ? ((base as Record<string, string>)['--work-cta-page-fond'] ?? ctaInk)
+            : presentation.ctaColor || ctaInk,
+      };
+    })();
+    const overlayIconStyle = workToolIconShellStyle(presentation);
+    const overlayIconBg =
+      (overlayIconStyle.backgroundColor as string | undefined) ?? undefined;
+    const useFreeOverlay = presentation.overlayLayoutMode === 'free';
+    const placements = presentation.overlayElementPlacements ?? DEFAULT_WORK_OVERLAY_ELEMENT_PLACEMENTS;
+
+    const categoryNode =
+      presentation.showCategoryOnCard && item.genre?.trim() ? (
+        <div
+          className={workElementChromeClass(categoryChrome)}
+          style={workElementChromeStyle(categoryChrome, presentation.ctaColor)}
+        >
+          <p
+            className="text-xs font-bold uppercase tracking-[0.16em]"
+            style={{
+              ...elementTextInlineStyle(styles.categoryOnCard),
+              color: workOverlayReadableColor(styles.categoryOnCard.color),
+            }}
+          >
+            {item.genre.trim()}
+          </p>
+        </div>
+      ) : null;
+
+    const titleNode = presentation.showCardTitle ? (
+      <div
+        className={workElementChromeClass(titleChrome)}
+        style={workElementChromeStyle(titleChrome, presentation.ctaColor)}
+      >
+        <h3
+          className="line-clamp-2 break-words text-xl font-extrabold leading-tight tracking-[-0.02em] sm:text-2xl"
+          style={titleStyle}
+        >
+          <Link href={href} className="transition hover:opacity-80">
+            {title}
+          </Link>
+        </h3>
+      </div>
+    ) : null;
+
+    const descriptionNode =
+      presentation.showCardDescription && description ? (
+        <div
+          className={workElementChromeClass(descriptionChrome)}
+          style={workElementChromeStyle(descriptionChrome, presentation.ctaColor)}
+        >
+          <p
+            className="line-clamp-3 max-w-xl break-words text-sm leading-relaxed [overflow-wrap:anywhere] sm:text-base"
+            style={descStyle}
+          >
+            {description}
+          </p>
+        </div>
+      ) : null;
+
+    const toolsNode =
+      showIcons && overlayTools.length > 0 ? (
+        <div
+          className={`mt-0.5 flex flex-wrap gap-2 ${workElementChromeClass(toolsChrome)}`.trim()}
+          style={workElementChromeStyle(toolsChrome, presentation.ctaColor)}
+        >
+          {overlayTools.map((tool) => (
+            <div
+              key={`overlay-icon-${tool}`}
+              title={tool}
+              aria-label={tool}
+              className={`flex shrink-0 items-center justify-center rounded-full border backdrop-blur-sm ${overlayIconShell}`}
+              style={overlayIconStyle}
+            >
+              <CreatorToolLogo label={tool} size={overlayIconPx} className="rounded-full" bgColor={overlayIconBg} />
+            </div>
+          ))}
+        </div>
+      ) : showList && tools.length > 0 ? (
+        <div
+          className={workElementChromeClass(toolsChrome)}
+          style={workElementChromeStyle(toolsChrome, presentation.ctaColor)}
+        >
+          <p className="line-clamp-2 break-words text-sm" style={toolsListStyle}>
+            {tools.join(' · ')}
+          </p>
+        </div>
+      ) : null;
+
+    const ctaNode = presentation.showCardCta ? (
+      <Link
+        href={href}
+        className={`${workCtaClassName(presentation.ctaDesign, presentation)} shrink-0 flex-nowrap`}
+        style={ctaSurfaceStyle}
+      >
+        <span
+          className={`shrink-0 whitespace-nowrap ${elementTextStyleClass(styles.cta, 'body')}`}
+          style={ctaFontStyle}
+        >
+          {presentation.ctaLabel}
+        </span>
+        <span
+          className={`shrink-0 ${workCtaIconShellClass(presentation.ctaDesign, presentation)}`}
+          style={workCtaIconShellStyle(presentation.ctaDesign, presentation)}
+        >
+          <ArrowUpRight className="h-4 w-4" />
+        </span>
+      </Link>
+    ) : null;
+
+    const elementNodes: Record<PortfolioWorkOverlayElementId, ReactNode> = {
+      category: categoryNode,
+      title: titleNode,
+      description: descriptionNode,
+      tools: toolsNode,
+      cta: ctaNode,
+    };
+
+    const stackBody = (
+      <div
+        className={`pointer-events-auto flex w-full min-w-0 flex-col ${
+          framed
+            ? `${workContentFrameGapClass(presentation.contentFrameGap)} ${workContentFrameClass(presentation)}`
+            : 'gap-2.5 sm:gap-3'
+        } ${contentAlign.container} ${contentAlign.text}`}
+        style={framed ? workContentFrameStyle(presentation) : undefined}
+      >
+        {categoryNode ? <div className={contentAlign.text}>{categoryNode}</div> : null}
+        {titleNode ? <div className={contentAlign.text}>{titleNode}</div> : null}
+        {descriptionNode ? <div className={contentAlign.block}>{descriptionNode}</div> : null}
+        {toolsNode ? (
+          <div className={showIcons && overlayTools.length > 0 ? contentAlign.row : undefined}>
+            {toolsNode}
+          </div>
+        ) : null}
+        {ctaNode ? <div className={`flex w-full min-w-0 pt-0.5 ${ctaAlign}`}>{ctaNode}</div> : null}
+      </div>
+    );
+
+    const freeCellGroups = (() => {
+      const groups = new Map<PortfolioWorkOverlayCellPlacement, PortfolioWorkOverlayElementId[]>();
+      for (const id of PORTFOLIO_WORK_OVERLAY_ELEMENT_IDS) {
+        if (!elementNodes[id]) continue;
+        const cell = placements[id];
+        const list = groups.get(cell) ?? [];
+        list.push(id);
+        groups.set(cell, list);
+      }
+      return Array.from(groups.entries());
+    })();
+
     const overlayInner = (
-      <div className="group relative overflow-hidden rounded-[2rem] bg-neutral-900 shadow-md transition duration-300 hover:-translate-y-0.5 hover:shadow-xl">
-        <Link href={href} className="block">
+      <div
+        className={`group relative overflow-hidden shadow-md transition duration-300 hover:-translate-y-0.5 hover:shadow-xl ${edgeClass}`}
+        style={{
+          ...edgeStyle,
+          ...(presentation.cardBackgroundEnabled
+            ? { backgroundColor: presentation.cardBackgroundColor }
+            : undefined),
+        }}
+      >
+        <Link href={href} className="relative block">
           <div
-            className={`${workCardMediaAspectClass('overlay', presentation.contentPlacement, presentation.mediaRatio)} w-full`}
+            className={`${workCardMediaAspectClass('overlay', presentation.contentPlacement, presentation.mediaRatio)} min-h-[18rem] w-full sm:min-h-[22rem]`}
             style={mediaAspectStyle}
           >
             {mediaInner}
           </div>
           <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10"
             aria-hidden
           />
         </Link>
+
+        {/* Mobile / tablet (and stack mode): classic bottom pile */}
         <div
-          className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-4 p-6 sm:p-8 ${contentAlign.container}`}
+          className={`pointer-events-none absolute inset-x-0 bottom-0 flex max-h-[78%] flex-col justify-end gap-3 overflow-hidden p-5 sm:gap-4 sm:p-7 ${contentAlign.container} ${
+            useFreeOverlay ? 'lg:hidden' : ''
+          }`}
         >
-          <div
-            className={`pointer-events-auto flex w-full flex-col gap-3 ${contentAlign.container} ${contentAlign.text} [&_*]:text-white`}
-          >
-            {presentation.showCardTitle ? (
-              <h3
-                className={`leading-tight tracking-[-0.02em] ${elementTextStyleClass(styles.cardTitle, 'title')}`}
-                style={elementTextInlineStyle(styles.cardTitle)}
-              >
-                <Link href={href} className="transition hover:opacity-80">
-                  {title}
-                </Link>
-              </h3>
-            ) : null}
-            {presentation.showCardDescription && description ? (
-              <p
-                className={`max-w-xl leading-relaxed ${elementTextStyleClass(styles.cardDescription, 'body')} ${contentAlign.block}`}
-                style={elementTextInlineStyle(styles.cardDescription)}
-              >
-                {description}
-              </p>
-            ) : null}
-            {showIcons ? (
-              <div className={`mt-1 flex flex-wrap gap-2 ${contentAlign.row}`}>
-                {tools.map((tool) => (
-                  <div
-                    key={`overlay-icon-${tool}`}
-                    title={tool}
-                    aria-label={tool}
-                    className={`flex items-center justify-center rounded-full border border-white/25 bg-white/10 backdrop-blur-sm ${iconShellClass}`}
-                  >
-                    <CreatorToolLogo label={tool} size={iconPixelSize} className="rounded-full" />
-                  </div>
-                ))}
-              </div>
-            ) : showList ? (
-              <p
-                className={`${elementTextStyleClass(styles.toolsList, 'label')}`}
-                style={elementTextInlineStyle(styles.toolsList)}
-              >
-                {tools.join(' · ')}
-              </p>
-            ) : null}
-            {presentation.showCardCta ? (
-              <div className={`flex w-full pt-1 ${ctaAlign}`}>
-                <Link
-                  href={href}
-                  className={workCtaClassName(presentation.ctaDesign)}
-                  style={workCtaStyle(presentation.ctaDesign, presentation.ctaColor)}
-                >
-                  <span
-                    className={elementTextStyleClass(styles.cta, 'body')}
-                    style={elementTextInlineStyle(styles.cta)}
-                  >
-                    {presentation.ctaLabel}
-                  </span>
-                  <span
-                    className={workCtaIconShellClass(presentation.ctaDesign)}
-                    style={
-                      presentation.ctaDesign === 'circle-icon'
-                        ? {
-                            color: presentation.ctaColor,
-                            borderColor: `${presentation.ctaColor}33`,
-                            backgroundColor: `${presentation.ctaColor}14`,
-                          }
-                        : undefined
-                    }
-                  >
-                    <ArrowUpRight className="h-4 w-4" />
-                  </span>
-                </Link>
-              </div>
-            ) : null}
-          </div>
+          {stackBody}
         </div>
+
+        {/* Large screens + free mode: absolute 3×3 cells */}
+        {useFreeOverlay ? (
+          <div className="pointer-events-none absolute inset-0 hidden p-5 sm:p-7 lg:block">
+            {freeCellGroups.map(([cell, ids]) => {
+              const needsReadableWidth = ids.some(
+                (id) => id === 'title' || id === 'description' || id === 'tools'
+              );
+              return (
+              <div
+                key={cell}
+                className={`pointer-events-auto absolute flex w-max max-w-[min(100%,22rem)] flex-col gap-2.5 ${
+                  needsReadableWidth ? 'min-w-[min(100%,16rem)]' : ''
+                } ${workOverlayCellAlignClass(cell)}`}
+                style={workOverlayCellAbsoluteStyle(cell)}
+              >
+                {ids.map((id) => {
+                  const node = elementNodes[id];
+                  if (!node) return null;
+                  if (id === 'cta') {
+                    return (
+                      <div key={id} className={`flex w-auto shrink-0 ${workOverlayCellRowAlignClass(cell)}`}>
+                        {node}
+                      </div>
+                    );
+                  }
+                  if (id === 'tools') {
+                    return (
+                      <div key={id} className={`flex w-full ${workOverlayCellRowAlignClass(cell)}`}>
+                        {node}
+                      </div>
+                    );
+                  }
+                  return <div key={id} className="w-full min-w-0">{node}</div>;
+                })}
+              </div>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     );
 
-    if (borderClass) {
+    if (frameClass) {
       return (
-        <article className={borderClass} style={borderStyle}>
+        <article className={`${cardWidthClass} ${frameClass}`.trim()} style={frameStyle}>
           {overlayInner}
         </article>
       );
     }
-    return <article>{overlayInner}</article>;
+    return <article className={cardWidthClass}>{overlayInner}</article>;
   }
 
-  if (borderClass) {
+  const cardShell = (
+    <div
+      className={[edgeOnShell ? `${edgeClass} overflow-hidden` : '', shellClass].filter(Boolean).join(' ')}
+      style={{
+        ...(edgeOnShell ? edgeStyle : undefined),
+        ...gridStyle,
+      }}
+    >
+      {mediaBlock}
+      {contentBlock}
+    </div>
+  );
+
+  if (frameClass) {
     return (
-      <article className={borderClass} style={borderStyle}>
-        <div className={shellClass} style={gridStyle}>
-          {mediaBlock}
-          {contentBlock}
-        </div>
+      <article className={`${cardWidthClass} ${frameClass}`.trim()} style={frameStyle}>
+        {cardShell}
       </article>
     );
   }
 
-  return (
-    <article className={shellClass} style={gridStyle}>
-      {mediaBlock}
-      {contentBlock}
-    </article>
-  );
+  return <article className={cardWidthClass}>{cardShell}</article>;
 }
 
-function WorkChevronIcon({ className }: { className?: string }) {
+function WorkChevronIcon({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
     </svg>
   );
@@ -1520,7 +2764,7 @@ function WorkCardThumb({
   );
 }
 
-/** Design 2 — Liste compacte: thin row with thumbnail, title, short description, arrow. */
+/** Design 2 — Liste compacte: thin row with thumbnail, title, description, tools, arrow. */
 function EditorialWorkListCard({
   item,
   presentation,
@@ -1532,49 +2776,139 @@ function EditorialWorkListCard({
   const title = item.title?.trim() || 'Untitled project';
   const description = item.description?.trim() || item.priceInfo?.trim() || null;
   const styles = normalizeWorkElementStyles(presentation.elementStyles);
+  const edgeClass = workCardEdgeClass(presentation);
+  const edgeStyle = workCardEdgeStyle(presentation);
   const frameClass = workCardFrameClass(presentation);
   const frameStyle = workCardFrameStyle(presentation);
-  const baseFrame = frameClass || 'rounded-2xl border border-neutral-200/80 p-3 sm:p-4 dark:border-neutral-800';
+  const baseFrame = [edgeClass, frameClass].filter(Boolean).join(' ');
   const contentAlign = workCardContentAlignClass(presentation.cardContentAlignment);
+  const cardWidthClass = workCardMaxWidthClass(presentation.cardMaxWidth);
+  const showMedia = presentation.showCardMedia !== false;
+  const tools = Array.from(new Set((item.toolsUsed ?? []).map((t) => t.trim()).filter(Boolean))).slice(
+    0,
+    presentation.maxToolsShown
+  );
+  const showIcons =
+    presentation.showCardTools &&
+    presentation.showCardToolIcons &&
+    (presentation.toolsDisplay === 'icons' || presentation.toolsDisplay === 'both') &&
+    tools.length > 0;
+  const showList =
+    presentation.showCardTools &&
+    presentation.showCardToolList &&
+    (presentation.toolsDisplay === 'list' || presentation.toolsDisplay === 'both') &&
+    tools.length > 0;
+  const iconShellClass = toolsIconShellClass('sm');
+  const iconPixelSize = toolsIconPixelSize('sm');
+  const chromes = presentation.elementChromes ?? DEFAULT_WORK_ELEMENT_CHROMES;
+  const rowStyle: CSSProperties = {
+    ...frameStyle,
+    ...edgeStyle,
+  };
 
   return (
     <Link
       href={href}
-      className={`group flex items-center gap-4 transition hover:bg-neutral-50/80 dark:hover:bg-neutral-900/40 ${baseFrame}`}
-      style={frameStyle}
+      className={`group flex items-center gap-4 transition hover:opacity-90 ${cardWidthClass} ${baseFrame}`.trim()}
+      style={rowStyle}
     >
-      <WorkCardThumb
-        item={item}
-        title={title}
-        className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-neutral-100 sm:h-20 sm:w-20 dark:bg-neutral-800"
-      />
-      <div className={`min-w-0 flex-1 ${contentAlign.text}`}>
+      {showMedia ? (
+        <WorkCardThumb
+          item={item}
+          title={title}
+          className="h-16 w-16 shrink-0 overflow-hidden rounded-xl sm:h-20 sm:w-20"
+        />
+      ) : null}
+      <div
+        className={
+          presentation.contentFrameEnabled
+            ? `min-w-0 flex-1 flex flex-col ${workContentFrameGapClass(presentation.contentFrameGap)} ${workContentFrameClass(presentation)} ${contentAlign.text}`
+            : `min-w-0 flex-1 space-y-2 ${contentAlign.text}`
+        }
+        style={presentation.contentFrameEnabled ? workContentFrameStyle(presentation) : undefined}
+      >
         {presentation.showCategoryOnCard && item.genre?.trim() ? (
-          <p
-            className={`mb-0.5 ${elementTextStyleClass(styles.categoryOnCard, 'label')}`}
-            style={elementTextInlineStyle(styles.categoryOnCard)}
+          <div
+            className={workElementChromeClass(chromes.categoryOnCard)}
+            style={workElementChromeStyle(chromes.categoryOnCard, presentation.ctaColor)}
           >
-            {item.genre.trim()}
-          </p>
+            <p
+              className={`mb-0.5 ${elementTextStyleClass(styles.categoryOnCard, 'label')}`}
+              style={elementTextInlineStyle(styles.categoryOnCard)}
+            >
+              {item.genre.trim()}
+            </p>
+          </div>
         ) : null}
         {presentation.showCardTitle ? (
-          <p
-            className={`truncate transition group-hover:opacity-80 ${elementTextStyleClass(styles.cardTitle, 'body')}`}
-            style={elementTextInlineStyle(styles.cardTitle)}
+          <div
+            className={workElementChromeClass(chromes.cardTitle)}
+            style={workElementChromeStyle(chromes.cardTitle, presentation.ctaColor)}
           >
-            {title}
-          </p>
+            <p
+              className={`line-clamp-2 break-words transition group-hover:opacity-80 ${elementTextStyleClass(styles.cardTitle, 'body')}`}
+              style={elementTextInlineStyle(styles.cardTitle)}
+            >
+              {title}
+            </p>
+          </div>
         ) : null}
         {presentation.showCardDescription && description ? (
-          <p
-            className={`mt-0.5 truncate ${elementTextStyleClass(styles.cardDescription, 'body')}`}
-            style={elementTextInlineStyle(styles.cardDescription)}
+          <div
+            className={workElementChromeClass(chromes.cardDescription)}
+            style={workElementChromeStyle(chromes.cardDescription, presentation.ctaColor)}
           >
-            {description}
-          </p>
+            <p
+              className={`line-clamp-2 break-words [overflow-wrap:anywhere] ${elementTextStyleClass(styles.cardDescription, 'body')}`}
+              style={elementTextInlineStyle(styles.cardDescription)}
+            >
+              {description}
+            </p>
+          </div>
+        ) : null}
+        {showIcons || showList ? (
+          <div
+            className={`space-y-1.5 pt-0.5 ${contentAlign.container} ${workElementChromeClass(chromes.tools)}`.trim()}
+            style={workElementChromeStyle(chromes.tools, presentation.ctaColor)}
+          >
+            {showIcons ? (
+              <div className={`flex flex-wrap gap-1.5 ${contentAlign.row}`}>
+                {tools.map((tool) => {
+                  const _iconShellStyle = workToolIconShellStyle(presentation);
+                  return (
+                    <div
+                      key={`list-icon-${item.id}-${tool}`}
+                      title={tool}
+                      aria-label={tool}
+                      className={`flex shrink-0 items-center justify-center rounded-full border shadow-sm ${iconShellClass}`}
+                      style={_iconShellStyle}
+                    >
+                      <CreatorToolLogo
+                        label={tool}
+                        size={iconPixelSize}
+                        className="rounded-full"
+                        bgColor={(_iconShellStyle.backgroundColor as string | undefined) ?? undefined}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            {showList ? (
+              <p
+                className={`line-clamp-1 break-words ${elementTextStyleClass(styles.toolsList, 'body')}`}
+                style={elementTextInlineStyle(styles.toolsList)}
+              >
+                {tools.join(' · ')}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
-      <ArrowUpRight className="h-5 w-5 shrink-0 text-neutral-300 transition group-hover:text-orange-500" />
+      <ArrowUpRight
+        className="h-5 w-5 shrink-0 opacity-40 transition group-hover:opacity-100"
+        style={{ color: presentation.ctaColor }}
+      />
     </Link>
   );
 }
@@ -1604,48 +2938,76 @@ function EditorialWorkAccordionRow({
     presentation.showCardTools &&
     presentation.showCardToolIcons &&
     (presentation.toolsDisplay === 'icons' || presentation.toolsDisplay === 'both');
+  const edgeClass = workCardEdgeClass(presentation);
+  const edgeStyle = workCardEdgeStyle(presentation);
   const frameClass = workCardFrameClass(presentation);
   const frameStyle = workCardFrameStyle(presentation);
-  const baseFrame = frameClass || 'rounded-2xl border border-neutral-200/80 dark:border-neutral-800';
+  const baseFrame = [
+    workCardMaxWidthClass(presentation.cardMaxWidth),
+    edgeClass,
+    frameClass,
+    'overflow-hidden',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const innerPad = presentation.cardPadding === 'none' ? 'px-4 sm:px-5' : '';
   const contentAlign = workCardContentAlignClass(presentation.cardContentAlignment);
   const ctaAlign = workCtaAlignClass(presentation.ctaAlignment);
+  const showMedia = presentation.showCardMedia !== false;
+  const chromes = presentation.elementChromes ?? DEFAULT_WORK_ELEMENT_CHROMES;
+  const rowStyle: CSSProperties = {
+    ...frameStyle,
+    ...edgeStyle,
+  };
 
   return (
-    <div className={`overflow-hidden ${baseFrame}`} style={frameStyle}>
+    <div className={baseFrame} style={rowStyle}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`flex w-full items-center gap-4 py-4 text-left ${innerPad}`}
         aria-expanded={open}
       >
-        <WorkCardThumb
-          item={item}
-          title={title}
-          className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800"
-        />
+        {showMedia ? (
+          <WorkCardThumb
+            item={item}
+            title={title}
+            className="h-12 w-12 shrink-0 overflow-hidden rounded-lg"
+          />
+        ) : null}
         <span className="min-w-0 flex-1">
           {presentation.showCategoryOnCard && item.genre?.trim() ? (
             <span
-              className={`mb-0.5 block ${elementTextStyleClass(styles.categoryOnCard, 'label')}`}
-              style={elementTextInlineStyle(styles.categoryOnCard)}
+              className={`mb-0.5 block ${workElementChromeClass(chromes.categoryOnCard)}`}
+              style={workElementChromeStyle(chromes.categoryOnCard, presentation.ctaColor)}
             >
-              {item.genre.trim()}
+              <span
+                className={elementTextStyleClass(styles.categoryOnCard, 'label')}
+                style={elementTextInlineStyle(styles.categoryOnCard)}
+              >
+                {item.genre.trim()}
+              </span>
             </span>
           ) : null}
           {presentation.showCardTitle ? (
             <span
-              className={`block truncate ${elementTextStyleClass(styles.cardTitle, 'body')}`}
-              style={elementTextInlineStyle(styles.cardTitle)}
+              className={`block ${workElementChromeClass(chromes.cardTitle)}`}
+              style={workElementChromeStyle(chromes.cardTitle, presentation.ctaColor)}
             >
-              {title}
+              <span
+                className={`block line-clamp-2 break-words ${elementTextStyleClass(styles.cardTitle, 'body')}`}
+                style={elementTextInlineStyle(styles.cardTitle)}
+              >
+                {title}
+              </span>
             </span>
           ) : null}
         </span>
         <WorkChevronIcon
-          className={`h-5 w-5 shrink-0 text-neutral-400 transition-transform duration-300 ${
+          className={`h-5 w-5 shrink-0 transition-transform duration-300 ${
             open ? 'rotate-180' : ''
           }`}
+          style={{ color: presentation.categoryMutedColor }}
         />
       </button>
       <div
@@ -1654,53 +3016,73 @@ function EditorialWorkAccordionRow({
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className={`flex flex-col gap-4 pb-5 ${innerPad} ${contentAlign.container}`}>
+            <div
+              className={`flex flex-col pb-5 ${innerPad} ${contentAlign.container} ${
+                presentation.contentFrameEnabled
+                  ? `${workContentFrameGapClass(presentation.contentFrameGap)} ${workContentFrameClass(presentation)}`
+                  : 'gap-4'
+              }`}
+              style={presentation.contentFrameEnabled ? workContentFrameStyle(presentation) : undefined}
+            >
             {presentation.showCardDescription && description ? (
-              <p
-                className={`leading-relaxed ${elementTextStyleClass(styles.cardDescription, 'body')} ${contentAlign.text}`}
-                style={elementTextInlineStyle(styles.cardDescription)}
+              <div
+                className={workElementChromeClass(chromes.cardDescription)}
+                style={workElementChromeStyle(chromes.cardDescription, presentation.ctaColor)}
               >
-                {description}
-              </p>
+                <p
+                  className={`break-words leading-relaxed [overflow-wrap:anywhere] ${elementTextStyleClass(styles.cardDescription, 'body')} ${contentAlign.text}`}
+                  style={elementTextInlineStyle(styles.cardDescription)}
+                >
+                  {description}
+                </p>
+              </div>
             ) : null}
             {showIcons && tools.length > 0 ? (
-              <div className={`flex flex-wrap gap-2.5 ${contentAlign.row}`}>
-                {tools.map((tool) => (
-                  <div
-                    key={`acc-${item.id}-${tool}`}
-                    title={tool}
-                    aria-label={tool}
-                    className={`flex items-center justify-center rounded-full border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900 ${iconShellClass}`}
-                  >
-                    <CreatorToolLogo label={tool} size={iconPixelSize} className="rounded-full" />
-                  </div>
-                ))}
+              <div
+                className={`flex flex-wrap gap-2.5 ${contentAlign.row} ${workElementChromeClass(chromes.tools)}`.trim()}
+                style={workElementChromeStyle(chromes.tools, presentation.ctaColor)}
+              >
+                {tools.map((tool) => {
+                  const _iconShellStyle = workToolIconShellStyle(presentation);
+                  return (
+                    <div
+                      key={`acc-${item.id}-${tool}`}
+                      title={tool}
+                      aria-label={tool}
+                      className={`flex shrink-0 items-center justify-center rounded-full border shadow-sm ${iconShellClass}`}
+                      style={_iconShellStyle}
+                    >
+                      <CreatorToolLogo
+                        label={tool}
+                        size={iconPixelSize}
+                        className="rounded-full"
+                        bgColor={(_iconShellStyle.backgroundColor as string | undefined) ?? undefined}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
             {presentation.showCardCta ? (
-              <div className={`flex w-full ${ctaAlign}`}>
+              <div className={`flex w-full min-w-0 ${ctaAlign}`}>
                 <Link
                   href={href}
-                  className={workCtaClassName(presentation.ctaDesign)}
-                  style={workCtaStyle(presentation.ctaDesign, presentation.ctaColor)}
+                  className={workCtaClassName(presentation.ctaDesign, presentation)}
+                  style={workCtaStyle(presentation.ctaDesign, presentation)}
                 >
                   <span
-                    className={elementTextStyleClass(styles.cta, 'body')}
-                    style={elementTextInlineStyle(styles.cta)}
+                    className={`min-w-0 break-words ${elementTextStyleClass(styles.cta, 'body')}`}
+                    style={(() => {
+                      const fontOnly = { ...elementTextInlineStyle(styles.cta) };
+                      delete fontOnly.color;
+                      return fontOnly;
+                    })()}
                   >
                     {presentation.ctaLabel}
                   </span>
                   <span
-                    className={workCtaIconShellClass(presentation.ctaDesign)}
-                    style={
-                      presentation.ctaDesign === 'circle-icon'
-                        ? {
-                            color: presentation.ctaColor,
-                            borderColor: `${presentation.ctaColor}33`,
-                            backgroundColor: `${presentation.ctaColor}14`,
-                          }
-                        : undefined
-                    }
+                    className={`shrink-0 ${workCtaIconShellClass(presentation.ctaDesign, presentation)}`}
+                    style={workCtaIconShellStyle(presentation.ctaDesign, presentation)}
                   >
                     <ArrowUpRight className="h-4 w-4" />
                   </span>
@@ -1719,10 +3101,13 @@ export function EditorialWorkGallery({
   items,
   presentation = DEFAULT_WORK_PRESENTATION,
   motionProfile = DEFAULT_MOTION_PROFILE,
+  forceSingleColumn = false,
 }: {
   items: MarketplaceContentItem[];
   presentation?: PortfolioWorkPresentationSettings;
   motionProfile?: PortfolioGlobalMotionProfile;
+  /** Split-screen nav: one project card per row so content matches the fixed title rail. */
+  forceSingleColumn?: boolean;
 }) {
   const [activeCategory, setActiveCategory] = useState(WORK_CATEGORY_ALL_KEY);
   const categories = useMemo(
@@ -1757,7 +3142,18 @@ export function EditorialWorkGallery({
 
   const filterBar =
     showFilter ? (
-      <nav className={workCategoryNavClass(presentation.categoryDesign)} aria-label="Work categories">
+      <div className={workCategoryBarAlignClass(presentation.cardAlignment)}>
+      <nav
+        className={workCategoryNavClass(presentation.categoryDesign)}
+        aria-label="Work categories"
+        style={
+          presentation.categoryDesign === 'tabs'
+            ? { backgroundColor: `${presentation.cardBorderColor}55` }
+            : presentation.categoryDesign === 'underline'
+              ? { borderColor: presentation.cardBorderColor }
+              : undefined
+        }
+      >
         {[
           {
             key: WORK_CATEGORY_ALL_KEY,
@@ -1776,9 +3172,26 @@ export function EditorialWorkGallery({
               style={
                 active
                   ? presentation.categoryDesign === 'pills'
-                    ? { backgroundColor: presentation.categoryActiveColor, color: '#fff' }
-                    : { color: presentation.categoryActiveColor }
-                  : { color: presentation.categoryMutedColor }
+                    ? {
+                        // Actif = accent (principal), encre = fond de page — même langage que le nav / CTA.
+                        backgroundColor: presentation.categoryActiveColor,
+                        color: presentation.sectionBackgroundColor,
+                        borderColor: presentation.categoryActiveColor,
+                      }
+                    : presentation.categoryDesign === 'tabs'
+                      ? {
+                          backgroundColor: presentation.categoryActiveColor,
+                          color: presentation.sectionBackgroundColor,
+                        }
+                      : { color: presentation.categoryActiveColor }
+                  : {
+                      color: presentation.categoryMutedColor,
+                      borderColor: presentation.cardBorderColor,
+                      backgroundColor: 'transparent',
+                      ['--work-cat-hover-bg' as string]: `${presentation.categoryActiveColor}29`,
+                      ['--work-cat-hover-border' as string]: presentation.categoryActiveColor,
+                      ['--work-cat-hover-text' as string]: presentation.categoryActiveColor,
+                    }
               }
               aria-pressed={active}
             >
@@ -1788,6 +3201,7 @@ export function EditorialWorkGallery({
           );
         })}
       </nav>
+      </div>
     ) : null;
 
   let motionIndex = 0;
@@ -1800,6 +3214,7 @@ export function EditorialWorkGallery({
         presentation={presentation}
         motionProfile={motionProfile}
         startIndex={motionIndex}
+        forceSingleColumn={forceSingleColumn}
       />
     );
     motionIndex += group.items.length;
@@ -1835,19 +3250,31 @@ function WorkGalleryLayout({
   presentation,
   motionProfile,
   startIndex = 0,
+  forceSingleColumn = false,
 }: {
   items: MarketplaceContentItem[];
   presentation: PortfolioWorkPresentationSettings;
   motionProfile: PortfolioGlobalMotionProfile;
   startIndex?: number;
+  forceSingleColumn?: boolean;
 }) {
   const gapClass = workCardGapClass(presentation.cardGap);
-  const itemsPerRow = resolveWorkItemsPerRow(presentation.galleryLayout, presentation.itemsPerRow);
-  const multiColClass = workItemsPerRowGridClass(itemsPerRow, presentation.cardGap);
+  const itemsPerRow = forceSingleColumn
+    ? 1
+    : resolveWorkItemsPerRow(presentation.galleryLayout, presentation.itemsPerRow);
+  const widthJustify = workCardMaxWidthJustifyClass(
+    presentation.cardMaxWidth,
+    presentation.cardAlignment
+  );
+  const widthFlexAlign = workCardMaxWidthFlexAlignClass(
+    presentation.cardMaxWidth,
+    presentation.cardAlignment
+  );
+  const multiColClass = `${workItemsPerRowGridClass(itemsPerRow, presentation.cardGap)} ${widthJustify}`.trim();
 
   if (presentation.galleryLayout === 'list') {
     return (
-      <div className="flex flex-col gap-3">
+      <div className={`flex flex-col gap-3 ${widthFlexAlign}`.trim()}>
         {items.map((item, index) => (
           <PortfolioMotionItem key={item.id} profile={motionProfile} index={startIndex + index}>
             <EditorialWorkListCard item={item} presentation={presentation} />
@@ -1859,7 +3286,7 @@ function WorkGalleryLayout({
 
   if (presentation.galleryLayout === 'accordion') {
     return (
-      <div className="flex flex-col gap-3">
+      <div className={`flex flex-col gap-3 ${widthFlexAlign}`.trim()}>
         {items.map((item, index) => (
           <PortfolioMotionItem key={item.id} profile={motionProfile} index={startIndex + index}>
             <EditorialWorkAccordionRow
@@ -1876,16 +3303,19 @@ function WorkGalleryLayout({
   if (presentation.galleryLayout === 'grid') {
     const gridPresentation: PortfolioWorkPresentationSettings = {
       ...presentation,
+      cardDesign: 'compact',
       contentPlacement: 'bottom',
     };
+    const gridClass =
+      `${workItemsPerRowGridClass(itemsPerRow, workCompactGalleryGap(presentation.cardGap))} ${widthJustify}`.trim();
     return (
-      <div className={multiColClass}>
+      <div className={gridClass}>
         {items.map((item, index) => (
           <PortfolioMotionItem
             key={item.id}
             profile={motionProfile}
             index={startIndex + index}
-            className="h-full"
+            className="h-full min-w-0"
           >
             <EditorialWorkCard item={item} presentation={gridPresentation} />
           </PortfolioMotionItem>
@@ -1898,6 +3328,7 @@ function WorkGalleryLayout({
     const overlayPresentation: PortfolioWorkPresentationSettings = {
       ...presentation,
       cardDesign: 'overlay',
+      contentPlacement: 'bottom',
     };
     return (
       <div className={multiColClass}>
@@ -1906,7 +3337,7 @@ function WorkGalleryLayout({
             key={item.id}
             profile={motionProfile}
             index={startIndex + index}
-            className="h-full"
+            className="h-full min-w-0"
           >
             <EditorialWorkCard item={item} presentation={overlayPresentation} />
           </PortfolioMotionItem>
@@ -1915,13 +3346,23 @@ function WorkGalleryLayout({
     );
   }
 
-  // stack — 1 column stays a vertical list; 2+ uses the responsive grid
+  // stack — Grille portfolio: roomy editorial cards (never compact tile density).
+  // Force stacked content when multi-column so side-by-side media|copy never squeezes.
+  const stackPresentation: PortfolioWorkPresentationSettings = {
+    ...presentation,
+    cardDesign:
+      presentation.cardDesign === 'compact' || presentation.cardDesign === 'overlay'
+        ? 'editorial'
+        : presentation.cardDesign,
+    ...(itemsPerRow > 1 ? { contentPlacement: 'bottom' as const } : null),
+  };
+
   if (itemsPerRow <= 1) {
     return (
-      <div className={`flex flex-col ${gapClass}`}>
+      <div className={`flex flex-col ${gapClass} ${widthFlexAlign}`.trim()}>
         {items.map((item, index) => (
           <PortfolioMotionItem key={item.id} profile={motionProfile} index={startIndex + index}>
-            <EditorialWorkCard item={item} presentation={presentation} />
+            <EditorialWorkCard item={item} presentation={stackPresentation} />
           </PortfolioMotionItem>
         ))}
       </div>
@@ -1935,9 +3376,9 @@ function WorkGalleryLayout({
           key={item.id}
           profile={motionProfile}
           index={startIndex + index}
-          className="h-full"
+          className="h-full min-w-0"
         >
-          <EditorialWorkCard item={item} presentation={presentation} />
+          <EditorialWorkCard item={item} presentation={stackPresentation} />
         </PortfolioMotionItem>
       ))}
     </div>
@@ -1948,12 +3389,15 @@ function EditorialWorkToolsList({
   tools,
   className = '',
   textStyle,
+  accentColor,
 }: {
   tools: string[];
   className?: string;
   textStyle?: PortfolioElementTextStyle;
+  accentColor?: string;
 }) {
   if (tools.length === 0) return null;
+  const accent = accentColor || '#ea580c';
 
   return (
     <ul className={`space-y-3 ${className}`.trim()}>
@@ -1969,8 +3413,17 @@ function EditorialWorkToolsList({
             className="relative mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center"
             aria-hidden
           >
-            <span className="absolute inset-0 rounded-full border-2 border-orange-500/90" />
-            <span className="h-1.5 w-1.5 rounded-full bg-orange-500 shadow-[0_0_0_2px_rgba(249,115,22,0.15)]" />
+            <span
+              className="absolute inset-0 rounded-full border-2 opacity-90"
+              style={{ borderColor: accent }}
+            />
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{
+                backgroundColor: accent,
+                boxShadow: `0 0 0 2px ${accent}26`,
+              }}
+            />
           </span>
           <span>{tool}</span>
         </li>
@@ -2003,31 +3456,40 @@ export function EditorialServiceCard({
   const deliveryLabel = service.deadline ? formatServiceDeliveryLabel(service.deadline) : '';
   const elementStyles = normalizeServicesElementStyles(presentation.elementStyles);
 
+  const accent = presentation.cardAccentColor?.trim() || DEFAULT_SERVICES_ACCENT_COLOR;
+  const cardBorder = presentation.cardBorderColor?.trim() || DEFAULT_SERVICES_CARD_BORDER_COLOR;
   const priceBlock =
     presentation.showServicePrice || presentation.showServiceDelivery ? (
       <div
-        className={`w-full shrink-0 self-stretch rounded-2xl border border-neutral-200/80 bg-white/80 px-4 py-3.5 dark:border-neutral-700 dark:bg-neutral-950/40 ${
+        className={`w-full shrink-0 self-stretch rounded-2xl border px-3 py-3 sm:px-4 sm:py-3.5 ${
           pricePlacement === 'top' ? 'mt-4' : 'mt-auto'
         }`}
+        style={{
+          borderColor: cardBorder,
+          backgroundColor: 'color-mix(in srgb, currentColor 4%, transparent)',
+          color: elementStyles.price.color,
+        }}
       >
         <div
-          className={`flex flex-wrap items-center gap-3 ${
+          className={`flex flex-wrap items-center gap-2.5 sm:gap-3 ${
             pricePlacement === 'end' ? 'justify-between' : align.row
           }`}
         >
           {presentation.showServicePrice ? (
             hasPrice ? (
               <p
-                className={`shrink-0 leading-none ${elementTextStyleClass(elementStyles.price, 'title')}`}
+                className={`min-w-0 shrink leading-none break-words ${elementTextStyleClass(elementStyles.price, 'title')}`}
                 style={elementTextInlineStyle(elementStyles.price)}
               >
-                <span className="mr-2 text-sm font-semibold text-neutral-400">From</span>
+                <span className="mr-2 text-sm font-semibold opacity-55">From</span>
                 {priceAmount}
-                <span className="ml-1 text-lg font-bold text-orange-600">€</span>
+                <span className="ml-1 text-lg font-bold" style={{ color: accent }}>
+                  €
+                </span>
               </p>
             ) : (
               <p
-                className={`shrink-0 ${elementTextStyleClass(elementStyles.price, 'title')}`}
+                className={`min-w-0 shrink ${elementTextStyleClass(elementStyles.price, 'title')}`}
                 style={elementTextInlineStyle(elementStyles.price)}
               >
                 Custom quote
@@ -2036,11 +3498,15 @@ export function EditorialServiceCard({
           ) : null}
           {presentation.showServiceDelivery && deliveryLabel ? (
             <p
-              className={`inline-flex shrink-0 items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 dark:border-neutral-700 dark:bg-neutral-800 ${elementTextStyleClass(elementStyles.delivery, 'label')}`}
-              style={elementTextInlineStyle(elementStyles.delivery)}
+              className={`inline-flex max-w-full shrink-0 items-center gap-2 rounded-full border px-2.5 py-1 sm:px-3 ${elementTextStyleClass(elementStyles.delivery, 'label')}`}
+              style={{
+                ...elementTextInlineStyle(elementStyles.delivery),
+                borderColor: cardBorder,
+                backgroundColor: 'color-mix(in srgb, currentColor 6%, transparent)',
+              }}
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-orange-500" aria-hidden />
-              Delivery · {deliveryLabel}
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: accent }} aria-hidden />
+              <span className="min-w-0 break-words">Delivery · {deliveryLabel}</span>
             </p>
           ) : null}
         </div>
@@ -2105,19 +3571,22 @@ function EditorialServiceListRow({
   const showDescription =
     presentation.showServiceDescription && Boolean(service.description?.trim());
   const elementStyles = normalizeServicesElementStyles(presentation.elementStyles);
+  const accent = presentation.cardAccentColor?.trim() || DEFAULT_SERVICES_ACCENT_COLOR;
 
   const priceNode = presentation.showServicePrice ? (
     hasPrice ? (
       <p
-        className={`shrink-0 tracking-[-0.03em] ${elementTextStyleClass(elementStyles.price, 'title')}`}
+        className={`min-w-0 shrink tracking-[-0.03em] break-words ${elementTextStyleClass(elementStyles.price, 'title')}`}
         style={elementTextInlineStyle(elementStyles.price)}
       >
         {amount}
-        <span className="ml-0.5 text-sm font-bold text-orange-600">€</span>
+        <span className="ml-0.5 text-sm font-bold" style={{ color: accent }}>
+          €
+        </span>
       </p>
     ) : (
       <p
-        className={`shrink-0 ${elementTextStyleClass(elementStyles.price, 'title')}`}
+        className={`min-w-0 shrink ${elementTextStyleClass(elementStyles.price, 'title')}`}
         style={elementTextInlineStyle(elementStyles.price)}
       >
         Sur devis
@@ -2217,13 +3686,21 @@ function EditorialServicePricingHeroCard({
   const accent = presentation.cardAccentColor;
   const deliveryLabel = service.deadline ? formatServiceDeliveryLabel(service.deadline) : '';
   const elementStyles = normalizeServicesElementStyles(presentation.elementStyles);
+  const descriptionLines = (service.description ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-•*]\s*/, '').trim())
+    .filter(Boolean);
   const features: { key: string; content: string; kind: 'delivery' | 'body' }[] = [
     deliveryLabel && presentation.showServiceDelivery
       ? { key: 'delivery', content: `Livraison en ${deliveryLabel}`, kind: 'delivery' as const }
       : null,
-    service.description && presentation.showServiceDescription
-      ? { key: 'description', content: service.description, kind: 'body' as const }
-      : null,
+    ...(presentation.showServiceDescription
+      ? descriptionLines.map((line, index) => ({
+          key: `description-${index}`,
+          content: line,
+          kind: 'body' as const,
+        }))
+      : []),
     !hasPrice && presentation.showServicePrice
       ? { key: 'quote', content: 'Devis personnalisé selon votre projet', kind: 'body' as const }
       : null,
@@ -2236,22 +3713,27 @@ function EditorialServicePricingHeroCard({
       {...fillAttrs}
     >
       <ServicesCardBackgroundLayers presentation={presentation} cardIndex={cardIndex} />
-      <ServicesCardForeground className="flex flex-1 flex-col">
+      <ServicesCardForeground className="flex min-h-0 flex-1 flex-col">
       {presentation.showServicePrice ? (
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400">À partir de</p>
+        <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400">À partir de</p>
       ) : null}
       {presentation.showServicePrice ? (
         hasPrice ? (
           <p
-            className={`mt-2 tracking-[-0.05em] ${elementTextStyleClass(elementStyles.price, 'title')}`}
+            className={`mt-2 shrink-0 tracking-[-0.05em] ${elementTextStyleClass(elementStyles.price, 'title')}`}
             style={elementTextInlineStyle(elementStyles.price)}
           >
             {amount}
-            <span className="ml-1 text-2xl font-bold text-orange-600">€</span>
+            <span
+              className="ml-1 text-2xl font-bold"
+              style={{ color: presentation.cardAccentColor?.trim() || DEFAULT_SERVICES_ACCENT_COLOR }}
+            >
+              €
+            </span>
           </p>
         ) : (
           <p
-            className={`mt-2 tracking-[-0.03em] ${elementTextStyleClass(elementStyles.price, 'title')}`}
+            className={`mt-2 shrink-0 tracking-[-0.03em] ${elementTextStyleClass(elementStyles.price, 'title')}`}
             style={elementTextInlineStyle(elementStyles.price)}
           >
             Sur devis
@@ -2260,14 +3742,14 @@ function EditorialServicePricingHeroCard({
       ) : null}
       {presentation.showServiceTitle ? (
         <h3
-          className={`mt-5 leading-tight tracking-[-0.02em] ${elementTextStyleClass(elementStyles.cardTitle, 'title')}`}
+          className={`mt-5 shrink-0 leading-tight tracking-[-0.02em] ${elementTextStyleClass(elementStyles.cardTitle, 'title')}`}
           style={elementTextInlineStyle(elementStyles.cardTitle)}
         >
           {service.title}
         </h3>
       ) : null}
       {features.length > 0 ? (
-        <ul className="mt-5 w-full space-y-2.5">
+        <ul className="mt-5 min-h-0 w-full flex-1 space-y-2.5">
           {features.map((feature) => (
             <li
               key={feature.key}
@@ -2294,8 +3776,10 @@ function EditorialServicePricingHeroCard({
             </li>
           ))}
         </ul>
-      ) : null}
-      <div className="mt-auto w-full self-stretch pt-6">
+      ) : (
+        <div className="min-h-0 flex-1" aria-hidden />
+      )}
+      <div className="mt-auto w-full shrink-0 self-stretch pt-6">
         <Link
           href="#contact"
           className="inline-flex w-full items-center justify-center rounded-full bg-neutral-950 px-6 py-3.5 text-sm font-bold uppercase tracking-[0.12em] text-white transition hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100"
@@ -2336,19 +3820,22 @@ function EditorialServiceAccordionRow({
   const pricePlacement = presentation.servicesPricePlacement;
   const deliveryLabel = service.deadline ? formatServiceDeliveryLabel(service.deadline) : '';
   const elementStyles = normalizeServicesElementStyles(presentation.elementStyles);
+  const accent = presentation.cardAccentColor?.trim() || DEFAULT_SERVICES_ACCENT_COLOR;
 
   const priceNode = presentation.showServicePrice ? (
     hasPrice ? (
       <span
-        className={`shrink-0 tracking-[-0.03em] ${elementTextStyleClass(elementStyles.price, 'title')}`}
+        className={`min-w-0 shrink tracking-[-0.03em] break-words ${elementTextStyleClass(elementStyles.price, 'title')}`}
         style={elementTextInlineStyle(elementStyles.price)}
       >
         {amount}
-        <span className="ml-0.5 text-sm font-bold text-orange-600">€</span>
+        <span className="ml-0.5 text-sm font-bold" style={{ color: accent }}>
+          €
+        </span>
       </span>
     ) : (
       <span
-        className={`shrink-0 ${elementTextStyleClass(elementStyles.price, 'title')}`}
+        className={`min-w-0 shrink ${elementTextStyleClass(elementStyles.price, 'title')}`}
         style={elementTextInlineStyle(elementStyles.price)}
       >
         Sur devis
@@ -2410,11 +3897,15 @@ function EditorialServiceAccordionRow({
             ) : null}
             {presentation.showServiceDelivery && deliveryLabel ? (
               <p
-                className={`inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800 ${elementTextStyleClass(elementStyles.delivery, 'label')}`}
-                style={elementTextInlineStyle(elementStyles.delivery)}
+                className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 ${elementTextStyleClass(elementStyles.delivery, 'label')}`}
+                style={{
+                  ...elementTextInlineStyle(elementStyles.delivery),
+                  borderColor: presentation.cardBorderColor?.trim() || DEFAULT_SERVICES_CARD_BORDER_COLOR,
+                  backgroundColor: 'color-mix(in srgb, currentColor 6%, transparent)',
+                }}
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-orange-500" aria-hidden />
-                Livraison · {deliveryLabel}
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: accent }} aria-hidden />
+                <span className="min-w-0 break-words">Livraison · {deliveryLabel}</span>
               </p>
             ) : null}
           </div>
@@ -2431,18 +3922,19 @@ function EditorialSkillListRow({
   cardIndex = 0,
   tone = 'light',
 }: {
-  skill: string;
+  skill: PortfolioSkillRef;
   presentation?: PortfolioServicesPresentationSettings;
   cardIndex?: number;
   tone?: EditorialMarqueeCardTone;
 }) {
+  const skillName = resolveSkillName(skill);
+  const description = resolveSkillDescription(skill);
   const shellClass = servicesListRowShellClass(presentation.cardDesign, tone, presentation);
   const frameClass = servicesCardFrameClass(presentation);
   const surfaceStyle = servicesCardSurfaceStyle(presentation, tone);
   const fillAttrs = servicesCardFillDataAttrs(presentation);
   const align = servicesContentAlignClass(presentation.skillsContentAlignment);
   const iconTop = presentation.skillsIconPlacement === 'top';
-  const description = getSkillUsageDescription(skill);
   const elementStyles = normalizeServicesElementStyles(presentation.elementStyles);
   const iconShellClass = toolsIconShellClass(presentation.skillsIconSize);
   const iconPixelSize = toolsIconPixelSize(presentation.skillsIconSize);
@@ -2451,7 +3943,7 @@ function EditorialSkillListRow({
     <div
       className={`flex shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 ${iconShellClass}`}
     >
-      <CreatorToolLogo label={skill} size={iconPixelSize} className="rounded-lg" />
+      <CreatorToolLogo label={skillName} size={iconPixelSize} className="rounded-lg" />
     </div>
   ) : null;
 
@@ -2468,10 +3960,10 @@ function EditorialSkillListRow({
         <div className={`min-w-0 ${align.text}`}>
           {presentation.showSkillTitle ? (
             <p
-              className={`truncate ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
+              className={`break-words [overflow-wrap:anywhere] ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
               style={elementTextInlineStyle(elementStyles.skillTitle)}
             >
-              {skill}
+              {skillName}
             </p>
           ) : null}
           {presentation.showSkillDescription ? (
@@ -2500,10 +3992,10 @@ function EditorialSkillListRow({
       <div className={`min-w-0 flex-1 ${align.text}`}>
         {presentation.showSkillTitle ? (
           <p
-            className={`truncate ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
+            className={`break-words [overflow-wrap:anywhere] ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
             style={elementTextInlineStyle(elementStyles.skillTitle)}
           >
-            {skill}
+            {skillName}
           </p>
         ) : null}
         {presentation.showSkillDescription ? (
@@ -2526,17 +4018,18 @@ function EditorialSkillPricingHeroCard({
   cardIndex = 0,
   tone = 'light',
 }: {
-  skill: string;
+  skill: PortfolioSkillRef;
   presentation?: PortfolioServicesPresentationSettings;
   cardIndex?: number;
   tone?: EditorialMarqueeCardTone;
 }) {
+  const skillName = resolveSkillName(skill);
+  const description = resolveSkillDescription(skill);
   const shellClass = servicesPricingHeroShellClass(presentation.cardDesign, tone, presentation);
   const frameClass = servicesCardFrameClass(presentation);
   const surfaceStyle = servicesCardSurfaceStyle(presentation, tone);
   const fillAttrs = servicesCardFillDataAttrs(presentation);
   const align = servicesContentAlignClass(presentation.skillsContentAlignment);
-  const description = getSkillUsageDescription(skill);
   const elementStyles = normalizeServicesElementStyles(presentation.elementStyles);
   const iconShellClass = toolsIconShellClass(presentation.skillsIconSize);
   const iconPixelSize = toolsIconPixelSize(presentation.skillsIconSize);
@@ -2548,30 +4041,32 @@ function EditorialSkillPricingHeroCard({
       {...fillAttrs}
     >
       <ServicesCardBackgroundLayers presentation={presentation} cardIndex={cardIndex} />
-      <ServicesCardForeground className="flex flex-1 flex-col">
+      <ServicesCardForeground className="flex min-h-0 flex-1 flex-col">
       {presentation.showSkillIcon ? (
         <div
-          className={`flex items-center justify-center rounded-[1.1rem] border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 ${iconShellClass}`}
+          className={`flex shrink-0 items-center justify-center rounded-[1.1rem] border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 ${iconShellClass}`}
         >
-          <CreatorToolLogo label={skill} size={iconPixelSize} className="rounded-xl" />
+          <CreatorToolLogo label={skillName} size={iconPixelSize} className="rounded-xl" />
         </div>
       ) : null}
       {presentation.showSkillTitle ? (
         <h3
-          className={`mt-4 leading-tight tracking-[-0.02em] ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
+          className={`mt-4 shrink-0 leading-tight tracking-[-0.02em] ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
           style={elementTextInlineStyle(elementStyles.skillTitle)}
         >
-          {skill}
+          {skillName}
         </h3>
       ) : null}
       {presentation.showSkillDescription ? (
         <p
-          className={`mt-2 line-clamp-3 leading-relaxed ${elementTextStyleClass(elementStyles.skillBody, 'body')}`}
+          className={`mt-2 min-h-0 flex-1 line-clamp-3 leading-relaxed ${elementTextStyleClass(elementStyles.skillBody, 'body')}`}
           style={elementTextInlineStyle(elementStyles.skillBody)}
         >
           {description}
         </p>
-      ) : null}
+      ) : (
+        <div className="min-h-0 flex-1" aria-hidden />
+      )}
       </ServicesCardForeground>
     </article>
   );
@@ -2584,12 +4079,14 @@ function EditorialSkillAccordionRow({
   cardIndex = 0,
   tone = 'light',
 }: {
-  skill: string;
+  skill: PortfolioSkillRef;
   presentation?: PortfolioServicesPresentationSettings;
   defaultOpen?: boolean;
   cardIndex?: number;
   tone?: EditorialMarqueeCardTone;
 }) {
+  const skillName = resolveSkillName(skill);
+  const description = resolveSkillDescription(skill);
   const [open, setOpen] = useState(defaultOpen);
   const shellClass = servicesAccordionShellClass(presentation.cardDesign, tone, presentation);
   const frameClass = servicesCardFrameClass(presentation);
@@ -2597,7 +4094,6 @@ function EditorialSkillAccordionRow({
   const fillAttrs = servicesCardFillDataAttrs(presentation);
   const align = servicesContentAlignClass(presentation.skillsContentAlignment);
   const iconTop = presentation.skillsIconPlacement === 'top';
-  const description = getSkillUsageDescription(skill);
   const elementStyles = normalizeServicesElementStyles(presentation.elementStyles);
   const iconShellClass = toolsIconShellClass(presentation.skillsIconSize);
   const iconPixelSize = toolsIconPixelSize(presentation.skillsIconSize);
@@ -2606,7 +4102,7 @@ function EditorialSkillAccordionRow({
     <div
       className={`flex shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 ${iconShellClass}`}
     >
-      <CreatorToolLogo label={skill} size={iconPixelSize} className="rounded-lg" />
+      <CreatorToolLogo label={skillName} size={iconPixelSize} className="rounded-lg" />
     </div>
   ) : null;
 
@@ -2626,10 +4122,10 @@ function EditorialSkillAccordionRow({
           <span className={`min-w-0 flex-1 ${align.text}`}>
             {presentation.showSkillTitle ? (
               <span
-                className={`block truncate ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
+                className={`block break-words [overflow-wrap:anywhere] ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
                 style={elementTextInlineStyle(elementStyles.skillTitle)}
               >
-                {skill}
+                {skillName}
               </span>
             ) : null}
           </span>
@@ -2715,16 +4211,17 @@ function renderServiceGalleryItem(
 }
 
 function renderSkillGalleryItem(
-  skill: string,
+  skill: PortfolioSkillRef,
   presentation: PortfolioServicesPresentationSettings,
   index: number,
   tone: EditorialMarqueeCardTone
 ) {
+  const skillKey = resolveSkillName(skill);
   switch (presentation.skillsGalleryLayout) {
     case 'list':
       return (
         <EditorialSkillListRow
-          key={skill}
+          key={skillKey}
           skill={skill}
           presentation={presentation}
           cardIndex={index}
@@ -2734,7 +4231,7 @@ function renderSkillGalleryItem(
     case 'pricing-hero':
       return (
         <EditorialSkillPricingHeroCard
-          key={skill}
+          key={skillKey}
           skill={skill}
           presentation={presentation}
           cardIndex={index}
@@ -2744,7 +4241,7 @@ function renderSkillGalleryItem(
     case 'accordion':
       return (
         <EditorialSkillAccordionRow
-          key={skill}
+          key={skillKey}
           skill={skill}
           presentation={presentation}
           defaultOpen={index === 0}
@@ -2755,7 +4252,7 @@ function renderSkillGalleryItem(
     default:
       return (
         <EditorialSkillCard
-          key={skill}
+          key={skillKey}
           skill={skill}
           tone={tone}
           presentation={presentation}
@@ -2765,17 +4262,35 @@ function renderSkillGalleryItem(
   }
 }
 
-/** Framed panel — thin border around skills + services carousels. */
+/** Outer stage wrapper around skills / services carousels (framed, soft, or custom chrome). */
 export function EditorialMarqueeStage({
   children,
   stageDesign = 'framed',
+  stageChrome,
 }: {
   children: React.ReactNode;
-  stageDesign?: PortfolioServicesPresentationSettings['stageDesign'];
+  stageDesign?: PortfolioServicesStageDesign;
+  stageChrome?: PortfolioServicesStageChromeSettings;
 }) {
-  const shellClass = servicesStageShellClass(stageDesign);
+  const chrome: PortfolioServicesStageChromeSettings = stageChrome ?? {
+    stageBackgroundEnabled: stageDesign === 'soft',
+    stageBackgroundColor: '#fafafa',
+    stageBackgroundOpacity: 80,
+    stageBorder: stageDesign === 'framed' ? 'soft' : 'none',
+    stageBorderColor: '#e5e5e5',
+    stageBorderRadius: 'xl',
+    stagePadding: stageDesign === 'open' || stageDesign === 'none' ? 'none' : 'md',
+    stagePattern: 'none',
+    stagePatternColor: '#a3a3a3',
+    stagePatternOpacity: 18,
+  };
+  const shellClass = servicesStageShellClass(stageDesign, chrome);
   if (!shellClass) return <>{children}</>;
-  return <div className={shellClass}>{children}</div>;
+  return (
+    <div className={shellClass} style={servicesStageShellStyle(chrome)}>
+      {children}
+    </div>
+  );
 }
 
 export function EditorialSkillCard({
@@ -2784,11 +4299,13 @@ export function EditorialSkillCard({
   presentation = DEFAULT_SERVICES_PRESENTATION,
   cardIndex = 0,
 }: {
-  skill: string;
+  skill: PortfolioSkillRef;
   tone?: EditorialMarqueeCardTone;
   presentation?: PortfolioServicesPresentationSettings;
   cardIndex?: number;
 }) {
+  const skillName = resolveSkillName(skill);
+  const description = resolveSkillDescription(skill);
   const shellClass = servicesCardShellClass(presentation.cardDesign, tone, presentation);
   const frameClass = servicesCardFrameClass(presentation);
   const surfaceStyle = servicesCardSurfaceStyle(presentation, tone);
@@ -2804,7 +4321,7 @@ export function EditorialSkillCard({
     <div
       className={`flex shrink-0 items-center justify-center rounded-2xl border border-neutral-200/80 ${iconShellClass}`}
     >
-      <CreatorToolLogo label={skill} size={iconPixelSize} className="rounded-xl" />
+      <CreatorToolLogo label={skillName} size={iconPixelSize} className="rounded-xl" />
     </div>
   ) : null;
 
@@ -2829,7 +4346,7 @@ export function EditorialSkillCard({
                 className={`leading-tight tracking-[-0.02em] ${elementTextStyleClass(elementStyles.skillTitle, 'title')}`}
                 style={elementTextInlineStyle(elementStyles.skillTitle)}
               >
-                {skill}
+                {skillName}
               </h3>
             </div>
           ) : null}
@@ -2837,24 +4354,32 @@ export function EditorialSkillCard({
       ) : null}
       {presentation.showSkillDescription ? (
         <p
-          className={`mt-5 flex-1 leading-relaxed ${elementTextStyleClass(elementStyles.skillBody, 'body')} ${align.text}`}
+          className={`mt-5 min-h-0 flex-1 leading-relaxed ${elementTextStyleClass(elementStyles.skillBody, 'body')} ${align.text}`}
           style={elementTextInlineStyle(elementStyles.skillBody)}
         >
-          {getSkillUsageDescription(skill)}
+          {description}
         </p>
-      ) : null}
+      ) : (
+        <div className="min-h-0 flex-1" aria-hidden />
+      )}
       </ServicesCardForeground>
     </article>
   );
 }
 
-function expandSkillsForMarquee(items: string[], minCount = 4): Array<{ key: string; skill: string }> {
+function expandSkillsForMarquee(
+  items: PortfolioSkillRef[],
+  minCount = 4
+): Array<{ key: string; skill: PortfolioSkillRef }> {
   if (items.length === 0) return [];
-  const expanded: Array<{ key: string; skill: string }> = [];
+  const expanded: Array<{ key: string; skill: PortfolioSkillRef }> = [];
   let copy = 0;
   while (expanded.length < minCount) {
     for (const skill of items) {
-      expanded.push({ key: `${skill}-marquee-${copy}-${expanded.length}`, skill });
+      expanded.push({
+        key: `${resolveSkillName(skill)}-marquee-${copy}-${expanded.length}`,
+        skill,
+      });
       if (expanded.length >= minCount) break;
     }
     copy += 1;
@@ -2868,7 +4393,7 @@ function SkillsMarqueeTrack({
   ariaHidden = false,
   presentation = DEFAULT_SERVICES_PRESENTATION,
 }: {
-  skills: Array<{ key: string; skill: string }>;
+  skills: Array<{ key: string; skill: PortfolioSkillRef }>;
   startIndex?: number;
   ariaHidden?: boolean;
   presentation?: PortfolioServicesPresentationSettings;
@@ -2899,11 +4424,21 @@ export function EditorialSkillsGallery({
   presentation = DEFAULT_SERVICES_PRESENTATION,
   motionProfile = DEFAULT_MOTION_PROFILE,
 }: {
-  skills: string[];
+  skills: PortfolioSkillRef[];
   presentation?: PortfolioServicesPresentationSettings;
   motionProfile?: PortfolioGlobalMotionProfile;
 }) {
-  const items = Array.from(new Set(skills.map((item) => item.trim()).filter(Boolean)));
+  const items = useMemo(() => {
+    const seen = new Set<string>();
+    const result: PortfolioSkillRef[] = [];
+    for (const skill of skills) {
+      const name = resolveSkillName(skill).trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      result.push(typeof skill === 'string' ? name : skill);
+    }
+    return result;
+  }, [skills]);
   const trackSkills = useMemo(
     () => expandSkillsForMarquee(items, Math.max(3, items.length)),
     [items]
@@ -2927,7 +4462,12 @@ export function EditorialSkillsGallery({
     return (
       <div className={containerClass}>
         {items.map((skill, index) => (
-          <PortfolioMotionItem key={skill} profile={motionProfile} index={index} className="h-full">
+          <PortfolioMotionItem
+            key={resolveSkillName(skill)}
+            profile={motionProfile}
+            index={index}
+            className="h-full"
+          >
             {renderSkillGalleryItem(
               skill,
               blockPresentation,
@@ -2973,7 +4513,7 @@ export function EditorialSkillShowcase({
   presentation = DEFAULT_SERVICES_PRESENTATION,
   motionProfile = DEFAULT_MOTION_PROFILE,
 }: {
-  skills: string[];
+  skills: PortfolioSkillRef[];
   presentation?: PortfolioServicesPresentationSettings;
   motionProfile?: PortfolioGlobalMotionProfile;
 }) {
@@ -3134,7 +4674,7 @@ export function EditorialServicesSkillsSection({
   presentation = DEFAULT_SERVICES_PRESENTATION,
   motionProfile = DEFAULT_MOTION_PROFILE,
 }: {
-  skills: string[];
+  skills: PortfolioSkillRef[];
   services: ProfileServiceItem[];
   presentation?: PortfolioServicesPresentationSettings;
   motionProfile?: PortfolioGlobalMotionProfile;
@@ -3176,12 +4716,32 @@ export function EditorialServicesSkillsSection({
   const blockEntries = (
     presentation.stackOrder === 'services-first'
       ? [
-          { key: 'services', content: servicesContent, stageDesign: servicesPresentation.stageDesign },
-          { key: 'skills', content: skillsContent, stageDesign: skillsPresentation.stageDesign },
+          {
+            key: 'services',
+            content: servicesContent,
+            stageDesign: servicesPresentation.stageDesign,
+            stageChrome: pickServicesStageChrome(servicesPresentation),
+          },
+          {
+            key: 'skills',
+            content: skillsContent,
+            stageDesign: skillsPresentation.stageDesign,
+            stageChrome: pickServicesStageChrome(skillsPresentation),
+          },
         ]
       : [
-          { key: 'skills', content: skillsContent, stageDesign: skillsPresentation.stageDesign },
-          { key: 'services', content: servicesContent, stageDesign: servicesPresentation.stageDesign },
+          {
+            key: 'skills',
+            content: skillsContent,
+            stageDesign: skillsPresentation.stageDesign,
+            stageChrome: pickServicesStageChrome(skillsPresentation),
+          },
+          {
+            key: 'services',
+            content: servicesContent,
+            stageDesign: servicesPresentation.stageDesign,
+            stageChrome: pickServicesStageChrome(servicesPresentation),
+          },
         ]
   ).filter((entry) => entry.content);
 
@@ -3189,7 +4749,11 @@ export function EditorialServicesSkillsSection({
     return (
       <div className="flex flex-col gap-8 lg:gap-12">
         {blockEntries.map((entry) => (
-          <EditorialMarqueeStage key={entry.key} stageDesign={entry.stageDesign}>
+          <EditorialMarqueeStage
+            key={entry.key}
+            stageDesign={entry.stageDesign}
+            stageChrome={entry.stageChrome}
+          >
             {entry.content}
           </EditorialMarqueeStage>
         ))}
@@ -3198,7 +4762,10 @@ export function EditorialServicesSkillsSection({
   }
 
   return (
-    <EditorialMarqueeStage stageDesign={presentation.stageDesign}>
+    <EditorialMarqueeStage
+      stageDesign={presentation.stageDesign}
+      stageChrome={pickServicesStageChrome(presentation)}
+    >
       {blockEntries.map((entry, index) => (
         <div key={entry.key} className={index > 0 ? 'mt-6 lg:mt-8' : undefined}>
           {entry.content}
@@ -3551,19 +5118,26 @@ export function EditorialWhyMeBlock({
 export function EditorialWhyMeList({
   blocks,
   presentation = DEFAULT_ABOUT_PRESENTATION,
+  motionProfile = DEFAULT_MOTION_PROFILE,
+  forceStack = false,
 }: {
   blocks: ProfileMediaBlock[];
   presentation?: PortfolioAboutPresentationSettings;
+  motionProfile?: PortfolioGlobalMotionProfile;
+  /** Split-screen: keep Why Me blocks in a single column (right pane is already narrow). */
+  forceStack?: boolean;
 }) {
   if (blocks.length === 0) return null;
 
   const gapClass = whyMeGapClass(presentation.whyMeGap);
-  const isGrid = presentation.whyMeDesign === 'grid';
+  const isGrid = !forceStack && presentation.whyMeDesign === 'grid';
 
   return (
     <div className={isGrid ? `grid sm:grid-cols-2 ${gapClass}` : `flex flex-col ${gapClass}`}>
       {blocks.map((block, index) => (
-        <EditorialWhyMeBlock key={block.id} block={block} index={index} presentation={presentation} />
+        <PortfolioMotionItem key={block.id} profile={motionProfile} index={index} className="h-full">
+          <EditorialWhyMeBlock block={block} index={index} presentation={presentation} />
+        </PortfolioMotionItem>
       ))}
     </div>
   );
@@ -3678,6 +5252,11 @@ type ExperienceBodyProps = {
   titleClassName?: string;
   layout?: 'stack' | 'split' | 'bento' | 'compact';
   asidePlacement?: PortfolioExperienceAsidePlacement;
+  /**
+   * Split-screen navigation: flip the two-column entry into a vertical stack
+   * (former right column on top, left column below).
+   */
+  stackColumnsForSplitNav?: boolean;
   detailsPanelClassName?: string;
   detailsPanelStyle?: CSSProperties;
   storyPanelClassName?: string;
@@ -4206,6 +5785,7 @@ function ExperienceEntryBody({
   titleClassName = 'text-2xl font-bold leading-snug tracking-[-0.02em] text-neutral-950 sm:text-3xl',
   layout = 'split',
   asidePlacement = 'right',
+  stackColumnsForSplitNav = false,
   detailsPanelClassName,
   detailsPanelStyle,
   storyPanelClassName,
@@ -4401,6 +5981,24 @@ function ExperienceEntryBody({
   const leftColumn = asidePlacement === 'left' ? detailsAside : storyColumn;
   const rightColumn = asidePlacement === 'left' ? storyColumn : detailsAside;
 
+  // Split-screen nav: former right column on top, left column below (vertical stack only).
+  if (stackColumnsForSplitNav) {
+    return (
+      <div className="min-w-0">
+        <div className="flex flex-col gap-6 sm:gap-8">
+          <div className="min-w-0">
+            {rightColumn}
+            {toolsEntrySide === 'right' ? entryToolsInline : null}
+          </div>
+          <div className="min-w-0">
+            {leftColumn}
+            {toolsEntrySide === 'left' ? entryToolsInline : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-0">
       <div className="grid gap-6 sm:gap-8 xl:grid-cols-[minmax(0,1.45fr)_minmax(15rem,0.9fr)] xl:items-start">
@@ -4492,6 +6090,7 @@ export function EditorialExperienceBlock({
   isLast = false,
   presentation = DEFAULT_EXPERIENCE_PRESENTATION,
   inMultiColumn = false,
+  stackColumnsForSplitNav = false,
 }: {
   block: ProfileMediaBlock;
   index?: number;
@@ -4499,6 +6098,11 @@ export function EditorialExperienceBlock({
   presentation?: PortfolioExperiencePresentationSettings;
   /** When true, prefer stacked body layout (cards in a 2–3 column grid). */
   inMultiColumn?: boolean;
+  /**
+   * Split-screen nav only: stack former right column on top, left column below
+   * (story/details stay the same assignment — only orientation changes).
+   */
+  stackColumnsForSplitNav?: boolean;
 }) {
   const {
     period,
@@ -4537,6 +6141,7 @@ export function EditorialExperienceBlock({
     employmentType: presentation.showMeta ? employmentType : null,
     accent,
     asidePlacement: presentation.asidePlacement,
+    stackColumnsForSplitNav,
     detailsPanelClassName: detailsClass || undefined,
     detailsPanelStyle: detailsStyle,
     storyPanelClassName: storyClass || undefined,
@@ -4719,14 +6324,21 @@ export function EditorialExperienceBlock({
 export function EditorialExperienceList({
   blocks,
   presentation = DEFAULT_EXPERIENCE_PRESENTATION,
+  motionProfile = DEFAULT_MOTION_PROFILE,
+  forceSingleColumn = false,
 }: {
   blocks: ProfileMediaBlock[];
   presentation?: PortfolioExperiencePresentationSettings;
+  motionProfile?: PortfolioGlobalMotionProfile;
+  /** Split-screen nav: one experience entry per row in the right pane. */
+  forceSingleColumn?: boolean;
 }) {
   if (blocks.length === 0) return null;
 
   const design = presentation.experienceDesign;
-  const itemsPerRow = resolveExperienceItemsPerRow(design, presentation.itemsPerRow);
+  const itemsPerRow = forceSingleColumn
+    ? 1
+    : resolveExperienceItemsPerRow(design, presentation.itemsPerRow);
   const inMultiColumn = itemsPerRow > 1;
   const gridClass = experienceItemsPerRowGridClass(itemsPerRow, design, presentation.itemGap);
   const listGap = inMultiColumn
@@ -4736,17 +6348,24 @@ export function EditorialExperienceList({
       : 'space-y-0';
 
   return (
-    <div className={experienceListShellClass(presentation.listMaxWidth, presentation.listPlacement)}>
+    <div
+      className={experienceListShellClass(
+        forceSingleColumn ? 'full' : presentation.listMaxWidth,
+        forceSingleColumn ? 'left' : presentation.listPlacement
+      )}
+    >
       <div className={`${gridClass} ${listGap}`.trim()}>
         {blocks.map((block, index) => (
-          <EditorialExperienceBlock
-            key={block.id}
-            block={block}
-            index={index}
-            isLast={index === blocks.length - 1}
-            presentation={presentation}
-            inMultiColumn={inMultiColumn}
-          />
+          <PortfolioMotionItem key={block.id} profile={motionProfile} index={index} className="h-full">
+            <EditorialExperienceBlock
+              block={block}
+              index={index}
+              isLast={index === blocks.length - 1}
+              presentation={presentation}
+              inMultiColumn={inMultiColumn}
+              stackColumnsForSplitNav={forceSingleColumn}
+            />
+          </PortfolioMotionItem>
         ))}
       </div>
     </div>
@@ -4918,7 +6537,7 @@ function AboutUnifiedBandStats({
   // Always separate cards with gap — no shared bar / vertical dividers.
   return (
     <div
-      className={`grid grid-cols-2 sm:grid-cols-4 ${centerClass} ${
+      className={`grid grid-cols-2 md:grid-cols-4 ${centerClass} ${
         presentation.statsAutoCenter ? 'justify-items-center' : ''
       }`}
       style={gapStyle}
@@ -4927,7 +6546,7 @@ function AboutUnifiedBandStats({
         <PortfolioMotionItem key={stat.label} profile={motionProfile} index={index} className="h-full">
           <AboutStatCardShell
             presentation={presentation}
-            className={presentation.statsAutoCenter ? 'w-full min-w-[8.5rem] max-w-[12rem]' : undefined}
+            className={presentation.statsAutoCenter ? 'w-full min-w-0 max-w-[12rem]' : undefined}
           >
             <div className="flex flex-col items-center justify-center text-center">
               <p className={typography.valueClass('band')} style={typography.valueStyle(stat.label)}>
@@ -5136,7 +6755,7 @@ export function EditorialFaqItem({
       style={{ ['--faq-accent' as string]: accent }}
     >
       <summary
-        className={`flex cursor-pointer list-none items-start gap-4 sm:gap-5 [&::-webkit-details-marker]:hidden ${summaryPadding} ${align.row}`}
+        className={`flex cursor-pointer list-none items-start gap-3 sm:gap-5 [&::-webkit-details-marker]:hidden ${summaryPadding} ${align.row}`}
       >
         {showInlineNumber ? (
           <span className={numberClass} style={numberStyle}>
@@ -5148,7 +6767,7 @@ export function EditorialFaqItem({
         </span>
         {presentation.showExpandIcon ? (
           <span
-            className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white shadow-sm transition duration-200 ${iconRotateClass} group-open:border-[color:var(--faq-accent)] group-open:bg-[color:color-mix(in_srgb,var(--faq-accent)_12%,white)] group-open:text-[color:var(--faq-accent)]`}
+            className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-white shadow-sm transition duration-200 sm:h-9 sm:w-9 ${iconRotateClass} group-open:border-[color:var(--faq-accent)] group-open:bg-[color:color-mix(in_srgb,var(--faq-accent)_12%,white)] group-open:text-[color:var(--faq-accent)]`}
             style={iconStyles.base}
             aria-hidden
           >
@@ -5157,12 +6776,12 @@ export function EditorialFaqItem({
         ) : null}
       </summary>
       <div
-        className={`pb-6 pr-2 sm:pb-7 ${
-          showInlineNumber ? 'pl-12 sm:pl-[4.25rem]' : 'pl-2 sm:pl-4'
-        } ${isCard ? 'px-5 sm:px-6' : ''} ${design === 'compact' ? 'pb-4 sm:pb-5' : ''}`}
+        className={`pb-5 pr-1 sm:pb-7 sm:pr-2 ${
+          showInlineNumber ? 'pl-10 sm:pl-[4.25rem]' : 'pl-1 sm:pl-4'
+        } ${isCard ? 'px-4 sm:px-6' : ''} ${design === 'compact' ? 'pb-4 sm:pb-5' : ''}`}
       >
         <div
-          className={`pl-5 sm:pl-6 ${presentation.showAnswerAccentBorder ? 'border-l-2' : ''}`}
+          className={`pl-3 sm:pl-6 ${presentation.showAnswerAccentBorder ? 'border-l-2' : ''}`}
           style={presentation.showAnswerAccentBorder ? faqAnswerBorderStyle(presentation.answerAccentBorderColor) : undefined}
         >
           <p className={`${answerClass} ${align.text}`} style={answerStyle}>
@@ -5175,7 +6794,7 @@ export function EditorialFaqItem({
 
   if (design === 'numbered-rail') {
     return (
-      <article className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-start gap-x-4 sm:grid-cols-[4rem_minmax(0,1fr)]">
+      <article className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-x-3 sm:grid-cols-[4rem_minmax(0,1fr)] sm:gap-x-4">
         <div className="relative flex h-full min-h-[4.5rem] flex-col items-center">
           {!isLast ? <div className="absolute bottom-0 top-10 w-px bg-neutral-200" aria-hidden /> : null}
           {presentation.showItemNumbers ? (
@@ -5221,7 +6840,7 @@ export function EditorialFaqList({
   if (items.length === 0) return null;
 
   return (
-    <div className={`${faqFrameClass(presentation)} relative overflow-hidden`} style={faqFrameStyle(presentation)}>
+    <div className={`${faqFrameClass(presentation)} relative overflow-x-hidden`} style={faqFrameStyle(presentation)}>
       <ServicesCardBackgroundLayers presentation={presentation} />
       <ServicesCardForeground>
         <div className={faqListShellClass(presentation.itemDesign, presentation.itemGap)}>
@@ -5293,6 +6912,7 @@ function SideInfoRow({
   label,
   title,
   subtitle,
+  lines,
   dark = false,
   action,
   icon: Icon,
@@ -5303,6 +6923,8 @@ function SideInfoRow({
   label: string;
   title: string;
   subtitle?: string;
+  /** When set, show a vertical list instead of (or in place of) a single title line. */
+  lines?: string[];
   dark?: boolean;
   action?: React.ReactNode;
   icon: (props: { className?: string }) => React.ReactNode;
@@ -5316,6 +6938,7 @@ function SideInfoRow({
   const titleStyle = dark ? undefined : elementTextInlineStyle(presentation.elementStyles.sideTitle);
   const subtitleClass = elementTextStyleClass(presentation.elementStyles.sideSubtitle, 'body');
   const subtitleStyle = dark ? undefined : elementTextInlineStyle(presentation.elementStyles.sideSubtitle);
+  const listLines = (lines ?? []).map((line) => line.trim()).filter(Boolean);
 
   return (
     <div className={`flex gap-6 sm:gap-7 ${plainIcon ? 'items-center' : 'items-start'}`}>
@@ -5340,12 +6963,25 @@ function SideInfoRow({
             {label}
           </p>
         )}
-        <p
-          className={`leading-snug ${hideLabel ? '' : 'mt-1.5'} ${dark ? 'font-bold text-white' : titleClass}`}
-          style={titleStyle}
-        >
-          {title}
-        </p>
+        {listLines.length > 0 ? (
+          <ul
+            className={`${hideLabel ? '' : 'mt-1.5'} space-y-0.5 ${dark ? 'font-bold text-white' : titleClass}`}
+            style={titleStyle}
+          >
+            {listLines.map((line) => (
+              <li key={line} className="leading-snug">
+                {line}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p
+            className={`leading-snug ${hideLabel ? '' : 'mt-1.5'} ${dark ? 'font-bold text-white' : titleClass}`}
+            style={titleStyle}
+          >
+            {title}
+          </p>
+        )}
         {subtitle ? (
           <p className={`mt-1 leading-relaxed ${dark ? 'text-neutral-400' : subtitleClass}`} style={subtitleStyle}>
             {subtitle}
@@ -5362,6 +6998,8 @@ export type EditorialSideInfoItem = {
   label: string;
   title: string;
   subtitle?: string;
+  /** Vertical list body (languages, days/hours, …). */
+  lines?: string[];
   icon: (props: { className?: string }) => React.ReactNode;
 };
 
@@ -5413,6 +7051,7 @@ export function EditorialSideInfoPanel({
         label={item.label}
         title={item.title}
         subtitle={item.subtitle}
+        lines={item.lines}
         icon={item.icon}
         plainIcon
         hideLabel
@@ -5439,6 +7078,34 @@ export function EditorialSideInfoPanel({
           />
         ))}
       </div>
+    );
+  }
+
+  if (itemLayout === 'profile-frame') {
+    const locationItem =
+      items.find((item) => item.id === 'location') ?? items[0] ?? null;
+    const restItems = items.filter((item) => item.id !== locationItem?.id);
+    // Prefer a 2×2 grid on the right; leftover items wrap into another row.
+    const rightGridClass =
+      restItems.length <= 2
+        ? 'grid grid-cols-1 sm:grid-cols-2'
+        : 'grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-2';
+
+    return (
+      <AboutSidePanelCardShell presentation={presentation} includePadding={false} className={centerClass}>
+        <div className="grid gap-0 lg:grid-cols-[minmax(11rem,0.38fr)_minmax(0,0.62fr)]">
+          {/* Unequal left rail — location only */}
+          <div className="flex min-w-0 flex-col justify-center border-b border-neutral-200/80 px-5 py-5 sm:px-6 sm:py-6 lg:border-r lg:border-b-0">
+            {locationItem ? renderItem(locationItem) : null}
+          </div>
+          {/* Right: two rows × two items */}
+          <div
+            className={`${rightGridClass} divide-y divide-neutral-200/80 sm:divide-y-0 [&>*]:border-neutral-200/80 sm:[&>*:nth-child(odd)]:border-r sm:[&>*:nth-child(-n+2)]:border-b`}
+          >
+            {restItems.map((item) => renderItem(item))}
+          </div>
+        </div>
+      </AboutSidePanelCardShell>
     );
   }
 
@@ -5476,9 +7143,11 @@ export function EditorialSideInfoPanel({
 function ContactLocationBlock({
   location,
   stacked = false,
+  elementStyles,
 }: {
   location: string;
   stacked?: boolean;
+  elementStyles: PortfolioContactElementStyles;
 }) {
   const shellClass = stacked
     ? 'rounded-[1.35rem] border border-neutral-200/80 bg-transparent p-6 sm:p-7'
@@ -5490,7 +7159,12 @@ function ContactLocationBlock({
         <ContactLocationIcon className="h-8 w-8" />
       </div>
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600">Location</p>
-      <p className="mt-2 text-lg font-bold text-neutral-950">{location}</p>
+      <p
+        className={`mt-2 ${elementTextStyleClass(elementStyles.locationValue, 'body')}`}
+        style={elementTextInlineStyle(elementStyles.locationValue)}
+      >
+        {location}
+      </p>
     </div>
   );
 }
@@ -5521,16 +7195,21 @@ function ContactLinksBlock({
   blockOrder,
   renderSocialIcon,
   socialBrandClass,
+  elementStyles,
 }: {
   links: EditorialContactLink[];
   design: PortfolioContactCardDesign;
   blockOrder: PortfolioContactPresentationSettings['blockOrder'];
   renderSocialIcon?: (platform: string, className: string) => React.ReactNode;
   socialBrandClass?: (platform: string) => string;
+  elementStyles: PortfolioContactElementStyles;
 }) {
   return (
     <div className={contactLinksBlockClass(design, blockOrder)}>
-      <p className="px-1 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400 sm:px-2">
+      <p
+        className={`px-1 pb-2 sm:px-2 ${elementTextStyleClass(elementStyles.linksHeading, 'label')}`}
+        style={elementTextInlineStyle(elementStyles.linksHeading)}
+      >
         Links & social
       </p>
       <div
@@ -5544,6 +7223,7 @@ function ContactLinksBlock({
             link={link}
             renderSocialIcon={renderSocialIcon}
             socialBrandClass={socialBrandClass}
+            elementStyles={elementStyles}
           />
         ))}
       </div>
@@ -5557,15 +7237,19 @@ function ContactPrimaryChannels({
   visiblePhone,
   visibleLocation,
   channelCount,
+  elementStyles,
 }: {
   presentation: PortfolioContactPresentationSettings;
   visibleEmail: string | null;
   visiblePhone: string | null;
   visibleLocation: string | null;
   channelCount: number;
+  elementStyles: PortfolioContactElementStyles;
 }) {
   const stacked = presentation.cardDesign === 'stacked';
   const embedded = !stacked;
+  const valueTextClass = elementTextStyleClass(elementStyles.channelValue, 'body');
+  const valueTextStyle = elementTextInlineStyle(elementStyles.channelValue);
 
   return (
     <div className={contactChannelGridClass(presentation.cardDesign, channelCount)}>
@@ -5578,6 +7262,8 @@ function ContactPrimaryChannels({
           embedded={embedded}
           plainIcon={!stacked}
           showLabel={false}
+          valueTextClass={valueTextClass}
+          valueTextStyle={valueTextStyle}
         />
       ) : null}
       {visiblePhone?.trim() ? (
@@ -5589,10 +7275,12 @@ function ContactPrimaryChannels({
           embedded={embedded}
           plainIcon={!stacked}
           showLabel={false}
+          valueTextClass={valueTextClass}
+          valueTextStyle={valueTextStyle}
         />
       ) : null}
       {visibleLocation?.trim() ? (
-        <ContactLocationBlock location={visibleLocation.trim()} stacked={stacked} />
+        <ContactLocationBlock location={visibleLocation.trim()} stacked={stacked} elementStyles={elementStyles} />
       ) : null}
     </div>
   );
@@ -5606,6 +7294,8 @@ export function ContactChannelCard({
   embedded = false,
   plainIcon = false,
   showLabel = true,
+  valueTextClass = 'text-lg font-bold leading-snug text-neutral-950',
+  valueTextStyle,
 }: {
   label: string;
   value: string;
@@ -5614,6 +7304,8 @@ export function ContactChannelCard({
   embedded?: boolean;
   plainIcon?: boolean;
   showLabel?: boolean;
+  valueTextClass?: string;
+  valueTextStyle?: React.CSSProperties;
 }) {
   const centered = embedded && plainIcon && !showLabel;
 
@@ -5646,7 +7338,10 @@ export function ContactChannelCard({
       {showLabel ? (
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600">{label}</p>
       ) : null}
-      <p className={`break-words text-lg font-bold leading-snug text-neutral-950${showLabel ? ' mt-2' : ''}`}>
+      <p
+        className={`break-words leading-snug ${valueTextClass}${showLabel ? ' mt-2' : ''}`}
+        style={valueTextStyle}
+      >
         {value}
       </p>
     </a>
@@ -5690,6 +7385,7 @@ type EditorialContactLinkRowProps = {
   link: EditorialContactLink;
   renderSocialIcon?: (platform: string, className: string) => React.ReactNode;
   socialBrandClass?: (platform: string) => string;
+  elementStyles: PortfolioContactElementStyles;
 };
 
 function inferContactLinkPlatform(link: EditorialContactLink): string | null {
@@ -5743,6 +7439,7 @@ function EditorialContactLinkRow({
   link,
   renderSocialIcon,
   socialBrandClass,
+  elementStyles,
 }: EditorialContactLinkRowProps) {
   return (
     <a
@@ -5753,8 +7450,18 @@ function EditorialContactLinkRow({
     >
       <ContactLinkIcon link={link} renderSocialIcon={renderSocialIcon} socialBrandClass={socialBrandClass} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold text-neutral-950 sm:text-base">{link.label}</p>
-        <p className="truncate text-xs text-neutral-500">{link.url.replace(/^https?:\/\//, '')}</p>
+        <p
+          className={`truncate ${elementTextStyleClass(elementStyles.linkLabel, 'body')}`}
+          style={elementTextInlineStyle(elementStyles.linkLabel)}
+        >
+          {link.label}
+        </p>
+        <p
+          className={`truncate ${elementTextStyleClass(elementStyles.linkUrl, 'label')}`}
+          style={elementTextInlineStyle(elementStyles.linkUrl)}
+        >
+          {link.url.replace(/^https?:\/\//, '')}
+        </p>
       </div>
       <ArrowUpRight className="h-4 w-4 shrink-0 text-neutral-300 transition group-hover:text-orange-500" />
     </a>
@@ -5794,6 +7501,7 @@ export function EditorialContactSection({
   scrollBehavior = 'sticky',
   motionProfile = DEFAULT_MOTION_PROFILE,
   topSpacingClass = 'pt-12 sm:pt-16 lg:pt-20',
+  contentLayout = 'stacked',
 }: {
   email?: string | null;
   phone?: string | null;
@@ -5823,13 +7531,15 @@ export function EditorialContactSection({
   centered?: boolean;
   alignRight?: boolean;
   alwaysCentered?: boolean;
-  /** When a global page background is active, the contact section drops its own background. */
+  /** When a global solid is active, sections without their own fill stay clear; an enabled section fill paints on top. */
   suppressBackground?: boolean;
   /** Global scroll behavior for section titles. */
   scrollBehavior?: 'sticky' | 'static';
   motionProfile?: PortfolioGlobalMotionProfile;
   /** Global padding-top above the section title. */
   topSpacingClass?: string;
+  /** Split screen nav: title left / content right on large screens. */
+  contentLayout?: 'stacked' | 'split';
 }) {
   const visibleEmail = presentation.showEmail ? (email ?? null) : null;
   const visiblePhone = presentation.showPhone ? (phone ?? null) : null;
@@ -5845,114 +7555,153 @@ export function EditorialContactSection({
       ? sectionBackgroundStyle(presentation)
       : undefined;
   const resolvedCtaLabel = presentation.ctaLabel.trim() || ctaLabel;
+  const elementStyles = normalizeContactElementStyles(presentation.elementStyles);
+  const ctaTextClass = elementTextStyleClass(elementStyles.ctaLabel, 'label');
+  const ctaTextStyle = {
+    ...contactCtaStyle(presentation.ctaDesign, presentation.ctaColor),
+    ...elementTextInlineStyle(elementStyles.ctaLabel),
+  };
+  const split = contentLayout === 'split';
 
-  return (
-    <section
-      id="contact"
-      className={`relative isolate scroll-mt-28 ${
-        bgStyle ? `${topSpacingClass} pb-8 sm:pb-10 lg:pb-12` : topSpacingClass
-      }`}
-    >
-      {bgStyle ? (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute top-0 left-1/2 -z-10 w-screen -translate-x-1/2 -bottom-16 sm:-bottom-20"
-          style={bgStyle}
-        />
-      ) : null}
-      <EditorialSectionStickyHeader
-        title={sectionTitle ?? 'Contact'}
-        subtitle={sectionSubtitle ?? (
+  const header = (
+    <EditorialSectionStickyHeader
+      title={sectionTitle ?? 'Contact'}
+      subtitle={
+        sectionSubtitle ?? (
           <>
             Should you have a project in mind, I would be pleased to hear from you
             {responseTimeLabel?.trim() && presentation.showResponseTimeInSubtitle
               ? ` — I typically reply ${responseTimeLabel.toLowerCase()}.`
               : ' to discuss your objectives.'}
           </>
-        )}
-        subtitleSerif={presentation.subtitleSerif}
-        editorialLayout={editorialLayout}
-        centered={centered}
-        alignRight={alignRight}
-        alwaysCentered={alwaysCentered}
-        className="mb-10 lg:mb-12"
-        titleTypographyClass={titleTypographyClass}
-        titleTypographyStyle={titleTypographyStyle}
-        titleDecorationStyle={titleDecorationStyle}
-        titleChromeClass={titleChromeClass}
-        titleChromeStyle={titleChromeStyle}
-        customTitleSizing={customTitleSizing}
-        subtitleTypographyClass={subtitleTypographyClass}
-        subtitleTypographyStyle={subtitleTypographyStyle}
-        subtitleDecorationStyle={subtitleDecorationStyle}
-        customSubtitleSizing={customSubtitleSizing}
-        orientation={orientation}
-        scrollBehavior={scrollBehavior}
-      />
-      <div className="relative">
-        {(hasPrimary || hasLinks) && (
-          <div
-            className={`w-full ${contactCardMaxWidthClass(presentation.cardMaxWidth)} ${contactCardPlacementClass(
-              presentation.cardPlacement
-            )}`}
-          >
-            <PortfolioMotionItem profile={motionProfile} index={0}>
-              <ContactCardShell presentation={presentation}>
-                {presentation.blockOrder === 'links-first' && hasLinks ? (
-                  <ContactLinksBlock
-                    links={visibleLinks}
-                    design={presentation.cardDesign}
-                    blockOrder={presentation.blockOrder}
-                    renderSocialIcon={renderSocialIcon}
-                    socialBrandClass={socialBrandClass}
-                  />
-                ) : null}
-                {hasPrimary ? (
-                  <ContactPrimaryChannels
-                    presentation={presentation}
-                    visibleEmail={visibleEmail}
-                    visiblePhone={visiblePhone}
-                    visibleLocation={visibleLocation}
-                    channelCount={channelCount}
-                  />
-                ) : null}
-                {hasLinks && presentation.blockOrder === 'primary-first' ? (
-                  <ContactLinksBlock
-                    links={visibleLinks}
-                    design={presentation.cardDesign}
-                    blockOrder={presentation.blockOrder}
-                    renderSocialIcon={renderSocialIcon}
-                    socialBrandClass={socialBrandClass}
-                  />
-                ) : null}
-              </ContactCardShell>
-            </PortfolioMotionItem>
-          </div>
-        )}
+        )
+      }
+      subtitleSerif={presentation.subtitleSerif}
+      editorialLayout={editorialLayout}
+      centered={centered}
+      alignRight={alignRight}
+      alwaysCentered={alwaysCentered}
+      className={`relative z-[1] ${split ? 'mb-0' : 'mb-10 lg:mb-12'}`}
+      titleTypographyClass={titleTypographyClass}
+      titleTypographyStyle={titleTypographyStyle}
+      titleDecorationStyle={titleDecorationStyle}
+      titleChromeClass={titleChromeClass}
+      titleChromeStyle={titleChromeStyle}
+      customTitleSizing={customTitleSizing}
+      subtitleTypographyClass={subtitleTypographyClass}
+      subtitleTypographyStyle={subtitleTypographyStyle}
+      subtitleDecorationStyle={subtitleDecorationStyle}
+      customSubtitleSizing={customSubtitleSizing}
+      orientation={orientation}
+      scrollBehavior={scrollBehavior}
+    />
+  );
 
-        {presentation.showCta ? (
+  const body = (
+    <div className="relative z-[1]">
+      {(hasPrimary || hasLinks) && (
+        <div
+          className={`w-full ${contactCardMaxWidthClass(presentation.cardMaxWidth)} ${contactCardPlacementClass(
+            presentation.cardPlacement
+          )}`}
+        >
+          <PortfolioMotionItem profile={motionProfile} index={0}>
+            <ContactCardShell presentation={presentation}>
+              {presentation.blockOrder === 'links-first' && hasLinks ? (
+                <ContactLinksBlock
+                  links={visibleLinks}
+                  design={presentation.cardDesign}
+                  blockOrder={presentation.blockOrder}
+                  renderSocialIcon={renderSocialIcon}
+                  socialBrandClass={socialBrandClass}
+                  elementStyles={elementStyles}
+                />
+              ) : null}
+              {hasPrimary ? (
+                <ContactPrimaryChannels
+                  presentation={presentation}
+                  visibleEmail={visibleEmail}
+                  visiblePhone={visiblePhone}
+                  visibleLocation={visibleLocation}
+                  channelCount={channelCount}
+                  elementStyles={elementStyles}
+                />
+              ) : null}
+              {hasLinks && presentation.blockOrder === 'primary-first' ? (
+                <ContactLinksBlock
+                  links={visibleLinks}
+                  design={presentation.cardDesign}
+                  blockOrder={presentation.blockOrder}
+                  renderSocialIcon={renderSocialIcon}
+                  socialBrandClass={socialBrandClass}
+                  elementStyles={elementStyles}
+                />
+              ) : null}
+            </ContactCardShell>
+          </PortfolioMotionItem>
+        </div>
+      )}
+
+      {presentation.showCta ? (
+        <div
+          className={`mx-auto mt-10 flex max-w-3xl flex-col items-center gap-4 ${
+            presentation.ctaDesign === 'full-width' ? 'w-full px-4' : ''
+          }`}
+        >
+          <PortfolioMotionItem profile={motionProfile} index={hasPrimary || hasLinks ? 1 : 0}>
+            <a
+              href={ctaHref}
+              {...(ctaHref.startsWith('http') || ctaHref.startsWith('mailto')
+                ? { target: '_blank', rel: 'noreferrer' }
+                : {})}
+              className={`${contactCtaClassName(presentation.ctaDesign)} ${ctaTextClass}`.trim()}
+              style={ctaTextStyle}
+            >
+              {resolvedCtaLabel}
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+          </PortfolioMotionItem>
+          {membersOnlyNode}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <section
+      id="contact"
+      className={`relative isolate ${portfolioNavTopScrollMarginClass()} ${
+        bgStyle ? `${topSpacingClass} pb-8 sm:pb-10 lg:pb-12` : topSpacingClass
+      }`}
+    >
+      {bgStyle ? (
+        <>
+          {(presentation.sectionBackgroundOpacity ?? 100) >= 100 ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-0 left-1/2 z-0 w-screen -translate-x-1/2 -bottom-16 bg-white sm:-bottom-20"
+            />
+          ) : null}
           <div
-            className={`mx-auto mt-10 flex max-w-3xl flex-col items-center gap-4 ${
-              presentation.ctaDesign === 'full-width' ? 'w-full px-4' : ''
-            }`}
-          >
-            <PortfolioMotionItem profile={motionProfile} index={hasPrimary || hasLinks ? 1 : 0}>
-              <a
-                href={ctaHref}
-                {...(ctaHref.startsWith('http') || ctaHref.startsWith('mailto')
-                  ? { target: '_blank', rel: 'noreferrer' }
-                  : {})}
-                className={contactCtaClassName(presentation.ctaDesign)}
-                style={contactCtaStyle(presentation.ctaDesign, presentation.ctaColor)}
-              >
-                {resolvedCtaLabel}
-                <ArrowUpRight className="h-4 w-4" />
-              </a>
-            </PortfolioMotionItem>
-            {membersOnlyNode}
+            aria-hidden
+            className="pointer-events-none absolute top-0 left-1/2 z-0 w-screen -translate-x-1/2 -bottom-16 sm:-bottom-20"
+            style={bgStyle}
+          />
+        </>
+      ) : null}
+      {split ? (
+        <>
+          <div className="relative z-[1]">
+            <PortfolioSplitScreenTitle>{header}</PortfolioSplitScreenTitle>
           </div>
-        ) : null}
-      </div>
+          {body}
+        </>
+      ) : (
+        <>
+          {header}
+          {body}
+        </>
+      )}
     </section>
   );
 }
@@ -5970,11 +7719,12 @@ export function EditorialPortfolioFooter({
   links,
   contentClassName,
   presentation = DEFAULT_FOOTER_PRESENTATION,
-  stackOnContact = false,
   transparentBase = false,
   isAvailable = true,
   responseTimeLabel = null,
   contactHref = '#footer',
+  motionProfile = DEFAULT_MOTION_PROFILE,
+  bottomClearanceClass,
 }: {
   creatorName: string;
   creatorId: string;
@@ -5989,11 +7739,16 @@ export function EditorialPortfolioFooter({
   links: EditorialContactLink[];
   contentClassName: string;
   presentation?: PortfolioFooterPresentationSettings;
+  /** @deprecated Use presentation.marginTop instead. */
   stackOnContact?: boolean;
+  /** Let the global page fill show through when the footer has no own background enabled. */
   transparentBase?: boolean;
   isAvailable?: boolean | null;
   responseTimeLabel?: string | null;
   contactHref?: string;
+  motionProfile?: PortfolioGlobalMotionProfile;
+  /** Nav safe-area padding on the footer so its background reaches the viewport bottom. */
+  bottomClearanceClass?: string;
 }) {
   const bgStyle =
     !transparentBase && presentation.sectionBackgroundEnabled
@@ -6005,13 +7760,32 @@ export function EditorialPortfolioFooter({
     presentation.showTopBorder,
     lightBackground
   );
-  const topMarginClass = stackOnContact ? 'mt-0' : footerTopMarginClass(presentation.design);
+  const topMarginClass = footerTopMarginClass(presentation.marginTop ?? 'none');
+  const clearanceClass =
+    bottomClearanceClass ?? 'pb-[max(1rem,env(safe-area-inset-bottom,0px))]';
   const dividerClass = footerDividerClass(lightBackground);
-  const mutedStyle = footerTextStyle(presentation.textColor);
-  const primaryColor = resolveFooterPrimaryColor(presentation);
-  const primaryStyle = footerPrimaryStyle(primaryColor);
+  const elementStyles = normalizeFooterElementStyles(presentation.elementStyles, presentation);
+  const brandClass = elementTextStyleClass(elementStyles.brand, 'title');
+  const brandStyle = elementTextInlineStyle(elementStyles.brand);
+  const descriptionClass = elementTextStyleClass(elementStyles.description, 'body');
+  const descriptionStyle = elementTextInlineStyle(elementStyles.description);
+  const columnHeadingClass = elementTextStyleClass(elementStyles.columnHeading, 'body');
+  const columnHeadingStyle = elementTextInlineStyle(elementStyles.columnHeading);
+  const contactLineClass = elementTextStyleClass(elementStyles.contactLine, 'body');
+  const contactLineStyle = elementTextInlineStyle(elementStyles.contactLine);
+  const socialLabelClass = elementTextStyleClass(elementStyles.socialLabel, 'body');
+  const socialLabelStyle = elementTextInlineStyle(elementStyles.socialLabel);
+  const metaClass = elementTextStyleClass(elementStyles.meta, 'body');
+  const metaStyle = elementTextInlineStyle(elementStyles.meta);
+  const marketplaceLinkClass = elementTextStyleClass(elementStyles.marketplaceLink, 'body');
+  const marketplaceLinkStyle = elementTextInlineStyle(elementStyles.marketplaceLink);
+  const ctaTitleClass = elementTextStyleClass(elementStyles.ctaTitle, 'title');
+  const ctaTitleStyle = elementTextInlineStyle(elementStyles.ctaTitle);
+  const ctaSubtitleClass = elementTextStyleClass(elementStyles.ctaSubtitle, 'body');
+  const ctaSubtitleStyle = elementTextInlineStyle(elementStyles.ctaSubtitle);
+  const ctaButtonTextClass = elementTextStyleClass(elementStyles.ctaButton, 'body');
+  const ctaButtonTextStyle = elementTextInlineStyle(elementStyles.ctaButton);
   const iconStyle = footerIconStyle(presentation.iconColor);
-  const accentStyle = footerAccentStyle(presentation.accentColor);
   const patternStyle = footerPatternStyle(presentation);
 
   const description = presentation.showDescription
@@ -6075,7 +7849,7 @@ export function EditorialPortfolioFooter({
 
   const socialIconsRow =
     visibleLinks.length > 0 ? (
-      <nav className="flex flex-wrap items-center gap-4" aria-label="Social">
+      <nav className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 xl:justify-start" aria-label="Social">
         {visibleLinks.map((link) => (
           <a
             key={link.id}
@@ -6103,7 +7877,7 @@ export function EditorialPortfolioFooter({
             className="group inline-flex items-center gap-3 transition hover:opacity-80"
           >
             <FooterSocialLinkIcon link={link} />
-            <span className="text-sm font-bold transition group-hover:opacity-80" style={primaryStyle}>
+            <span className={`transition group-hover:opacity-80 ${socialLabelClass}`} style={socialLabelStyle}>
               {link.label}
             </span>
           </a>
@@ -6119,16 +7893,16 @@ export function EditorialPortfolioFooter({
             {item.href ? (
               <a
                 href={item.href}
-                className="inline-flex items-start gap-3.5 text-sm transition hover:opacity-80"
-                style={primaryStyle}
+                className={`inline-flex items-start gap-3.5 transition hover:opacity-80 ${contactLineClass}`}
+                style={contactLineStyle}
               >
                 <FooterContactIcon type={item.icon} className="mt-0.5 h-4 w-4 shrink-0" style={iconStyle} />
-                <span className="font-semibold">{item.label}</span>
+                <span>{item.label}</span>
               </a>
             ) : (
-              <span className="inline-flex items-start gap-3.5 text-sm" style={primaryStyle}>
+              <span className={`inline-flex items-start gap-3.5 ${contactLineClass}`} style={contactLineStyle}>
                 <FooterContactIcon type={item.icon} className="mt-0.5 h-4 w-4 shrink-0" style={iconStyle} />
-                <span className="font-semibold">{item.label}</span>
+                <span>{item.label}</span>
               </span>
             )}
           </li>
@@ -6138,21 +7912,21 @@ export function EditorialPortfolioFooter({
 
   const contactInline =
     contactItems.length > 0 ? (
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3" style={mutedStyle}>
+      <div className={`flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3 ${contactLineClass}`} style={contactLineStyle}>
         {contactItems.map((item) =>
           item.href ? (
             <a
               key={item.id}
               href={item.href}
-              className="inline-flex items-center gap-3 text-sm transition hover:opacity-80"
+              className="inline-flex max-w-full items-center gap-3 transition hover:opacity-80"
             >
-              <FooterContactIcon type={item.icon} className="h-3.5 w-3.5" style={iconStyle} />
-              <span>{item.label}</span>
+              <FooterContactIcon type={item.icon} className="h-3.5 w-3.5 shrink-0" style={iconStyle} />
+              <span className="min-w-0 text-pretty break-words">{item.label}</span>
             </a>
           ) : (
-            <span key={item.id} className="inline-flex items-center gap-3 text-sm">
-              <FooterContactIcon type={item.icon} className="h-3.5 w-3.5" style={iconStyle} />
-              <span>{item.label}</span>
+            <span key={item.id} className="inline-flex max-w-full items-center gap-3">
+              <FooterContactIcon type={item.icon} className="h-3.5 w-3.5 shrink-0" style={iconStyle} />
+              <span className="min-w-0 text-pretty break-words">{item.label}</span>
             </span>
           )
         )}
@@ -6160,7 +7934,7 @@ export function EditorialPortfolioFooter({
     ) : null;
 
   const copyrightLine = presentation.showCopyright ? (
-    <p className="text-xs font-medium tracking-wide" style={mutedStyle}>
+    <p className={`text-pretty tracking-wide ${metaClass}`} style={metaStyle}>
       © {new Date().getFullYear()} {creatorName}
       {presentation.showProfileVisits && profileVisits > 0
         ? ` · ${profileVisits.toLocaleString()} views`
@@ -6171,22 +7945,37 @@ export function EditorialPortfolioFooter({
   const marketplaceLink = presentation.showMarketplaceLink ? (
     <Link
       href={`/marketplace/${creatorId}`}
-      className="inline-flex items-center gap-1.5 text-sm font-semibold transition hover:opacity-80"
-      style={accentStyle}
+      className={`inline-flex items-center gap-1.5 transition hover:opacity-80 ${marketplaceLinkClass}`}
+      style={marketplaceLinkStyle}
     >
       Marketplace profile
       <ArrowUpRight className="h-3.5 w-3.5" />
     </Link>
   ) : null;
 
+  /** Separated-columns: clearer CTA so the marketplace link reads as a button. */
+  const marketplaceButton = presentation.showMarketplaceLink ? (
+    <Link
+      href={`/marketplace/${creatorId}`}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 transition hover:opacity-90 ${marketplaceLinkClass}`}
+      style={{
+        ...marketplaceLinkStyle,
+        borderColor: marketplaceLinkStyle.color ?? presentation.accentColor,
+      }}
+    >
+      Marketplace profile
+      <ArrowUpRight className="h-4 w-4 shrink-0" />
+    </Link>
+  ) : null;
+
   const designCredit = presentation.showDesignCredit ? (
-    <p className="text-xs font-medium tracking-wide" style={mutedStyle}>
+    <p className={`tracking-wide ${metaClass}`} style={metaStyle}>
       Design by NoProblème
     </p>
   ) : null;
 
   const columnHeading = (label: string) => (
-    <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.18em]" style={mutedStyle}>
+    <p className={`mb-8 sm:mb-10 ${columnHeadingClass}`} style={columnHeadingStyle}>
       {label}
     </p>
   );
@@ -6197,25 +7986,29 @@ export function EditorialPortfolioFooter({
     // Design 2 — Compact SaaS
     body = (
       <>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-3">
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between md:gap-8">
+          <div className="min-w-0 flex-1 space-y-3">
             {presentation.showBrand ? (
-              <p className="text-lg font-bold tracking-tight sm:text-xl" style={primaryStyle}>
+              <p className={`tracking-tight ${brandClass}`} style={brandStyle}>
                 {creatorName}
               </p>
             ) : null}
             {description ? (
-              <p className="max-w-md text-sm leading-relaxed" style={mutedStyle}>
+              <p className={`max-w-md text-pretty leading-relaxed ${descriptionClass}`} style={descriptionStyle}>
                 {description}
               </p>
             ) : null}
             {contactInline}
           </div>
-          {socialIconsRow}
+          {socialIconsRow ? (
+            <div className="shrink-0 self-start md:pt-1">{socialIconsRow}</div>
+          ) : null}
         </div>
-        <div className={`flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between ${dividerClass}`}>
-          {copyrightLine}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div
+          className={`flex flex-col gap-3 border-t pt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between ${dividerClass}`}
+        >
+          <div className="min-w-0">{copyrightLine}</div>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
             {marketplaceLink}
             {designCredit}
           </div>
@@ -6230,7 +8023,7 @@ export function EditorialPortfolioFooter({
     );
     const contactIconsRow =
       contactIconItems.length > 0 ? (
-        <nav className="flex flex-wrap items-center gap-4" aria-label="Contact">
+        <nav className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 xl:justify-start" aria-label="Contact">
           {contactIconItems.map((item) =>
             item.href ? (
               <a
@@ -6260,55 +8053,63 @@ export function EditorialPortfolioFooter({
       <>
         {presentation.showContactCta ? (
           <div
-            className="flex flex-col gap-5 rounded-2xl px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-7"
+            className="flex min-w-0 flex-col gap-5 rounded-2xl px-6 py-6 md:flex-row md:items-center md:justify-between md:px-8 md:py-7"
             style={{ backgroundColor: presentation.accentColor }}
           >
-            <div className="min-w-0">
-              <p
-                className="text-xl font-bold tracking-tight sm:text-2xl"
-                style={footerCtaTitleStyle(presentation.ctaTitleColor)}
-              >
+            <div className="min-w-0 flex-1">
+              <p className={`tracking-tight ${ctaTitleClass}`} style={ctaTitleStyle}>
                 {presentation.ctaTitle}
               </p>
-              <p
-                className="mt-1.5 text-sm"
-                style={footerCtaSubtitleStyle(presentation.ctaSubtitleColor)}
-              >
+              <p className={`mt-1.5 text-pretty ${ctaSubtitleClass}`} style={ctaSubtitleStyle}>
                 {ctaSubtitle}
               </p>
             </div>
             <a
               href={ctaHref}
-              className={footerCtaButtonClass(
+              className={`${footerCtaButtonClass(
                 presentation.ctaButtonBorder ?? 'none',
                 presentation.ctaButtonRadius ?? 'md',
                 presentation.ctaButtonPadding ?? 'md'
-              )}
-              style={footerCtaButtonStyle(
-                presentation.ctaButtonBackgroundColor ?? '#ffffff',
-                presentation.ctaButtonTextColor ?? '#0a0a0a',
-                presentation.ctaButtonBorder ?? 'none',
-                presentation.ctaButtonBorderColor ?? '#e5e5e5'
-              )}
+              )} ${ctaButtonTextClass} w-full shrink-0 text-center md:w-auto`}
+              style={{
+                ...footerCtaButtonStyle(
+                  presentation.ctaButtonBackgroundColor ?? '#ffffff',
+                  presentation.ctaButtonTextColor ?? '#0a0a0a',
+                  presentation.ctaButtonBorder ?? 'none',
+                  presentation.ctaButtonBorderColor ?? '#e5e5e5'
+                ),
+                ...ctaButtonTextStyle,
+              }}
             >
               {presentation.ctaButtonLabel}
             </a>
           </div>
         ) : null}
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-5 sm:gap-6">
+        {/*
+          Stack until xl: a 3-zone row on tablet squeezes the location line
+          (mid-word wraps like "Madaga / scar").
+          Margin is on this row — parent flex gap does not reach past PortfolioMotionItem.
+        */}
+        <div className="mt-10 flex min-w-0 flex-col items-center gap-5 pt-2 text-center sm:mt-14 sm:pt-3 lg:mt-16 xl:mt-16 xl:flex-row xl:items-center xl:justify-between xl:gap-8 xl:pt-4 xl:text-left">
+          <div className="flex min-w-0 flex-wrap items-center justify-center gap-3 sm:gap-4 xl:justify-start">
             {socialIconsRow}
             {socialIconsRow && contactIconsRow ? (
-              <span className="hidden h-5 w-px bg-neutral-200 sm:block dark:bg-neutral-700" aria-hidden />
+              <span
+                className="hidden h-5 w-px shrink-0 bg-neutral-200 xl:block dark:bg-neutral-700"
+                aria-hidden
+              />
             ) : null}
             {contactIconsRow}
           </div>
           {locationHours ? (
-            <p className="text-sm" style={mutedStyle}>
+            <p
+              className={`min-w-0 w-full max-w-2xl text-pretty xl:w-auto xl:max-w-xl xl:flex-1 xl:text-center ${metaClass}`}
+              style={metaStyle}
+            >
               {locationHours}
             </p>
           ) : null}
-          <div className="space-y-1.5 sm:text-right">
+          <div className="flex min-w-0 flex-col items-center gap-1.5 xl:shrink-0 xl:items-end">
             {copyrightLine}
             {marketplaceLink}
           </div>
@@ -6316,37 +8117,37 @@ export function EditorialPortfolioFooter({
       </>
     );
   } else {
-    // Design 1 — Colonnes avec séparateurs
+    // Design 1 — Separated columns: Networks | Contact | meta (all left-aligned)
     body = (
       <>
-        <div className={`min-w-0 space-y-1 lg:border-r lg:pr-10 ${dividerClass}`}>
+        <div className="min-w-0 space-y-1 lg:pr-10">
           {columnHeading('Networks')}
           {socialLinksColumn}
           {!socialLinksColumn && presentation.showBrand ? (
-            <p className="text-base font-bold" style={primaryStyle}>
+            <p className={brandClass} style={brandStyle}>
               {creatorName}
             </p>
           ) : null}
           {description ? (
-            <p className="mt-3 max-w-xs text-sm leading-relaxed" style={mutedStyle}>
+            <p className={`mt-3 max-w-xs text-pretty leading-relaxed ${descriptionClass}`} style={descriptionStyle}>
               {description}
             </p>
           ) : null}
         </div>
-        <div className={`min-w-0 space-y-1 lg:border-r lg:px-10 ${dividerClass}`}>
+        <div className="min-w-0 space-y-1 lg:px-10">
           {columnHeading('Contact')}
           {contactStack}
         </div>
-        <div className="flex min-w-0 flex-col justify-start gap-3 lg:pl-10">
+        <div className="flex min-w-0 flex-col items-start justify-start gap-3 text-left lg:pl-10">
           {copyrightLine ? (
-            <p className="text-xs font-bold uppercase tracking-[0.14em]" style={mutedStyle}>
+            <p className={metaClass} style={metaStyle}>
               © {new Date().getFullYear()} {creatorName}
             </p>
           ) : null}
-          {marketplaceLink}
+          {marketplaceButton}
           {designCredit}
           {presentation.showProfileVisits && profileVisits > 0 ? (
-            <p className="text-xs" style={mutedStyle}>
+            <p className={metaClass} style={metaStyle}>
               {profileVisits.toLocaleString()} views
             </p>
           ) : null}
@@ -6358,15 +8159,29 @@ export function EditorialPortfolioFooter({
   const fallbackBg = bgStyle || transparentBase ? '' : lightBackground ? 'bg-neutral-100' : 'bg-neutral-950';
 
   return (
-    <footer id="footer" className={`relative isolate ${topMarginClass} ${shellClass} ${fallbackBg}`}>
+    <footer
+      id="footer"
+      className={`relative isolate max-w-full overflow-x-clip ${topMarginClass} ${shellClass} ${clearanceClass} ${fallbackBg}`}
+    >
       {bgStyle ? (
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10" style={bgStyle} />
+        <>
+          {(presentation.sectionBackgroundOpacity ?? 100) >= 100 ? (
+            <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-white" />
+          ) : null}
+          <div aria-hidden className="pointer-events-none absolute inset-0 z-0" style={bgStyle} />
+        </>
       ) : null}
       {patternStyle ? (
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10" style={patternStyle} />
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-0" style={patternStyle} />
       ) : null}
-      <div className={`relative ${contentClassName} ${footerLayoutClass(presentation.design, presentation.alignment)}`}>
-        {body}
+      <div
+        className={`relative z-[1] min-w-0 ${contentClassName} ${footerContentPaddingClass(presentation.padding ?? 'standard')}`}
+      >
+        <PortfolioMotionItem profile={motionProfile} index={0} className="w-full min-w-0">
+          <div className={footerLayoutClass(presentation.design, presentation.alignment)}>
+            {body}
+          </div>
+        </PortfolioMotionItem>
       </div>
     </footer>
   );
@@ -6459,11 +8274,19 @@ function FooterContactIcon({
   );
 }
 
-export function MarketplaceProfileLink({ creatorId }: { creatorId: string }) {
+export function MarketplaceProfileLink({
+  creatorId,
+  color,
+}: {
+  creatorId: string;
+  /** Accent color from the Work palette (Section title / Principal). */
+  color?: string;
+}) {
   return (
     <Link
       href={`/marketplace/${creatorId}`}
-      className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500 transition hover:text-orange-600 dark:hover:text-orange-400"
+      className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.14em] transition hover:opacity-75"
+      style={color ? { color } : undefined}
     >
       View all projects
       <ArrowUpRight className="h-3.5 w-3.5" />

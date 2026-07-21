@@ -11,7 +11,7 @@ import {
 } from '@/components/portfolio/portfolio-themes';
 import type { PortfolioSettings } from '@/components/portfolio/portfolio-settings-types';
 
-export type PortfolioCustomThemeSnapshot = Omit<PortfolioSettings, 'themeId' | 'customThemes'>;
+export type PortfolioCustomThemeSnapshot = Omit<PortfolioSettings, 'themeId' | 'customThemes' | 'updatedAt'>;
 
 export type PortfolioCustomTheme = {
   id: string;
@@ -37,9 +37,10 @@ function isHex(value: unknown): value is string {
 }
 
 export function stripThemeMeta(settings: PortfolioSettings): PortfolioCustomThemeSnapshot {
-  const { themeId, customThemes, ...rest } = settings;
+  const { themeId, customThemes, updatedAt, ...rest } = settings;
   void themeId;
   void customThemes;
+  void updatedAt;
   return structuredClone(rest);
 }
 

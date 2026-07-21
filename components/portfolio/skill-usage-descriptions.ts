@@ -2,6 +2,22 @@ import {
   findCreatorToolPreset,
   type CreatorToolPreset,
 } from '@/components/creator/studio/creator-profile-tools-catalog';
+import type { ProfileStrengthTool } from '@/types/ecosystem';
+
+export type PortfolioSkillRef = string | ProfileStrengthTool;
+
+export function resolveSkillName(skill: PortfolioSkillRef): string {
+  return typeof skill === 'string' ? skill : skill.name;
+}
+
+export function resolveSkillDescription(skill: PortfolioSkillRef): string {
+  const name = resolveSkillName(skill);
+  if (typeof skill !== 'string') {
+    const custom = skill.description?.trim();
+    if (custom) return custom;
+  }
+  return getSkillUsageDescription(name);
+}
 
 const CATEGORY_USAGE: Record<CreatorToolPreset['category'], string> = {
   video: 'Cutting, pacing, and polishing footage into stories people actually want to watch.',
